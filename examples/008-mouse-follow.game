@@ -1,0 +1,11 @@
+# Mouse Follow — the circle tracks your cursor
+# Proves mouse.x and mouse.y signal pipeline.
+# Move your mouse to guide the glow across the screen.
+
+cinematic "Follow" {
+  layer {
+    fn: translate(mx, my) | circle(0.15) | glow(4.0) | bloom(0.3, 2.0) | vignette(0.25)
+    mx: 0.0 ~ mouse.x * 2.0 - 1.0
+    my: 0.0 ~ mouse.y * 2.0 - 1.0
+  }
+}

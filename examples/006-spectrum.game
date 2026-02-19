@@ -1,0 +1,13 @@
+# Spectrum — frequency band visualizer
+# Three concentric rings, each driven by a different audio band.
+# Bass (gold/orange inner), Mid (cyan middle), Treble (violet outer).
+# Drop audio to see each frequency band light up independently.
+
+cinematic "Spectrum" {
+  layer {
+    fn: spectrum(bass, mid, treble)
+    bass: 0.0 ~ audio.bass * 1.5
+    mid: 0.0 ~ audio.mid * 1.5
+    treble: 0.0 ~ audio.treble * 1.5
+  }
+}

@@ -1,0 +1,28 @@
+# Interactive — the viewer shapes the experience
+# Mouse controls the world. Click to create.
+
+cinematic "Touch" {
+  layer fluid {
+    fn: curl_noise(p, frequency: freq, amplitude: amp)
+      | colormap(plasma)
+    freq: 3.0 ~ mouse.x * 4.0
+    amp: 0.5 ~ mouse.y
+  }
+
+  layer ripples {
+    fn: concentric_waves(origins, decay: 2.0, speed: 3.0)
+      | blend(mode: additive, opacity: 0.6)
+    origins: []
+  }
+
+  lens {
+    mode: flat
+    fields: [fluid, ripples]
+    post: [bloom(0.8), chromatic(0.002)]
+  }
+
+  react {
+    mouse.click -> ripples.add_origin(at: mouse.uv, strength: 1.0)
+    key("c") -> ripples.origins.clear
+  }
+}

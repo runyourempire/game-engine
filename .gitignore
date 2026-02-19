@@ -1,0 +1,9 @@
+# Build artifacts
+game-compiler/target/
+
+# Compiled output
+output/
+
+# OS files
+.DS_Store
+Thumbs.db

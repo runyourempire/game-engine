@@ -1,0 +1,9 @@
+# Breathing Dot — ambient presence indicator
+# Usage: <game-breathing-dot></game-breathing-dot>
+# Pure time-driven, no data input needed
+
+cinematic "Breathing Dot" {
+  layer {
+    fn: circle(0.15 + sin(time * 2.0) * 0.03) | glow(2.5)
+  }
+}

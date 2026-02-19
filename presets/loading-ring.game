@@ -1,0 +1,10 @@
+# Loading Ring — GPU-accelerated loading indicator
+# Usage: <game-loading-ring progress="0.75"></game-loading-ring>
+# API:   el.progress = 0.0..1.0
+
+cinematic "Loading Ring" {
+  layer {
+    fn: ring(0.3, 0.04) | mask_arc(angle) | glow(2.0)
+    angle: 0.0 ~ data.progress * 6.283
+  }
+}

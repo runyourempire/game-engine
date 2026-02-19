@@ -1,0 +1,14 @@
+# Audio Hello — the simplest audio-reactive cinematic
+# Circle breathes with sound. Proves the audio → shader pipeline.
+# Drop an audio file or click to use your microphone.
+#
+# Without audio: static circle (radius 0.3, glow 2.0)
+# With audio: radius pulses 0.3→0.8 on bass, glow explodes 2.0→14.0 on energy
+
+cinematic "Audio Hello" {
+  layer {
+    fn: circle(radius) | glow(intensity)
+    radius: 0.3 ~ audio.bass * 0.5
+    intensity: 2.0 ~ audio.energy * 12.0
+  }
+}

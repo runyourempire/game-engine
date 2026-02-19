@@ -1,0 +1,10 @@
+# Status Pulse — health/status indicator that glows with intensity
+# Usage: <game-status-pulse health="1.0"></game-status-pulse>
+# API:   el.health = 0.0..1.0 (bright at 1.0, dims toward 0)
+
+cinematic "Status Pulse" {
+  layer {
+    fn: circle(0.2) | glow(intensity)
+    intensity: 1.0 ~ data.health * 4.0
+  }
+}

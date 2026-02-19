@@ -1,0 +1,24 @@
+# Audio Reactive — music drives the visuals
+# A terrain that breathes with the beat.
+
+cinematic "Pulse" {
+  audio: "track.ogg"
+
+  layer terrain {
+    fn: fbm(p * scale, octaves: 6, persistence: 0.5)
+      | shade(
+          albedo: mix(midnight, gold, height),
+          emissive: height > 0.6 ? gold * glow : black
+        )
+    scale: 2.0 ~ audio.bass * 2.0
+    glow: 0.0 ~ audio.energy * 0.8
+  }
+
+  lens {
+    mode: raymarch
+    fields: [terrain]
+    camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+    lighting: sun([0.5, 0.8, 1.0], 0.8) + ambient(0.15)
+    post: [bloom(1.2), vignette(0.4)]
+  }
+}

@@ -1,0 +1,8 @@
+# Hello GAME — the simplest possible cinematic
+# A breathing circle of light. Three lines of substance.
+
+cinematic "Hello" {
+  layer {
+    fn: circle(0.3 + sin(time) * 0.05) | glow(2.0)
+  }
+}

@@ -1,0 +1,10 @@
+# Metric Ring — arc gauge for displaying a 0-1 value
+# Usage: <game-metric-ring value="0.65"></game-metric-ring>
+# API:   el.value = 0.0..1.0
+
+cinematic "Metric Ring" {
+  layer {
+    fn: ring(0.35, 0.06) | mask_arc(fill) | glow(3.0)
+    fill: 0.0 ~ data.value * 6.283
+  }
+}

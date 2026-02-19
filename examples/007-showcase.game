@@ -1,0 +1,16 @@
+# Showcase — full M1 feature demo
+# Frequency spectrum with post-processing pipeline.
+# Concentric colored rings + bloom + vignette + film grain.
+
+cinematic "Showcase" {
+  layer {
+    fn: spectrum(bass, mid, treble)
+      | bloom(0.4, 2.0)
+      | chromatic(0.6)
+      | vignette(0.35)
+      | grain(0.025)
+    bass: 0.0 ~ audio.bass * 1.5
+    mid: 0.0 ~ audio.mid * 1.5
+    treble: 0.0 ~ audio.treble * 1.5
+  }
+}

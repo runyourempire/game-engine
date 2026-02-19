@@ -1,0 +1,9 @@
+# Spinner — rotating partial ring for indeterminate loading
+# Usage: <game-spinner></game-spinner>
+# Pure time-driven rotation
+
+cinematic "Spinner" {
+  layer {
+    fn: rotate(time * 3.0) | ring(0.25, 0.03) | mask_arc(4.0) | glow(2.5)
+  }
+}
