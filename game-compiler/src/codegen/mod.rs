@@ -301,19 +301,25 @@ impl WgslGen {
     }
 
     pub(super) fn is_postprocess(&self, name: &str) -> bool {
-        matches!(name, "bloom" | "vignette" | "chromatic" | "grain")
+        matches!(name, "bloom" | "vignette" | "chromatic" | "grain"
+            | "fog" | "glitch" | "scanlines" | "tonemap" | "invert" | "saturate_color")
     }
 
     pub(super) fn classify_stage(&self, name: &str) -> Result<ShaderState> {
         match name {
-            "circle" | "sphere" | "ring" | "box" | "torus" | "cylinder" | "plane" => Ok(ShaderState::Sdf),
+            "circle" | "sphere" | "ring" | "box" | "torus" | "cylinder" | "plane"
+            | "line" | "polygon" | "star" => Ok(ShaderState::Sdf),
             "glow" => Ok(ShaderState::Glow),
-            "shade" | "emissive" | "colormap" | "spectrum" | "tint" => Ok(ShaderState::Color),
+            "shade" | "emissive" | "colormap" | "spectrum" | "tint"
+            | "gradient" => Ok(ShaderState::Color),
             "fbm" | "simplex" | "voronoi" | "noise" => Ok(ShaderState::Sdf),
             "mask_arc" => Ok(ShaderState::Sdf),
-            "translate" | "rotate" | "scale" | "repeat" | "mirror" | "twist" | "displace"
-            | "round" => Ok(ShaderState::Position),
-            "bloom" | "chromatic" | "vignette" | "grain" => Ok(ShaderState::Color),
+            "translate" | "rotate" | "scale" | "repeat" | "mirror" | "twist"
+            => Ok(ShaderState::Position),
+            "displace" | "round" | "onion" => Ok(ShaderState::Sdf),
+            "bloom" | "chromatic" | "vignette" | "grain"
+            | "fog" | "glitch" | "scanlines" | "tonemap" | "invert"
+            | "saturate_color" => Ok(ShaderState::Color),
             _ => Err(crate::error::GameError::unknown_function(name)),
         }
     }

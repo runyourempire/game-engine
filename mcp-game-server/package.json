@@ -1,0 +1,45 @@
+{
+  "name": "mcp-game-server",
+  "version": "0.1.0",
+  "description": "MCP server for the GAME compiler (Generative Animation Matrix Engine) — compile .game DSL to WebGPU shaders, HTML, and Web Components",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-game": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "game",
+    "shader",
+    "webgpu",
+    "wgsl",
+    "generative-art",
+    "web-components",
+    "compiler",
+    "dsl"
+  ],
+  "author": "GAME",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

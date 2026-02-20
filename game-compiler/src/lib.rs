@@ -456,4 +456,349 @@ mod integration_tests {
         let result = compile_component("not valid", "game-bad");
         assert!(result.is_err());
     }
+
+    // ── New SDF primitives ────────────────────────────────────────────
+
+    #[test]
+    fn end_to_end_box_sdf() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: box(0.3, 0.2) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("box compilation should succeed");
+        assert!(output.wgsl.contains("sdf_box2(p, vec2f(0.3, 0.2))"));
+        assert!(output.wgsl.contains("fn sdf_box2"));
+    }
+
+    #[test]
+    fn end_to_end_polygon_sdf() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: polygon(6.0, 0.3) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("polygon compilation should succeed");
+        assert!(output.wgsl.contains("sdf_polygon(p, 6.0, 0.3)"));
+        assert!(output.wgsl.contains("fn sdf_polygon"));
+    }
+
+    #[test]
+    fn end_to_end_star_sdf() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: star(5.0, 0.4, 0.2) | glow(3.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("star compilation should succeed");
+        assert!(output.wgsl.contains("sdf_star(p, 5.0, 0.4, 0.2)"));
+        assert!(output.wgsl.contains("fn sdf_star"));
+    }
+
+    #[test]
+    fn end_to_end_line_sdf() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: line(-0.5, 0.0, 0.5, 0.0, 0.02) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("line compilation should succeed");
+        assert!(output.wgsl.contains("sdf_line"));
+        assert!(output.wgsl.contains("fn sdf_line"));
+    }
+
+    #[test]
+    fn end_to_end_torus_sdf() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: torus(0.3, 0.05) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("torus compilation should succeed");
+        assert!(output.wgsl.contains("abs(length(p) - 0.3) - 0.05"));
+    }
+
+    // ── Domain operations ─────────────────────────────────────────────
+
+    #[test]
+    fn end_to_end_repeat() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: repeat(0.5) | circle(0.1) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("repeat compilation should succeed");
+        assert!(output.wgsl.contains("round(p / 0.5)"));
+    }
+
+    #[test]
+    fn end_to_end_mirror() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: mirror("x") | circle(0.3) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("mirror compilation should succeed");
+        assert!(output.wgsl.contains("abs(p.x)"));
+    }
+
+    #[test]
+    fn end_to_end_mirror_xy() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: mirror("xy") | circle(0.3) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("mirror xy compilation should succeed");
+        assert!(output.wgsl.contains("p = abs(p)"));
+    }
+
+    #[test]
+    fn end_to_end_scale() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: scale(2.0) | circle(0.3) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("scale compilation should succeed");
+        assert!(output.wgsl.contains("p = p / 2.0"));
+        assert!(output.wgsl.contains("scale_factor"));
+        assert!(output.wgsl.contains("sdf_result *= scale_factor"));
+    }
+
+    #[test]
+    fn end_to_end_twist() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: twist(2.0) | circle(0.3) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("twist compilation should succeed");
+        assert!(output.wgsl.contains("tw_a"));
+        assert!(output.wgsl.contains("tw_c"));
+    }
+
+    #[test]
+    fn end_to_end_onion() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | onion(0.02) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("onion compilation should succeed");
+        assert!(output.wgsl.contains("abs(sdf_result) - 0.02"));
+    }
+
+    #[test]
+    fn end_to_end_round_sdf() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: box(0.3, 0.2) | round(0.05) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("round compilation should succeed");
+        assert!(output.wgsl.contains("sdf_result -= 0.05"));
+    }
+
+    // ── Noise stages ──────────────────────────────────────────────────
+
+    #[test]
+    fn end_to_end_simplex() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: simplex(3.0) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("simplex compilation should succeed");
+        assert!(output.wgsl.contains("simplex2(p * 3.0)"));
+        assert!(output.wgsl.contains("fn simplex2"));
+    }
+
+    #[test]
+    fn end_to_end_voronoi() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: voronoi(5.0) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("voronoi compilation should succeed");
+        assert!(output.wgsl.contains("voronoi2(p * 5.0)"));
+        assert!(output.wgsl.contains("fn voronoi2"));
+    }
+
+    // ── Post-processing stages ────────────────────────────────────────
+
+    #[test]
+    fn end_to_end_fog() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold) | fog(1.5)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("fog compilation should succeed");
+        assert!(output.wgsl.contains("exp(-length(uv)"));
+    }
+
+    #[test]
+    fn end_to_end_scanlines() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold) | scanlines(100.0, 0.3)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("scanlines compilation should succeed");
+        assert!(output.wgsl.contains("sin(input.uv.y"));
+    }
+
+    #[test]
+    fn end_to_end_tonemap() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold) | tonemap(1.5)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("tonemap compilation should succeed");
+        assert!(output.wgsl.contains("1.0 + color_result.rgb * 1.5"));
+    }
+
+    #[test]
+    fn end_to_end_invert() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold) | invert()
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("invert compilation should succeed");
+        assert!(output.wgsl.contains("1.0 - color_result.rgb"));
+    }
+
+    #[test]
+    fn end_to_end_saturate_color() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold) | saturate_color(1.5)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("saturate_color compilation should succeed");
+        assert!(output.wgsl.contains("sat_lum"));
+    }
+
+    #[test]
+    fn end_to_end_gradient() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: gradient(red, blue, "y")
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("gradient compilation should succeed");
+        assert!(output.wgsl.contains("mix("));
+        assert!(output.wgsl.contains("input.uv.y"));
+    }
+
+    // ── Combined stages ───────────────────────────────────────────────
+
+    #[test]
+    fn end_to_end_polygon_with_onion_and_glow() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: polygon(6.0, 0.3) | onion(0.02) | glow(3.0) | tint(cyan)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("combined compilation should succeed");
+        assert!(output.wgsl.contains("sdf_polygon"));
+        assert!(output.wgsl.contains("abs(sdf_result)"));
+        assert!(output.wgsl.contains("apply_glow"));
+    }
+
+    #[test]
+    fn end_to_end_repeat_star() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: repeat(1.0) | star(5.0, 0.3, 0.15) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("repeat + star should compile");
+        assert!(output.wgsl.contains("round(p /"));
+        assert!(output.wgsl.contains("sdf_star"));
+    }
+
+    #[test]
+    fn end_to_end_displace() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | displace(0.1) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("displace compilation should succeed");
+        assert!(output.wgsl.contains("simplex2(p * 3.0)"));
+    }
 }

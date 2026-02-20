@@ -27,6 +27,7 @@ impl WgslGen {
 
         // Walk pipe chain
         let mut state = ShaderState::Position;
+        let mut has_scale = false;
         for (i, stage) in chain.stages.iter().enumerate() {
             let next_state = self.classify_stage(&stage.name)?;
 
@@ -45,7 +46,20 @@ impl WgslGen {
                 self.blank();
             }
 
+            // Track scale for SDF correction
+            if stage.name == "scale" {
+                has_scale = true;
+            }
+
             self.emit_flat_stage(stage, &state, i)?;
+
+            // Apply scale correction after SDF stages
+            if has_scale && matches!(next_state, ShaderState::Sdf) {
+                self.line("sdf_result *= scale_factor;");
+                self.blank();
+                has_scale = false;
+            }
+
             state = next_state;
         }
 
@@ -163,6 +177,162 @@ impl WgslGen {
                 self.line("let gr_n = fract(sin(dot(input.uv * (time * 97.0 + 1.0), vec2f(12.9898, 78.233))) * 43758.5453) * 2.0 - 1.0;");
                 self.line(&format!("color_result = vec4f(color_result.rgb + gr_n * {amount}, 1.0);"));
             }
+
+            // ── New SDF primitives ────────────────────────────────────
+            "box" => {
+                let w = self.compile_arg(&stage.args, 0, "0.5")?;
+                let h = self.compile_arg(&stage.args, 1, "0.5")?;
+                self.used_builtins.insert("sdf_box2");
+                self.line(&format!("var sdf_result = sdf_box2(p, vec2f({w}, {h}));"));
+            }
+            "torus" => {
+                let big_r = self.compile_arg(&stage.args, 0, "0.3")?;
+                let small_r = self.compile_arg(&stage.args, 1, "0.05")?;
+                self.line(&format!("var sdf_result = abs(length(p) - {big_r}) - {small_r};"));
+            }
+            "line" => {
+                let x1 = self.compile_arg(&stage.args, 0, "-0.5")?;
+                let y1 = self.compile_arg(&stage.args, 1, "0.0")?;
+                let x2 = self.compile_arg(&stage.args, 2, "0.5")?;
+                let y2 = self.compile_arg(&stage.args, 3, "0.0")?;
+                let thickness = self.compile_arg(&stage.args, 4, "0.02")?;
+                self.used_builtins.insert("sdf_line");
+                self.line(&format!(
+                    "var sdf_result = sdf_line(p, vec2f({x1}, {y1}), vec2f({x2}, {y2})) - {thickness};"
+                ));
+            }
+            "polygon" => {
+                let sides = self.compile_arg(&stage.args, 0, "6.0")?;
+                let radius = self.compile_arg(&stage.args, 1, "0.3")?;
+                self.used_builtins.insert("sdf_polygon");
+                self.line(&format!("var sdf_result = sdf_polygon(p, {sides}, {radius});"));
+            }
+            "star" => {
+                let points = self.compile_arg(&stage.args, 0, "5.0")?;
+                let outer = self.compile_arg(&stage.args, 1, "0.4")?;
+                let inner = self.compile_arg(&stage.args, 2, "0.2")?;
+                self.used_builtins.insert("sdf_star");
+                self.line(&format!("var sdf_result = sdf_star(p, {points}, {outer}, {inner});"));
+            }
+
+            // ── New domain operations ─────────────────────────────────
+            "scale" => {
+                let s = self.compile_arg(&stage.args, 0, "1.0")?;
+                self.line(&format!("p = p / {s};"));
+                // Note: after the SDF is computed, we need to scale the result back.
+                // We store the scale factor for post-multiply. We emit a variable so
+                // subsequent SDF stages can reference it.
+                self.line(&format!("let scale_factor = {s};"));
+            }
+            "repeat" => {
+                let spacing = self.compile_arg(&stage.args, 0, "1.0")?;
+                self.line(&format!("p = p - {spacing} * round(p / {spacing});"));
+            }
+            "mirror" => {
+                let axis = self.compile_arg(&stage.args, 0, "\"xy\"")?;
+                // axis is a string expression like "x", "y", or "xy"
+                match axis.trim_matches('"') {
+                    "x" => self.line("p = vec2f(abs(p.x), p.y);"),
+                    "y" => self.line("p = vec2f(p.x, abs(p.y));"),
+                    _ => self.line("p = abs(p);"),
+                }
+            }
+            "twist" => {
+                let amount = self.compile_arg(&stage.args, 0, "1.0")?;
+                self.line(&format!("{{ let tw_a = p.y * {amount};"));
+                self.line("let tw_c = cos(tw_a); let tw_s = sin(tw_a);");
+                self.line("p = vec2f(p.x * tw_c - p.y * tw_s, p.x * tw_s + p.y * tw_c); }");
+            }
+            "displace" => {
+                let strength = self.compile_arg(&stage.args, 0, "0.1")?;
+                self.used_builtins.insert("simplex2");
+                self.line(&format!("sdf_result += simplex2(p * 3.0) * {strength};"));
+            }
+            "round" => {
+                let r = self.compile_arg(&stage.args, 0, "0.05")?;
+                self.line(&format!("sdf_result -= {r};"));
+            }
+            "onion" => {
+                let thickness = self.compile_arg(&stage.args, 0, "0.02")?;
+                self.line(&format!("sdf_result = abs(sdf_result) - {thickness};"));
+            }
+
+            // ── New noise stages ──────────────────────────────────────
+            "simplex" => {
+                let freq = self.compile_arg(&stage.args, 0, "1.0")?;
+                self.used_builtins.insert("simplex2");
+                self.line(&format!("var sdf_result = simplex2(p * {freq});"));
+            }
+            "voronoi" => {
+                let freq = self.compile_arg(&stage.args, 0, "1.0")?;
+                self.used_builtins.insert("voronoi2");
+                self.line(&format!("var sdf_result = voronoi2(p * {freq});"));
+            }
+
+            // ── New post-processing stages ────────────────────────────
+            "fog" => {
+                let density = self.compile_arg(&stage.args, 0, "1.0")?;
+                let fog_color = self.compile_arg(&stage.args, 1, "vec3f(0.0)")?;
+                self.line(&format!(
+                    "color_result = vec4f(mix(color_result.rgb, {fog_color}, 1.0 - exp(-length(uv) * {density})), 1.0);"
+                ));
+            }
+            "glitch" => {
+                let intensity = self.compile_arg(&stage.args, 0, "0.5")?;
+                self.line("let gli_block = floor(input.uv.y * 20.0);");
+                self.line("let gli_noise = fract(sin(gli_block * 43758.5453 + floor(time * 8.0)) * 12345.6789);");
+                self.line(&format!(
+                    "let gli_offset = select(0.0, (gli_noise * 2.0 - 1.0) * {intensity} * 0.1, gli_noise > 0.7);"
+                ));
+                self.line("let gli_r = fract(sin(dot(input.uv + gli_offset, vec2f(12.9898, 78.233))) * 43758.5453);");
+                self.line(&format!(
+                    "color_result = vec4f(mix(color_result.rgb, vec3f(gli_r, color_result.g, color_result.b * 0.8), step(0.85, gli_noise) * {intensity}), 1.0);"
+                ));
+            }
+            "scanlines" => {
+                let count = self.compile_arg(&stage.args, 0, "100.0")?;
+                let intensity = self.compile_arg(&stage.args, 1, "0.3")?;
+                self.line(&format!(
+                    "color_result = vec4f(color_result.rgb * (1.0 - sin(input.uv.y * {count} * 3.14159) * {intensity}), 1.0);"
+                ));
+            }
+            "tonemap" => {
+                let exposure = self.compile_arg(&stage.args, 0, "1.0")?;
+                self.line(&format!(
+                    "color_result = vec4f(color_result.rgb * {exposure} / (1.0 + color_result.rgb * {exposure}), 1.0);"
+                ));
+            }
+            "invert" => {
+                self.line("color_result = vec4f(1.0 - color_result.rgb, 1.0);");
+            }
+            "saturate_color" => {
+                let amount = self.compile_arg(&stage.args, 0, "1.5")?;
+                self.line("let sat_lum = dot(color_result.rgb, vec3f(0.299, 0.587, 0.114));");
+                self.line(&format!(
+                    "color_result = vec4f(mix(vec3f(sat_lum), color_result.rgb, {amount}), 1.0);"
+                ));
+            }
+
+            // ── New shading stages ────────────────────────────────────
+            "gradient" => {
+                let color_a = self.compile_arg(&stage.args, 0, "vec3f(0.0)")?;
+                let color_b = self.compile_arg(&stage.args, 1, "vec3f(1.0)")?;
+                let direction = self.compile_arg(&stage.args, 2, "\"y\"")?;
+                let grad_t = match direction.trim_matches('"') {
+                    "x" => "input.uv.x",
+                    "radial" => "length(uv)",
+                    "y" => "input.uv.y",
+                    _ => {
+                        // Treat as angle in radians
+                        // We'll use a simple inline approach
+                        "input.uv.y"
+                    }
+                };
+                self.line(&format!(
+                    "var color_result = vec4f(mix({color_a}, {color_b}, {grad_t}), 1.0);"
+                ));
+            }
+
             other => {
                 return Err(GameError::unknown_function(other));
             }

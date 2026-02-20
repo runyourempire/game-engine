@@ -4,6 +4,8 @@ impl WgslGen {
     pub(super) fn emit_builtin_functions(&mut self) {
         let mut emitted_any = false;
 
+        // ── SDF primitives ────────────────────────────────────────────
+
         if self.used_builtins.contains("sdf_circle") {
             if !emitted_any {
                 self.line("// ── Built-in functions ──────────────────────────────────");
@@ -32,6 +34,84 @@ impl WgslGen {
             self.blank();
         }
 
+        if self.used_builtins.contains("sdf_box2") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_box2(p: vec2f, b: vec2f) -> f32 {");
+            self.indent += 1;
+            self.line("let d = abs(p) - b;");
+            self.line("return length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("sdf_line") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_line(p: vec2f, a: vec2f, b: vec2f) -> f32 {");
+            self.indent += 1;
+            self.line("let pa = p - a;");
+            self.line("let ba = b - a;");
+            self.line("let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);");
+            self.line("return length(pa - ba * h);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("sdf_polygon") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_polygon(p: vec2f, n: f32, r: f32) -> f32 {");
+            self.indent += 1;
+            self.line("let an = 3.14159265359 / n;");
+            self.line("let he = r * cos(an);");
+            self.line("var q = vec2f(length(p), atan2(p.y, p.x));");
+            self.line("let bn = an * (2.0 * floor(q.y / (2.0 * an) + 0.5));");
+            self.line("q = vec2f(q.x, q.y - bn);");
+            self.line("let cs = vec2f(cos(q.y), sin(q.y));");
+            self.line("let k = vec2f(q.x * cs.x - 0.0 * cs.y, q.x * cs.y + 0.0 * cs.x);");
+            self.line("return max(k.x - he, abs(k.y) - r * sin(an));");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("sdf_star") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_star(p: vec2f, n: f32, outer_r: f32, inner_r: f32) -> f32 {");
+            self.indent += 1;
+            self.line("let an = 3.14159265359 / n;");
+            self.line("let en = 3.14159265359 / (n * 2.0);");
+            self.line("let acs = vec2f(cos(an), sin(an));");
+            self.line("let ecs = vec2f(cos(en), sin(en));");
+            self.line("var q = abs(p);");
+            self.line("q = vec2f(q.x * acs.x + q.y * acs.y, q.y * acs.x - q.x * acs.y);");
+            self.line("q = vec2f(q.x - outer_r, q.y);");
+            self.line("let w = vec2f(inner_r * ecs.x - outer_r, inner_r * ecs.y);");
+            self.line("let h = clamp(dot(q, w) / dot(w, w), 0.0, 1.0);");
+            self.line("return length(q - w * h) * sign(q.y * w.x - q.x * w.y);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        // ── Glow / effects ───────────────────────────────────────────
+
         if self.used_builtins.contains("apply_glow") {
             if !emitted_any {
                 self.line("// ── Built-in functions ──────────────────────────────────");
@@ -46,12 +126,18 @@ impl WgslGen {
             self.blank();
         }
 
-        // fbm2 depends on noise2, which depends on hash2
-        if self.used_builtins.contains("fbm2") {
+        // ── Noise functions ──────────────────────────────────────────
+
+        // hash2 is a dependency shared by fbm2, simplex2, voronoi2
+        let needs_hash2 = self.used_builtins.contains("fbm2")
+            || self.used_builtins.contains("simplex2")
+            || self.used_builtins.contains("voronoi2");
+
+        if needs_hash2 {
             if !emitted_any {
                 self.line("// ── Built-in functions ──────────────────────────────────");
                 self.blank();
-                // emitted_any = true; // not needed, last block
+                emitted_any = true;
             }
             self.line("fn hash2(p: vec2f) -> f32 {");
             self.indent += 1;
@@ -61,7 +147,38 @@ impl WgslGen {
             self.indent -= 1;
             self.line("}");
             self.blank();
+        }
 
+        // hash2v is needed by voronoi2 and simplex2 (returns vec2f)
+        let needs_hash2v = self.used_builtins.contains("simplex2")
+            || self.used_builtins.contains("voronoi2");
+
+        if needs_hash2v {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn hash2v(p: vec2f) -> vec2f {");
+            self.indent += 1;
+            self.line("var p3 = fract(vec3f(p.x, p.y, p.x) * vec3f(0.1031, 0.1030, 0.0973));");
+            self.line("p3 += dot(p3, p3.yzx + 33.33);");
+            self.line("return fract((p3.xx + p3.yz) * p3.zy);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        // noise2 is a dependency for fbm2 and simplex2-as-fbm fallback
+        let needs_noise2 = self.used_builtins.contains("fbm2")
+            || self.used_builtins.contains("simplex2");
+
+        if needs_noise2 {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
             self.line("fn noise2(p: vec2f) -> f32 {");
             self.indent += 1;
             self.line("let i = floor(p);");
@@ -77,7 +194,14 @@ impl WgslGen {
             self.indent -= 1;
             self.line("}");
             self.blank();
+        }
 
+        if self.used_builtins.contains("fbm2") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
             self.line("fn fbm2(p: vec2f, octaves: i32, persistence: f32, lacunarity: f32) -> f32 {");
             self.indent += 1;
             self.line("var value: f32 = 0.0;");
@@ -93,6 +217,66 @@ impl WgslGen {
             self.indent -= 1;
             self.line("}");
             self.line("return value / max_val;");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("simplex2") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            // Simplex noise via gradient lattice (classic 2D simplex)
+            self.line("fn simplex2(p: vec2f) -> f32 {");
+            self.indent += 1;
+            self.line("let K1: f32 = 0.366025404;");  // (sqrt(3)-1)/2
+            self.line("let K2: f32 = 0.211324865;");  // (3-sqrt(3))/6
+            self.line("let s = (p.x + p.y) * K1;");
+            self.line("let i = floor(p + s);");
+            self.line("let a = p - i + (i.x + i.y) * K2;");
+            self.line("let o = select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), a.x > a.y);");
+            self.line("let b = a - o + K2;");
+            self.line("let c = a - 1.0 + 2.0 * K2;");
+            self.line("var h = max(vec3f(0.5) - vec3f(dot(a, a), dot(b, b), dot(c, c)), vec3f(0.0));");
+            self.line("h = h * h * h * h;");
+            self.line("let ga = hash2v(i) * 2.0 - 1.0;");
+            self.line("let gb = hash2v(i + o) * 2.0 - 1.0;");
+            self.line("let gc = hash2v(i + 1.0) * 2.0 - 1.0;");
+            self.line("let n = h * vec3f(dot(ga, a), dot(gb, b), dot(gc, c));");
+            self.line("return dot(n, vec3f(70.0));");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("voronoi2") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                #[allow(unused_assignments)]
+                { emitted_any = true; }
+            }
+            self.line("fn voronoi2(p: vec2f) -> f32 {");
+            self.indent += 1;
+            self.line("let n = floor(p);");
+            self.line("let f = fract(p);");
+            self.line("var md: f32 = 8.0;");
+            self.line("for (var j: i32 = -1; j <= 1; j++) {");
+            self.indent += 1;
+            self.line("for (var i: i32 = -1; i <= 1; i++) {");
+            self.indent += 1;
+            self.line("let g = vec2f(f32(i), f32(j));");
+            self.line("let o = hash2v(n + g);");
+            self.line("let r = g + o - f;");
+            self.line("let d = dot(r, r);");
+            self.line("md = min(md, d);");
+            self.indent -= 1;
+            self.line("}");
+            self.indent -= 1;
+            self.line("}");
+            self.line("return sqrt(md);");
             self.indent -= 1;
             self.line("}");
             self.blank();
