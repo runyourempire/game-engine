@@ -136,8 +136,13 @@ fn main() {
             let mut compiled = 0;
             let mut errors = 0;
 
-            let entries: Vec<_> = fs::read_dir(&dir)
-                .expect("cannot read directory")
+            let entries: Vec<_> = match fs::read_dir(&dir) {
+                Ok(rd) => rd,
+                Err(e) => {
+                    eprintln!("error: cannot read '{}': {e}", dir.display());
+                    process::exit(1);
+                }
+            }
                 .filter_map(|e| e.ok())
                 .filter(|e| {
                     e.path()

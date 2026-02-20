@@ -1,0 +1,38 @@
+{
+  "name": "game-components",
+  "version": "0.2.0",
+  "description": "GPU-accelerated visual components compiled from .game files. Zero dependencies, Web Components.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/runyourempire/game-engine"
+  },
+  "homepage": "https://github.com/runyourempire/game-engine",
+  "keywords": [
+    "webgpu",
+    "web-components",
+    "shader",
+    "generative-art",
+    "loading",
+    "spinner",
+    "animation",
+    "gpu"
+  ],
+  "exports": {
+    "./breathing-dot": "./dist/breathing-dot.js",
+    "./loading-ring": "./dist/loading-ring.js",
+    "./metric-ring": "./dist/metric-ring.js",
+    "./spinner": "./dist/game-spinner.js",
+    "./status-pulse": "./dist/status-pulse.js",
+    "./react": "./react/index.js"
+  },
+  "files": [
+    "dist/",
+    "react/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "echo 'Compile presets with: game build ../presets/ --outdir dist/'"
+  }
+}
