@@ -941,4 +941,107 @@ mod integration_tests {
             "unresolvable target should be skipped"
         );
     }
+
+    // ── Compiler warnings tests ────────────────────────────────────
+
+    #[test]
+    fn warnings_for_unimplemented_resonance() {
+        let source = r#"
+            cinematic {
+              layer { fn: circle(0.3) | glow(2.0) }
+              resonate { something: 1.0 }
+            }
+        "#;
+
+        let output = compile_full(source).expect("compilation should succeed");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("resonance")),
+            "should warn about resonance: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn warnings_for_multiple_layers() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) }
+            }
+        "#;
+
+        let output = compile_full(source).expect("compilation should succeed");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("additional layer")),
+            "should warn about ignored layers: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn warnings_for_pipe_chain_glow_first() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: glow(2.0) | circle(0.3)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("compilation should succeed");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("glow") && w.contains("SDF")),
+            "should warn about glow before SDF: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn no_warnings_for_clean_chain() {
+        let source = r#"
+            cinematic {
+              layer { fn: circle(0.3) | glow(2.0) | tint(gold) }
+            }
+        "#;
+
+        let output = compile_full(source).expect("compilation should succeed");
+        assert!(
+            output.warnings.is_empty(),
+            "clean chain should have no warnings: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn warnings_appear_in_html_output() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) }
+            }
+        "#;
+
+        let html = compile_html(source).expect("compilation should succeed");
+        assert!(
+            html.contains("console.warn"),
+            "HTML should include console.warn for compiler warnings"
+        );
+    }
+
+    // ── JS expression completeness test ────────────────────────────
+
+    #[test]
+    fn js_expr_ternary_compiles_correctly() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(radius) | glow(2.0)
+                radius: 0.3 ~ audio.beat > 0.5 ? audio.bass * 0.5 : 0.1
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("ternary modulation should compile");
+        assert_eq!(output.params.len(), 1);
+        let mod_js = output.params[0].mod_js.as_ref().expect("should have mod_js");
+        assert!(mod_js.contains("?"), "JS should contain ternary operator: {mod_js}");
+        assert!(mod_js.contains("audioBeat"), "JS should reference audioBeat: {mod_js}");
+        assert!(mod_js.contains("audioBass"), "JS should reference audioBass: {mod_js}");
+    }
 }

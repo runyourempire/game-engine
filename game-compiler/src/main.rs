@@ -76,39 +76,45 @@ fn main() {
                 }
             };
 
-            let (result, kind) = if component {
-                let tag_name = tag.unwrap_or_else(|| game_compiler::derive_tag_name(&file));
-                (game_compiler::compile_component(&source, &tag_name), "component")
-            } else if html {
-                (game_compiler::compile_html(&source), "HTML")
-            } else {
-                (game_compiler::compile(&source), "WGSL")
-            };
-
-            match result {
-                Ok(output) => {
-                    if let Some(out_path) = o {
-                        match fs::write(&out_path, &output) {
-                            Ok(()) => {
-                                eprintln!(
-                                    "wrote {kind} to {} ({} bytes)",
-                                    out_path.display(),
-                                    output.len()
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("error: cannot write '{}': {e}", out_path.display());
-                                process::exit(1);
-                            }
-                        }
-                    } else {
-                        print!("{output}");
-                    }
-                }
+            // Use compile_full to get warnings, then wrap for the target format
+            let full_output = match game_compiler::compile_full(&source) {
+                Ok(o) => o,
                 Err(e) => {
                     print_error(&e, &source);
                     process::exit(1);
                 }
+            };
+
+            // Print warnings to stderr
+            for w in &full_output.warnings {
+                eprintln!("warning: {w}");
+            }
+
+            let (output_str, kind) = if component {
+                let tag_name = tag.unwrap_or_else(|| game_compiler::derive_tag_name(&file));
+                (game_compiler::runtime::wrap_web_component(&full_output, &tag_name), "component")
+            } else if html {
+                (game_compiler::runtime::wrap_html_full(&full_output), "HTML")
+            } else {
+                (full_output.wgsl.clone(), "WGSL")
+            };
+
+            if let Some(out_path) = o {
+                match fs::write(&out_path, &output_str) {
+                    Ok(()) => {
+                        eprintln!(
+                            "wrote {kind} to {} ({} bytes)",
+                            out_path.display(),
+                            output_str.len()
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("error: cannot write '{}': {e}", out_path.display());
+                        process::exit(1);
+                    }
+                }
+            } else {
+                print!("{output_str}");
             }
         }
 
@@ -166,8 +172,12 @@ fn main() {
                     }
                 };
 
-                match game_compiler::compile_component(&source, &tag) {
-                    Ok(js) => {
+                match game_compiler::compile_full(&source) {
+                    Ok(full) => {
+                        for w in &full.warnings {
+                            eprintln!("  warning: {}: {w}", path.display());
+                        }
+                        let js = game_compiler::runtime::wrap_web_component(&full, &tag);
                         fs::write(&out_file, &js).unwrap_or_else(|e| {
                             eprintln!("  error: cannot write {}: {e}", out_file.display());
                         });

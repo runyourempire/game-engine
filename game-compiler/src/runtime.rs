@@ -21,6 +21,7 @@ pub fn wrap_html(wgsl: &str, title: &str) -> String {
         render_mode: crate::codegen::RenderMode::Flat,
         uniform_float_count: 10,
         arc_moments: Vec::new(),
+        warnings: Vec::new(),
     };
     wrap_html_full(&output)
 }
@@ -200,7 +201,7 @@ pub fn wrap_html_full(output: &CompileOutput) -> String {
 // ═══════════════════════════════════════════════════════════════════
 
 const SHADER = `{wgsl}`;
-
+{warnings_js}
 // ── Audio engine ──────────────────────────────────────────────────
 let audioCtx = null;
 let analyser = null;
@@ -569,12 +570,26 @@ init().catch((err) => {{
         wgsl = wgsl,
         buffer_size = buffer_size,
         total_floats = total_floats,
+        warnings_js = generate_warnings_js(&output.warnings),
         data_vars_js = generate_data_vars_js(&output.data_fields),
         arc_js = generate_arc_js(&output.arc_moments),
         param_init_js = param_init_js,
         param_update_js = param_update_js,
         overlay_display = overlay_display,
     )
+}
+
+/// Generate JS console.warn() calls for compiler warnings.
+fn generate_warnings_js(warnings: &[String]) -> String {
+    if warnings.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("\n// ── Compiler warnings ─────────────────────────────────────────\n");
+    for w in warnings {
+        let escaped = w.replace('\\', "\\\\").replace('\'', "\\'");
+        out.push_str(&format!("console.warn('[GAME]', '{escaped}');\n"));
+    }
+    out
 }
 
 /// Generate JS variable declarations for `data.*` signals.

@@ -32,6 +32,8 @@ pub struct CompileOutput {
     pub uniform_float_count: usize,
     /// Arc timeline — moments with parameter transitions over time.
     pub arc_moments: Vec<CompiledMoment>,
+    /// Compiler warnings (non-fatal issues the user should know about).
+    pub warnings: Vec<String>,
 }
 
 /// A parameter with modulation metadata for the JS runtime.
@@ -101,6 +103,35 @@ pub fn generate_wgsl(cinematic: &Cinematic) -> Result<String> {
 /// Full compilation: WGSL + metadata for the runtime.
 pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     let mut gen = WgslGen::new();
+    let mut warnings = Vec::new();
+
+    // Warn about unimplemented features that will be silently ignored
+    if cinematic.resonance.is_some() {
+        warnings.push("resonance block is not yet implemented; contents will be ignored".into());
+    }
+    if cinematic.react.is_some() {
+        warnings.push("react block is not yet implemented; contents will be ignored".into());
+    }
+    if !cinematic.defines.is_empty() {
+        let names: Vec<&str> = cinematic.defines.iter().map(|d| d.name.as_str()).collect();
+        warnings.push(format!(
+            "define blocks are not yet implemented; {} will be ignored",
+            names.join(", ")
+        ));
+    }
+    if cinematic.layers.len() > 1 {
+        warnings.push(format!(
+            "only the first layer is compiled; {} additional layer(s) will be ignored",
+            cinematic.layers.len() - 1
+        ));
+    }
+
+    // Validate pipe chain ordering
+    if let Some(layer) = cinematic.layers.first() {
+        if let Some(chain) = &layer.fn_chain {
+            validate_pipe_chain(chain, &mut warnings);
+        }
+    }
 
     // Collect params from all layers
     gen.collect_params(cinematic);
@@ -130,6 +161,7 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
         render_mode: gen.render_mode,
         uniform_float_count: SYSTEM_FLOAT_COUNT + param_count,
         arc_moments,
+        warnings,
     })
 }
 
@@ -178,6 +210,82 @@ fn compile_arc(cinematic: &Cinematic, params: &[CompiledParam]) -> Vec<CompiledM
 fn resolve_transition_target(target: &str) -> &str {
     // "layer.param" → "param", "param" → "param"
     target.rsplit('.').next().unwrap_or(target)
+}
+
+/// Validate pipe chain stage ordering and emit warnings for likely mistakes.
+fn validate_pipe_chain(chain: &PipeChain, warnings: &mut Vec<String>) {
+    if chain.stages.is_empty() {
+        return;
+    }
+
+    let first = &chain.stages[0].name;
+    let first_kind = classify_stage_kind(first);
+
+    // First stage should produce geometry (SDF) or transform position
+    if matches!(first_kind, StageKind::Glow | StageKind::PostProcess) {
+        warnings.push(format!(
+            "pipe chain starts with '{}' which expects a prior SDF stage; \
+             consider starting with a shape (circle, box, ring, etc.)",
+            first
+        ));
+    }
+
+    // Track what state we've seen to catch ordering issues
+    let mut has_sdf = false;
+    let mut has_color = false;
+
+    for stage in &chain.stages {
+        let kind = classify_stage_kind(&stage.name);
+        match kind {
+            StageKind::Sdf | StageKind::Position => has_sdf = true,
+            StageKind::Glow => {
+                if !has_sdf {
+                    warnings.push(format!(
+                        "'{}' appears before any SDF shape — it needs an SDF input",
+                        stage.name
+                    ));
+                }
+            }
+            StageKind::Color => has_color = true,
+            StageKind::PostProcess => {
+                if !has_color && !has_sdf {
+                    warnings.push(format!(
+                        "post-process '{}' appears before any visual content",
+                        stage.name
+                    ));
+                }
+            }
+            StageKind::Unknown => {}
+        }
+    }
+}
+
+/// Lightweight stage classification for validation (separate from ShaderState).
+enum StageKind {
+    Position,
+    Sdf,
+    Glow,
+    Color,
+    PostProcess,
+    Unknown,
+}
+
+fn classify_stage_kind(name: &str) -> StageKind {
+    match name {
+        "translate" | "rotate" | "scale" | "repeat" | "mirror" | "twist"
+            => StageKind::Position,
+        "circle" | "sphere" | "ring" | "box" | "torus" | "cylinder" | "plane"
+        | "line" | "polygon" | "star" | "fbm" | "simplex" | "voronoi" | "noise"
+        | "mask_arc" | "displace" | "round" | "onion"
+            => StageKind::Sdf,
+        "glow" => StageKind::Glow,
+        "shade" | "emissive" | "colormap" | "spectrum" | "tint" | "gradient"
+            => StageKind::Color,
+        "bloom" | "chromatic" | "vignette" | "grain" | "fog" | "glitch"
+        | "scanlines" | "tonemap" | "invert" | "saturate_color"
+            => StageKind::PostProcess,
+        _ => StageKind::Unknown,
+    }
 }
 
 // ── WgslGen ────────────────────────────────────────────────────────────

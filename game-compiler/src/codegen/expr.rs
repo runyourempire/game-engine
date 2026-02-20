@@ -199,6 +199,16 @@ pub fn compile_expr_js(expr: &Expr) -> String {
                 .collect();
             format!("Math.{}({})", call.name, args.join(", "))
         }
-        _ => "0".to_string(),
+        Expr::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+        Expr::Array(elements) => {
+            let compiled: Vec<String> = elements.iter().map(compile_expr_js).collect();
+            format!("[{}]", compiled.join(", "))
+        }
+        Expr::Ternary { condition, if_true, if_false } => {
+            let cond = compile_expr_js(condition);
+            let t = compile_expr_js(if_true);
+            let f = compile_expr_js(if_false);
+            format!("({cond} ? {t} : {f})")
+        }
     }
 }
