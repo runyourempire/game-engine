@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand};
@@ -57,21 +57,6 @@ enum Commands {
     },
 }
 
-/// Derive a custom element tag name from a file path.
-fn derive_tag_name(path: &Path) -> String {
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("component");
-    let cleaned = stem.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
-    let name = if cleaned.is_empty() { stem } else { cleaned };
-    if name.contains('-') {
-        name.to_string()
-    } else {
-        format!("game-{name}")
-    }
-}
-
 fn main() {
     let cli = Cli::parse();
 
@@ -92,7 +77,7 @@ fn main() {
             };
 
             let (result, kind) = if component {
-                let tag_name = tag.unwrap_or_else(|| derive_tag_name(&file));
+                let tag_name = tag.unwrap_or_else(|| game_compiler::derive_tag_name(&file));
                 (game_compiler::compile_component(&source, &tag_name), "component")
             } else if html {
                 (game_compiler::compile_html(&source), "HTML")
@@ -164,7 +149,7 @@ fn main() {
 
             for entry in entries {
                 let path = entry.path();
-                let tag = derive_tag_name(&path);
+                let tag = game_compiler::derive_tag_name(&path);
                 let out_file = outdir.join(format!("{tag}.js"));
 
                 let source = match fs::read_to_string(&path) {

@@ -4,6 +4,6 @@
 
 cinematic "Breathing Dot" {
   layer {
-    fn: circle(0.15 + sin(time * 2.0) * 0.03) | glow(2.5)
+    fn: circle(0.15 + sin(time * 2.0) * 0.03) | glow(2.5) | tint(cyan)
   }
 }

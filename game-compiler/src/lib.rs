@@ -7,7 +7,27 @@ pub mod runtime;
 pub mod server;
 pub mod token;
 
+use std::path::Path;
+
 use error::Result;
+
+/// Derive a custom element tag name from a file path.
+///
+/// Strips leading digits/dashes from the stem, ensures the name contains
+/// a hyphen (prefixes with `game-` if needed).
+pub fn derive_tag_name(path: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("component");
+    let cleaned = stem.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
+    let name = if cleaned.is_empty() { stem } else { cleaned };
+    if name.contains('-') {
+        name.to_string()
+    } else {
+        format!("game-{name}")
+    }
+}
 
 /// Compile a `.game` source string to WGSL shader code.
 pub fn compile(source: &str) -> Result<String> {
@@ -358,5 +378,82 @@ mod integration_tests {
         assert!(js.contains("navigator.gpu"));
         assert!(js.contains("createShaderModule"));
         assert!(js.contains("createRenderPipeline"));
+    }
+
+    // ── Error path tests ──────────────────────────────────────────────
+
+    #[test]
+    fn error_empty_source() {
+        let result = compile("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn error_missing_cinematic_keyword() {
+        let result = compile("layer { fn: circle(0.5) }");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn error_unclosed_brace() {
+        let result = compile("cinematic { layer { fn: circle(0.5) }");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn error_missing_fn_in_layer() {
+        // Layer with only a property, no fn: chain — should still parse
+        // but codegen should handle it gracefully (not panic)
+        let result = compile("cinematic { layer { depth: base } }");
+        // This may succeed (empty layer) or error — either is fine, just no panic
+        let _ = result;
+    }
+
+    #[test]
+    fn error_unknown_function_in_pipe() {
+        let result = compile("cinematic { layer { fn: totally_fake(0.5) } }");
+        assert!(result.is_err(), "unknown function should produce an error");
+        let err = result.unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("unknown") || msg.contains("Unknown") || msg.contains("totally_fake"),
+            "error should mention the unknown function, got: {msg}");
+    }
+
+    #[test]
+    fn error_invalid_number() {
+        let result = compile("cinematic { layer { fn: circle(abc) } }");
+        // 'abc' is an identifier, not a number — should either compile as
+        // a parameter reference or produce an error, not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn derive_tag_name_various_inputs() {
+        use std::path::Path;
+
+        assert_eq!(derive_tag_name(Path::new("loading-ring.game")), "loading-ring");
+        assert_eq!(derive_tag_name(Path::new("spinner.game")), "game-spinner");
+        assert_eq!(derive_tag_name(Path::new("001-hello.game")), "game-hello");
+        assert_eq!(derive_tag_name(Path::new("my-component.game")), "my-component");
+        // Edge case: all digits
+        assert_eq!(derive_tag_name(Path::new("123.game")), "game-123");
+    }
+
+    #[test]
+    fn error_garbage_input() {
+        let result = compile("!@#$%^&*()");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compile_html_error_propagates() {
+        let result = compile_html("not a valid game file at all");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compile_component_error_propagates() {
+        let result = compile_component("not valid", "game-bad");
+        assert!(result.is_err());
     }
 }

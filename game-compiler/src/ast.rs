@@ -1,8 +1,8 @@
-/// Abstract Syntax Tree for the `.game` language.
-///
-/// The AST is the contract between the parser and all downstream phases
-/// (resolver, codegen, runtime). Every `.game` concept has exactly one
-/// representation here.
+//! Abstract Syntax Tree for the `.game` language.
+//!
+//! The AST is the contract between the parser and all downstream phases
+//! (resolver, codegen, runtime). Every `.game` concept has exactly one
+//! representation here.
 
 /// Root node — a single `.game` file parses into one Cinematic.
 #[derive(Debug, Clone)]

@@ -4,6 +4,6 @@
 
 cinematic "Spinner" {
   layer {
-    fn: rotate(time * 3.0) | ring(0.25, 0.03) | mask_arc(4.0) | glow(2.5)
+    fn: rotate(time * 3.0) | ring(0.25, 0.03) | mask_arc(4.0) | glow(2.5) | tint(gold)
   }
 }

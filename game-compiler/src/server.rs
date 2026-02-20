@@ -16,7 +16,7 @@ struct DevState {
 
 /// Start the dev server with hot-reload for a `.game` file.
 pub async fn run_dev_server(path: PathBuf, port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let tag_name = derive_tag_from_path(&path);
+    let tag_name = crate::derive_tag_name(&path);
     let state = Arc::new(Mutex::new(DevState {
         source_path: path.clone(),
         tag_name,
@@ -59,9 +59,9 @@ pub async fn run_dev_server(path: PathBuf, port: u16) -> Result<(), Box<dyn std:
 
 /// Serve the HTML preview page with split view.
 async fn serve_preview(State(state): State<Arc<Mutex<DevState>>>) -> Html<String> {
-    let (source_path, tag_name) = {
-        let s = state.lock().unwrap();
-        (s.source_path.clone(), s.tag_name.clone())
+    let (source_path, tag_name) = match state.lock() {
+        Ok(s) => (s.source_path.clone(), s.tag_name.clone()),
+        Err(e) => return Html(format!("<pre>Internal error: {e}</pre>")),
     };
 
     let source = match std::fs::read_to_string(&source_path) {
@@ -211,9 +211,12 @@ async fn serve_component(State(state): State<Arc<Mutex<DevState>>>) -> (
     [(axum::http::header::HeaderName, &'static str); 1],
     String,
 ) {
-    let (source_path, tag_name) = {
-        let s = state.lock().unwrap();
-        (s.source_path.clone(), s.tag_name.clone())
+    let (source_path, tag_name) = match state.lock() {
+        Ok(s) => (s.source_path.clone(), s.tag_name.clone()),
+        Err(e) => return (
+            [(axum::http::header::CONTENT_TYPE, "text/javascript")],
+            format!("console.error('GAME: Internal error: {e}');"),
+        ),
     };
 
     let source = match std::fs::read_to_string(&source_path) {
@@ -230,21 +233,6 @@ async fn serve_component(State(state): State<Arc<Mutex<DevState>>>) -> (
     };
 
     ([(axum::http::header::CONTENT_TYPE, "text/javascript")], js)
-}
-
-/// Derive tag name from file path.
-fn derive_tag_from_path(path: &PathBuf) -> String {
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("component");
-    let cleaned = stem.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
-    let name = if cleaned.is_empty() { stem } else { cleaned };
-    if name.contains('-') {
-        name.to_string()
-    } else {
-        format!("game-{name}")
-    }
 }
 
 /// Simple JSON string encoding (avoid serde dependency just for this).

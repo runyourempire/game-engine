@@ -1,9 +1,9 @@
-/// Generates a self-contained HTML file that runs a compiled GAME cinematic
-/// using the WebGPU API. Zero dependencies.
-///
-/// M1: Includes Web Audio API integration, parameter modulation,
-/// mouse tracking, audio file drag-and-drop, microphone input,
-/// and audio playback controls (pause/play, volume, level meters).
+//! Generates a self-contained HTML file that runs a compiled GAME cinematic
+//! using the WebGPU API. Zero dependencies.
+//!
+//! M1: Includes Web Audio API integration, parameter modulation,
+//! mouse tracking, audio file drag-and-drop, microphone input,
+//! and audio playback controls (pause/play, volume, level meters).
 
 use crate::codegen::CompileOutput;
 
@@ -29,7 +29,7 @@ pub fn wrap_html_full(output: &CompileOutput) -> String {
     let title = &output.title;
     let wgsl = output.wgsl.replace('`', "\\`").replace("${", "\\${");
     let total_floats = output.uniform_float_count;
-    let buffer_size = ((total_floats * 4 + 15) / 16) * 16;
+    let buffer_size = (total_floats * 4).div_ceil(16) * 16;
 
     let param_init_js = generate_param_init_js(&output.params);
     let param_update_js = generate_param_update_js(&output.params);
@@ -620,7 +620,7 @@ fn generate_param_update_js(params: &[crate::codegen::CompiledParam]) -> String 
 pub fn wrap_web_component(output: &CompileOutput, tag_name: &str) -> String {
     let wgsl = output.wgsl.replace('`', "\\`").replace("${", "\\${");
     let total_floats = output.uniform_float_count;
-    let buffer_size = ((total_floats * 4 + 15) / 16) * 16;
+    let buffer_size = (total_floats * 4).div_ceil(16) * 16;
     let class_name = tag_to_class_name(tag_name);
 
     let observed_attrs = generate_observed_attrs(&output.data_fields);
@@ -693,15 +693,23 @@ class {class_name} extends HTMLElement {{
   async _init() {{
     this.shadowRoot.innerHTML = `
       <style>
-        :host {{ display: block; position: relative; background: #000; }}
+        :host {{ display: block; position: relative; background: #000; overflow: hidden; }}
         canvas {{ display: block; width: 100%; height: 100%; }}
+        .fallback {{ display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #444; font: 11px/1 system-ui, sans-serif; text-align: center; }}
       </style>
       <canvas></canvas>
     `;
 
     this._canvas = this.shadowRoot.querySelector('canvas');
 
-    if (!navigator.gpu) return;
+    if (!navigator.gpu) {{
+      this._canvas.style.display = 'none';
+      const fb = document.createElement('div');
+      fb.className = 'fallback';
+      fb.textContent = 'WebGPU not available';
+      this.shadowRoot.appendChild(fb);
+      return;
+    }}
 
     const adapter = await navigator.gpu.requestAdapter({{
       powerPreference: 'high-performance',

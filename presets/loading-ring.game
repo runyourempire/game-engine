@@ -4,7 +4,7 @@
 
 cinematic "Loading Ring" {
   layer {
-    fn: ring(0.3, 0.04) | mask_arc(angle) | glow(2.0)
+    fn: ring(0.3, 0.04) | mask_arc(angle) | glow(2.0) | tint(gold)
     angle: 0.0 ~ data.progress * 6.283
   }
 }

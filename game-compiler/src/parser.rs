@@ -78,14 +78,6 @@ impl Parser {
         matches!(self.peek(), Some(Token::Ident(_)))
     }
 
-    fn last_span(&self) -> std::ops::Range<usize> {
-        if self.pos > 0 {
-            self.tokens[self.pos - 1].span.clone()
-        } else {
-            0..0
-        }
-    }
-
     // ── Top-level ──────────────────────────────────────────────────────
 
     /// Parse a complete `.game` file.
