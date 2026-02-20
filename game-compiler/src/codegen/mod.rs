@@ -105,6 +105,10 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     let mut gen = WgslGen::new();
     let mut warnings = Vec::new();
 
+    // Expand define calls before any other processing
+    let mut cinematic = cinematic.clone();
+    expand_defines(&mut cinematic);
+
     // Warn about unimplemented features that will be silently ignored
     if cinematic.resonance.is_some() {
         warnings.push("resonance block is not yet implemented; contents will be ignored".into());
@@ -112,14 +116,8 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     if cinematic.react.is_some() {
         warnings.push("react block is not yet implemented; contents will be ignored".into());
     }
-    if !cinematic.defines.is_empty() {
-        let names: Vec<&str> = cinematic.defines.iter().map(|d| d.name.as_str()).collect();
-        warnings.push(format!(
-            "define blocks are not yet implemented; {} will be ignored",
-            names.join(", ")
-        ));
-    }
-    // Validate pipe chain ordering for all layers
+
+    // Validate pipe chain ordering for all layers (after define expansion)
     for layer in &cinematic.layers {
         if let Some(chain) = &layer.fn_chain {
             validate_pipe_chain(chain, &mut warnings);
@@ -127,10 +125,10 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     }
 
     // Collect params from all layers
-    gen.collect_params(cinematic);
+    gen.collect_params(&cinematic);
 
     // Determine rendering mode from lens block
-    gen.render_mode = determine_render_mode(cinematic);
+    gen.render_mode = determine_render_mode(&cinematic);
 
     // Raymarch mode still only uses first layer
     if matches!(gen.render_mode, RenderMode::Raymarch { .. }) && cinematic.layers.len() > 1 {
@@ -141,14 +139,14 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     }
 
     // Generate WGSL
-    gen.generate(cinematic)?;
+    gen.generate(&cinematic)?;
 
     let title = cinematic.name.clone().unwrap_or_else(|| "Untitled".to_string());
-    let audio_file = extract_audio_file(cinematic);
+    let audio_file = extract_audio_file(&cinematic);
     let param_count = gen.params.len();
 
     // Compile arc timeline
-    let arc_moments = compile_arc(cinematic, &gen.params);
+    let arc_moments = compile_arc(&cinematic, &gen.params);
 
     Ok(CompileOutput {
         wgsl: gen.output,

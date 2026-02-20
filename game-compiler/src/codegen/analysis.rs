@@ -1,6 +1,100 @@
+use std::collections::HashMap;
+
 use crate::ast::*;
 
 use super::RenderMode;
+
+// ── Define expansion ──────────────────────────────────────────────────
+
+/// Expand all define calls in pipe chains (macro-style inlining).
+/// Mutates the cinematic in place, replacing define calls with their
+/// expanded bodies after parameter substitution.
+pub(super) fn expand_defines(cinematic: &mut Cinematic) {
+    if cinematic.defines.is_empty() {
+        return;
+    }
+
+    let defines: HashMap<String, DefineBlock> = cinematic.defines.iter()
+        .map(|d| (d.name.clone(), d.clone()))
+        .collect();
+
+    for layer in &mut cinematic.layers {
+        if let Some(chain) = &mut layer.fn_chain {
+            expand_chain(chain, &defines);
+        }
+    }
+}
+
+fn expand_chain(chain: &mut PipeChain, defines: &HashMap<String, DefineBlock>) {
+    let mut new_stages = Vec::new();
+
+    for stage in &chain.stages {
+        if let Some(define) = defines.get(&stage.name) {
+            // Build substitution map: formal param → actual argument expr
+            let subs: HashMap<&str, Expr> = define.params.iter()
+                .zip(stage.args.iter())
+                .map(|(formal, actual)| {
+                    let expr = match actual {
+                        Arg::Positional(e) => e.clone(),
+                        Arg::Named { value, .. } => value.clone(),
+                    };
+                    (formal.as_str(), expr)
+                })
+                .collect();
+
+            // Clone body stages and substitute formal params with actual args
+            for body_stage in &define.body.stages {
+                let mut expanded = body_stage.clone();
+                for arg in &mut expanded.args {
+                    match arg {
+                        Arg::Positional(e) => substitute_expr(e, &subs),
+                        Arg::Named { value, .. } => substitute_expr(value, &subs),
+                    }
+                }
+                new_stages.push(expanded);
+            }
+        } else {
+            new_stages.push(stage.clone());
+        }
+    }
+
+    chain.stages = new_stages;
+}
+
+fn substitute_expr(expr: &mut Expr, subs: &HashMap<&str, Expr>) {
+    match expr {
+        Expr::Ident(name) => {
+            if let Some(replacement) = subs.get(name.as_str()) {
+                *expr = replacement.clone();
+            }
+        }
+        Expr::BinaryOp { left, right, .. } => {
+            substitute_expr(left, subs);
+            substitute_expr(right, subs);
+        }
+        Expr::Negate(inner) => substitute_expr(inner, subs),
+        Expr::Call(call) => {
+            for arg in &mut call.args {
+                match arg {
+                    Arg::Positional(e) => substitute_expr(e, subs),
+                    Arg::Named { value, .. } => substitute_expr(value, subs),
+                }
+            }
+        }
+        Expr::FieldAccess { object, .. } => substitute_expr(object, subs),
+        Expr::Array(elements) => {
+            for e in elements {
+                substitute_expr(e, subs);
+            }
+        }
+        Expr::Ternary { condition, if_true, if_false } => {
+            substitute_expr(condition, subs);
+            substitute_expr(if_true, subs);
+            substitute_expr(if_false, subs);
+        }
+        Expr::Number(_) | Expr::String(_) => {}
+    }
+}
 
 /// Check if an expression references audio signals.
 pub(super) fn expr_uses_audio(expr: &Expr) -> bool {

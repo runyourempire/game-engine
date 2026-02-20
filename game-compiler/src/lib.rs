@@ -1088,4 +1088,73 @@ mod integration_tests {
         assert!(mod_js.contains("audioBeat"), "JS should reference audioBeat: {mod_js}");
         assert!(mod_js.contains("audioBass"), "JS should reference audioBass: {mod_js}");
     }
+
+    // ── Define inlining tests ──────────────────────────────────────
+
+    #[test]
+    fn define_basic_expansion() {
+        let source = r#"
+            cinematic {
+              define glow_ring(r, t) {
+                ring(r, t) | glow(2.0)
+              }
+              layer {
+                fn: glow_ring(0.3, 0.04) | tint(cyan)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("define expansion should succeed");
+        // ring and glow should appear in WGSL (expanded from glow_ring)
+        assert!(output.wgsl.contains("abs(length(p) - 0.3) - 0.04"),
+            "ring SDF should be in output");
+        assert!(output.wgsl.contains("apply_glow"),
+            "glow should be in output");
+        // No "define not implemented" warning
+        assert!(
+            !output.warnings.iter().any(|w| w.contains("define")),
+            "should not warn about defines: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn define_with_expressions() {
+        let source = r#"
+            cinematic {
+              define bright_circle(size) {
+                circle(size) | glow(4.0) | tint(gold)
+              }
+              layer {
+                fn: bright_circle(0.2)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("define with expr should succeed");
+        assert!(output.wgsl.contains("sdf_circle(p, 0.2)"),
+            "circle with substituted size should be in output");
+    }
+
+    #[test]
+    fn define_multiple_uses() {
+        // Same define used in different layers
+        let source = r#"
+            cinematic {
+              define orb(r) {
+                circle(r) | glow(3.0)
+              }
+              layer a {
+                fn: orb(0.1) | tint(gold)
+              }
+              layer b {
+                fn: translate(0.5, 0.0) | orb(0.2) | tint(cyan)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("multi-use define should succeed");
+        assert!(output.wgsl.contains("Layer 0: a"), "layer a in output");
+        assert!(output.wgsl.contains("Layer 1: b"), "layer b in output");
+        assert!(output.wgsl.contains("sdf_circle"), "circle should appear");
+    }
 }
