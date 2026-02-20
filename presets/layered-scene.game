@@ -1,0 +1,33 @@
+# Layered Scene — multi-layer compositing demo
+# Background gradient + glowing ring + pulsing orb,
+# all composited via additive blending.
+cinematic "Layered Scene" {
+  layer bg {
+    fn: gradient(deep_blue, midnight, "radial")
+  }
+
+  layer ring {
+    fn: ring(0.35, 0.03) | glow(glow_i) | tint(cyan)
+    glow_i: 2.0
+  }
+
+  layer orb {
+    fn: circle(0.08) | glow(orb_glow) | tint(gold)
+    orb_glow: 4.0
+  }
+
+  arc {
+    0:00 "dim" {
+      glow_i: 0.5
+      orb_glow: 1.0
+    }
+    0:02 "ignite" {
+      glow_i -> 3.0 ease(expo_out) over 2s
+      orb_glow -> 6.0 ease(expo_out) over 3s
+    }
+    0:08 "breathe" {
+      glow_i -> 1.5 ease(cubic_in_out) over 4s
+      orb_glow -> 3.0 ease(smooth) over 3s
+    }
+  }
+}

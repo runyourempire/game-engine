@@ -119,15 +119,8 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
             names.join(", ")
         ));
     }
-    if cinematic.layers.len() > 1 {
-        warnings.push(format!(
-            "only the first layer is compiled; {} additional layer(s) will be ignored",
-            cinematic.layers.len() - 1
-        ));
-    }
-
-    // Validate pipe chain ordering
-    if let Some(layer) = cinematic.layers.first() {
+    // Validate pipe chain ordering for all layers
+    for layer in &cinematic.layers {
         if let Some(chain) = &layer.fn_chain {
             validate_pipe_chain(chain, &mut warnings);
         }
@@ -138,6 +131,14 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
 
     // Determine rendering mode from lens block
     gen.render_mode = determine_render_mode(cinematic);
+
+    // Raymarch mode still only uses first layer
+    if matches!(gen.render_mode, RenderMode::Raymarch { .. }) && cinematic.layers.len() > 1 {
+        warnings.push(format!(
+            "raymarch mode only uses the first layer; {} additional layer(s) will be ignored",
+            cinematic.layers.len() - 1
+        ));
+    }
 
     // Generate WGSL
     gen.generate(cinematic)?;
@@ -396,10 +397,17 @@ impl WgslGen {
 
         match &self.render_mode {
             RenderMode::Flat => {
-                if let Some(layer) = cinematic.layers.first() {
-                    self.emit_flat_fragment(layer)?;
-                } else {
+                // Collect layers that have fn chains
+                let flat_layers: Vec<&Layer> = cinematic.layers.iter()
+                    .filter(|l| l.fn_chain.is_some())
+                    .collect();
+
+                if flat_layers.is_empty() {
                     self.emit_empty_fragment();
+                } else if flat_layers.len() == 1 {
+                    self.emit_flat_fragment(flat_layers[0])?;
+                } else {
+                    self.emit_multi_layer_fragment(&flat_layers)?;
                 }
             }
             RenderMode::Raymarch { cam_radius, cam_height, cam_speed } => {

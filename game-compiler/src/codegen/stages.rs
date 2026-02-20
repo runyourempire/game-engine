@@ -5,27 +5,108 @@ use crate::error::{GameError, Result};
 impl WgslGen {
     // ── Flat mode fragment shader ──────────────────────────────────────
 
+    /// Single-layer flat fragment shader (backwards-compatible).
     pub(super) fn emit_flat_fragment(&mut self, layer: &Layer) -> Result<()> {
-        let chain = layer.fn_chain.as_ref().ok_or_else(|| GameError {
-            kind: crate::error::ErrorKind::Message("layer has no fn: chain".into()),
-            span: None,
-            source_text: None,
-        })?;
-
         self.line("@fragment");
         self.line("fn fs_main(input: VertexOutput) -> @location(0) vec4f {");
         self.indent += 1;
 
         self.line("let uv = input.uv * 2.0 - 1.0;");
         self.line("let aspect = u.resolution.x / u.resolution.y;");
-        self.line("var p = vec2f(uv.x * aspect, uv.y);");
         self.line("let time = fract(u.time / 120.0) * 120.0;");
         self.blank();
-
-        // Emit param bindings
         self.emit_param_bindings();
 
-        // Walk pipe chain
+        let state = self.emit_flat_chain_stages(layer)?;
+
+        match state {
+            ShaderState::Sdf => {
+                self.used_builtins.insert("apply_glow");
+                self.line("let final_glow = apply_glow(sdf_result, 2.0);");
+                self.line("return vec4f(vec3f(final_glow), 1.0);");
+            }
+            ShaderState::Glow => {
+                self.line("return vec4f(vec3f(glow_result), 1.0);");
+            }
+            ShaderState::Color => {
+                self.line("return color_result;");
+            }
+            ShaderState::Position => {
+                self.line("return vec4f(0.0, 0.0, 0.0, 1.0);");
+            }
+        }
+
+        self.indent -= 1;
+        self.line("}");
+
+        Ok(())
+    }
+
+    /// Multi-layer flat fragment shader (additive compositing).
+    pub(super) fn emit_multi_layer_fragment(&mut self, layers: &[&Layer]) -> Result<()> {
+        self.line("@fragment");
+        self.line("fn fs_main(input: VertexOutput) -> @location(0) vec4f {");
+        self.indent += 1;
+
+        self.line("let uv = input.uv * 2.0 - 1.0;");
+        self.line("let aspect = u.resolution.x / u.resolution.y;");
+        self.line("let time = fract(u.time / 120.0) * 120.0;");
+        self.blank();
+        self.emit_param_bindings();
+
+        self.line("var final_color = vec4f(0.0, 0.0, 0.0, 1.0);");
+        self.blank();
+
+        for (i, layer) in layers.iter().enumerate() {
+            let name = layer.name.as_deref().unwrap_or("unnamed");
+            self.line(&format!("// ── Layer {i}: {name} ──"));
+            self.line("{");
+            self.indent += 1;
+
+            let state = self.emit_flat_chain_stages(layer)?;
+
+            // Extract layer color from final shader state
+            match state {
+                ShaderState::Sdf => {
+                    self.used_builtins.insert("apply_glow");
+                    self.line("let lc = vec3f(apply_glow(sdf_result, 2.0));");
+                }
+                ShaderState::Glow => {
+                    self.line("let lc = vec3f(glow_result);");
+                }
+                ShaderState::Color => {
+                    self.line("let lc = color_result.rgb;");
+                }
+                ShaderState::Position => {
+                    self.line("let lc = vec3f(0.0);");
+                }
+            }
+            self.line("final_color = vec4f(final_color.rgb + lc, 1.0);");
+
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        self.line("return final_color;");
+
+        self.indent -= 1;
+        self.line("}");
+
+        Ok(())
+    }
+
+    /// Emit the pipe chain stages for a single layer. Returns final ShaderState.
+    /// Declares its own `var p` so it works inside block scopes for multi-layer.
+    fn emit_flat_chain_stages(&mut self, layer: &Layer) -> Result<ShaderState> {
+        let chain = layer.fn_chain.as_ref().ok_or_else(|| GameError {
+            kind: crate::error::ErrorKind::Message("layer has no fn: chain".into()),
+            span: None,
+            source_text: None,
+        })?;
+
+        self.line("var p = vec2f(uv.x * aspect, uv.y);");
+
         let mut state = ShaderState::Position;
         let mut has_scale = false;
         for (i, stage) in chain.stages.iter().enumerate() {
@@ -63,27 +144,7 @@ impl WgslGen {
             state = next_state;
         }
 
-        match state {
-            ShaderState::Sdf => {
-                self.used_builtins.insert("apply_glow");
-                self.line("let final_glow = apply_glow(sdf_result, 2.0);");
-                self.line("return vec4f(vec3f(final_glow), 1.0);");
-            }
-            ShaderState::Glow => {
-                self.line("return vec4f(vec3f(glow_result), 1.0);");
-            }
-            ShaderState::Color => {
-                self.line("return color_result;");
-            }
-            ShaderState::Position => {
-                self.line("return vec4f(0.0, 0.0, 0.0, 1.0);");
-            }
-        }
-
-        self.indent -= 1;
-        self.line("}");
-
-        Ok(())
+        Ok(state)
     }
 
     fn emit_flat_stage(&mut self, stage: &FnCall, prev: &ShaderState, index: usize) -> Result<()> {

@@ -961,7 +961,7 @@ mod integration_tests {
     }
 
     #[test]
-    fn warnings_for_multiple_layers() {
+    fn multi_layer_compilation() {
         let source = r#"
             cinematic {
               layer a { fn: circle(0.3) | glow(2.0) }
@@ -969,11 +969,54 @@ mod integration_tests {
             }
         "#;
 
-        let output = compile_full(source).expect("compilation should succeed");
+        let output = compile_full(source).expect("multi-layer compilation should succeed");
+        // Both layers should appear in WGSL
+        assert!(output.wgsl.contains("Layer 0: a"), "should contain layer 0 header");
+        assert!(output.wgsl.contains("Layer 1: b"), "should contain layer 1 header");
+        assert!(output.wgsl.contains("sdf_circle"), "layer a uses circle");
+        assert!(output.wgsl.contains("sdf_box2"), "layer b uses box");
+        assert!(output.wgsl.contains("final_color"), "multi-layer uses compositing");
+        // No "additional layer ignored" warning
         assert!(
-            output.warnings.iter().any(|w| w.contains("additional layer")),
-            "should warn about ignored layers: {:?}", output.warnings
+            !output.warnings.iter().any(|w| w.contains("additional layer")),
+            "multi-layer should not warn about ignored layers: {:?}", output.warnings
         );
+    }
+
+    #[test]
+    fn multi_layer_html_and_component() {
+        let source = r#"
+            cinematic "Layers" {
+              layer bg { fn: gradient(deep_blue, midnight, "y") }
+              layer orb { fn: circle(0.3) | glow(2.0) | tint(gold) }
+            }
+        "#;
+
+        // HTML output should work
+        let html = compile_html(source).expect("multi-layer HTML should succeed");
+        assert!(html.contains("GAME"), "should be a valid HTML page");
+
+        // Component output should work
+        let js = compile_component(source, "game-layers")
+            .expect("multi-layer component should succeed");
+        assert!(js.contains("class GameLayers"), "should produce a Web Component");
+    }
+
+    #[test]
+    fn multi_layer_three_layers() {
+        let source = r#"
+            cinematic "Three" {
+              layer bg { fn: gradient(black, deep_blue, "radial") }
+              layer ring { fn: ring(0.3, 0.04) | glow(2.0) | tint(cyan) }
+              layer orb { fn: circle(0.1) | glow(3.0) | tint(gold) }
+            }
+        "#;
+
+        let output = compile_full(source).expect("3-layer compilation should succeed");
+        assert!(output.wgsl.contains("Layer 0: bg"));
+        assert!(output.wgsl.contains("Layer 1: ring"));
+        assert!(output.wgsl.contains("Layer 2: orb"));
+        assert!(output.wgsl.contains("final_color"));
     }
 
     #[test]
@@ -1010,10 +1053,11 @@ mod integration_tests {
 
     #[test]
     fn warnings_appear_in_html_output() {
+        // Use resonance (unimplemented) to trigger a warning
         let source = r#"
             cinematic {
-              layer a { fn: circle(0.3) | glow(2.0) }
-              layer b { fn: box(0.2, 0.2) | glow(1.0) }
+              layer { fn: circle(0.3) | glow(2.0) }
+              resonate { something: 1.0 }
             }
         "#;
 
