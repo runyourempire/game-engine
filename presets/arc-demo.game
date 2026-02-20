@@ -1,0 +1,29 @@
+# Arc Demo — temporal evolution with easing
+# Showcases the arc timeline system: a circle that fades in,
+# grows, changes color intensity, then dissolves.
+cinematic "Arc Demo" {
+  layer orb {
+    fn: circle(radius) | glow(glow_intensity) | tint(cyan)
+    radius: 0.1
+    glow_intensity: 0.5
+  }
+
+  arc {
+    0:00 "void" {
+      radius: 0.05
+      glow_intensity: 0.2
+    }
+    0:02 "appear" {
+      radius -> 0.25 ease(expo_out) over 3s
+      glow_intensity -> 2.0 ease(smooth) over 2s
+    }
+    0:06 "breathe" {
+      radius -> 0.35 ease(cubic_in_out) over 4s
+      glow_intensity -> 4.0 ease(expo_out) over 3s
+    }
+    0:12 "fade" {
+      radius -> 0.1 ease(expo_in) over 3s
+      glow_intensity -> 0.3 ease(smooth) over 4s
+    }
+  }
+}

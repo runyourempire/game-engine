@@ -30,6 +30,8 @@ pub struct CompileOutput {
     pub render_mode: RenderMode,
     /// Number of f32 slots in the uniform buffer.
     pub uniform_float_count: usize,
+    /// Arc timeline — moments with parameter transitions over time.
+    pub arc_moments: Vec<CompiledMoment>,
 }
 
 /// A parameter with modulation metadata for the JS runtime.
@@ -50,6 +52,27 @@ pub enum RenderMode {
         cam_height: f64,
         cam_speed: f64,
     },
+}
+
+/// A compiled arc moment — a named point in the timeline.
+#[derive(Debug, Clone)]
+pub struct CompiledMoment {
+    pub time_seconds: f64,
+    pub name: Option<String>,
+    pub transitions: Vec<CompiledTransition>,
+}
+
+/// A compiled arc transition — targets a specific param by index.
+#[derive(Debug, Clone)]
+pub struct CompiledTransition {
+    /// Index into `CompileOutput.params`. None if target couldn't be resolved.
+    pub param_index: usize,
+    pub target_value: f64,
+    pub is_animated: bool,
+    /// Easing function name (linear, expo_in, expo_out, cubic_in_out, smooth, elastic, bounce).
+    pub easing: String,
+    /// Transition duration in seconds. None means "until next moment".
+    pub duration_secs: Option<f64>,
 }
 
 // ── System uniform layout ──────────────────────────────────────────────
@@ -92,6 +115,9 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     let audio_file = extract_audio_file(cinematic);
     let param_count = gen.params.len();
 
+    // Compile arc timeline
+    let arc_moments = compile_arc(cinematic, &gen.params);
+
     Ok(CompileOutput {
         wgsl: gen.output,
         title,
@@ -103,7 +129,55 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
         params: gen.params,
         render_mode: gen.render_mode,
         uniform_float_count: SYSTEM_FLOAT_COUNT + param_count,
+        arc_moments,
     })
+}
+
+/// Compile arc block into resolved moments with param indices.
+fn compile_arc(cinematic: &Cinematic, params: &[CompiledParam]) -> Vec<CompiledMoment> {
+    let arc = match &cinematic.arc {
+        Some(a) => a,
+        None => return Vec::new(),
+    };
+
+    arc.moments
+        .iter()
+        .map(|moment| {
+            let transitions = moment
+                .transitions
+                .iter()
+                .filter_map(|t| {
+                    // Resolve "layer.param" or just "param" to a param index
+                    let param_name = resolve_transition_target(&t.target);
+                    let param_idx = params.iter().position(|p| p.name == param_name);
+                    let param_idx = param_idx?; // skip unresolvable targets
+
+                    let target_value = extract_number(&t.value).unwrap_or(0.0);
+                    let easing = t.easing.clone().unwrap_or_else(|| "linear".to_string());
+
+                    Some(CompiledTransition {
+                        param_index: param_idx,
+                        target_value,
+                        is_animated: t.is_animated,
+                        easing,
+                        duration_secs: t.duration_secs,
+                    })
+                })
+                .collect();
+
+            CompiledMoment {
+                time_seconds: moment.time_seconds,
+                name: moment.name.clone(),
+                transitions,
+            }
+        })
+        .collect()
+}
+
+/// Extract the param name from a transition target like "terrain.scale" or "scale".
+fn resolve_transition_target(target: &str) -> &str {
+    // "layer.param" → "param", "param" → "param"
+    target.rsplit('.').next().unwrap_or(target)
 }
 
 // ── WgslGen ────────────────────────────────────────────────────────────
@@ -151,6 +225,7 @@ impl WgslGen {
 
     fn collect_params(&mut self, cinematic: &Cinematic) {
         for layer in &cinematic.layers {
+            // Collect explicit params (with ~ modulation)
             for param in &layer.params {
                 let idx = SYSTEM_FLOAT_COUNT + self.params.len();
                 let uniform_field = format!("p_{}", param.name);
@@ -180,6 +255,27 @@ impl WgslGen {
                     base_value,
                     mod_js,
                 });
+            }
+
+            // Promote numeric layer properties to params (no modulation).
+            // This ensures properties like `intensity: 2.0` become WGSL uniforms
+            // that can be referenced in fn chains and targeted by arcs.
+            for prop in &layer.properties {
+                if let Some(num) = extract_number(&prop.value) {
+                    // Skip non-numeric or already-collected names
+                    if self.params.iter().any(|p| p.name == prop.name) {
+                        continue;
+                    }
+                    let idx = SYSTEM_FLOAT_COUNT + self.params.len();
+                    let uniform_field = format!("p_{}", prop.name);
+                    self.params.push(CompiledParam {
+                        name: prop.name.clone(),
+                        uniform_field,
+                        buffer_index: idx,
+                        base_value: num,
+                        mod_js: None,
+                    });
+                }
             }
         }
     }

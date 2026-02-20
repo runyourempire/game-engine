@@ -801,4 +801,144 @@ mod integration_tests {
         let output = compile_full(source).expect("displace compilation should succeed");
         assert!(output.wgsl.contains("simplex2(p * 3.0)"));
     }
+
+    // ── Arc timeline tests ──────────────────────────────────────────
+
+    #[test]
+    fn end_to_end_arc_basic() {
+        let source = r#"
+            cinematic "Arc Test" {
+              layer pulse {
+                fn: circle(0.3) | glow(intensity)
+                intensity: 2.0
+              }
+
+              arc {
+                0:00 "start" {
+                  intensity: 0.5
+                }
+                0:05 "build" {
+                  intensity -> 4.0 ease(expo_out) over 3s
+                }
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("arc compilation should succeed");
+        assert_eq!(output.arc_moments.len(), 2, "should have 2 moments");
+        assert_eq!(output.arc_moments[0].time_seconds, 0.0);
+        assert_eq!(output.arc_moments[0].name.as_deref(), Some("start"));
+        assert_eq!(output.arc_moments[1].time_seconds, 5.0);
+        assert_eq!(output.arc_moments[1].name.as_deref(), Some("build"));
+
+        // First moment: instant set
+        assert_eq!(output.arc_moments[0].transitions.len(), 1);
+        assert!(!output.arc_moments[0].transitions[0].is_animated);
+        assert!((output.arc_moments[0].transitions[0].target_value - 0.5).abs() < 1e-10);
+
+        // Second moment: animated transition
+        assert_eq!(output.arc_moments[1].transitions.len(), 1);
+        assert!(output.arc_moments[1].transitions[0].is_animated);
+        assert!((output.arc_moments[1].transitions[0].target_value - 4.0).abs() < 1e-10);
+        assert_eq!(output.arc_moments[1].transitions[0].easing, "expo_out");
+        assert_eq!(output.arc_moments[1].transitions[0].duration_secs, Some(3.0));
+    }
+
+    #[test]
+    fn arc_html_contains_easing_and_timeline() {
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(brightness)
+                brightness: 1.0
+              }
+
+              arc {
+                0:00 "off" {
+                  brightness: 0.0
+                }
+                0:03 "on" {
+                  brightness -> 1.0 ease(smooth) over 2s
+                }
+              }
+            }
+        "#;
+
+        let html = compile_html(source).expect("arc HTML compilation should succeed");
+        assert!(html.contains("smooth: t =>"), "HTML should contain easing functions");
+        assert!(html.contains("arcTimeline"), "HTML should contain arc timeline data");
+        assert!(html.contains("arcUpdate"), "HTML should contain arcUpdate function");
+    }
+
+    #[test]
+    fn arc_component_contains_timeline() {
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(brightness)
+                brightness: 1.0
+              }
+
+              arc {
+                0:00 "dim" {
+                  brightness: 0.2
+                }
+                0:02 "bright" {
+                  brightness -> 3.0 ease(expo_out)
+                }
+              }
+            }
+        "#;
+
+        let component = compile_component(source, "arc-test")
+            .expect("arc component compilation should succeed");
+        assert!(
+            component.contains("_arcTimeline"),
+            "component should contain arc timeline"
+        );
+        assert!(
+            component.contains("_arcEase"),
+            "component should contain easing reference"
+        );
+    }
+
+    #[test]
+    fn arc_no_moments_produces_empty() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("no-arc compilation should succeed");
+        assert!(output.arc_moments.is_empty());
+    }
+
+    #[test]
+    fn arc_unresolvable_target_skipped() {
+        // "unknown_param" doesn't match any declared param — transition should be skipped
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(brightness)
+                brightness: 1.0
+              }
+
+              arc {
+                0:00 "start" {
+                  unknown_param: 5.0
+                }
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("compilation should succeed");
+        assert_eq!(output.arc_moments.len(), 1);
+        assert!(
+            output.arc_moments[0].transitions.is_empty(),
+            "unresolvable target should be skipped"
+        );
+    }
 }
