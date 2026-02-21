@@ -1,0 +1,32 @@
+# Audio Layers — multi-layer audio visualizer with defines
+# Showcases: defines, multi-layer, audio signals
+# Three concentric rings respond to bass/mid/treble independently
+cinematic "Audio Layers" {
+  layer bass {
+    fn: ring(0.15, 0.03) | glow(bass_glow) | tint(ember)
+    bass_glow: 1.0 ~ audio.bass * 6.0
+  }
+
+  layer mid {
+    fn: ring(0.30, 0.02) | glow(mid_glow) | tint(cyan)
+    mid_glow: 1.0 ~ audio.mid * 5.0
+  }
+
+  layer treble {
+    fn: ring(0.45, 0.015) | glow(treble_glow) | tint(frost)
+    treble_glow: 1.0 ~ audio.treble * 4.0
+  }
+
+  arc {
+    0:00 "warm_up" {
+      bass_glow: 0.3
+      mid_glow: 0.3
+      treble_glow: 0.3
+    }
+    0:02 "active" {
+      bass_glow -> 1.0 ease(smooth) over 2s
+      mid_glow -> 1.0 ease(smooth) over 2s
+      treble_glow -> 1.0 ease(smooth) over 2s
+    }
+  }
+}

@@ -125,7 +125,7 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     }
 
     // Collect params from all layers
-    gen.collect_params(&cinematic);
+    gen.collect_params(&cinematic, &mut warnings);
 
     // Determine rendering mode from lens block
     gen.render_mode = determine_render_mode(&cinematic);
@@ -330,10 +330,22 @@ impl WgslGen {
 
     // ── Parameter collection ───────────────────────────────────────────
 
-    fn collect_params(&mut self, cinematic: &Cinematic) {
+    fn collect_params(&mut self, cinematic: &Cinematic, warnings: &mut Vec<String>) {
         for layer in &cinematic.layers {
+            let layer_name = layer.name.as_deref().unwrap_or("unnamed");
+
             // Collect explicit params (with ~ modulation)
             for param in &layer.params {
+                // Check for cross-layer duplicate param names
+                if self.params.iter().any(|p| p.name == param.name) {
+                    warnings.push(format!(
+                        "param '{}' in layer '{}' duplicates a param from an earlier layer; \
+                         use unique names per layer to avoid invalid WGSL",
+                        param.name, layer_name
+                    ));
+                    continue;
+                }
+
                 let idx = SYSTEM_FLOAT_COUNT + self.params.len();
                 let uniform_field = format!("p_{}", param.name);
 

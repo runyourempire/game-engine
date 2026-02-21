@@ -1089,6 +1089,36 @@ mod integration_tests {
         assert!(mod_js.contains("audioBass"), "JS should reference audioBass: {mod_js}");
     }
 
+    // ── Cross-layer param collision test ─────────────────────────
+
+    #[test]
+    fn warns_on_duplicate_param_across_layers() {
+        let source = r#"
+            cinematic {
+              layer a {
+                fn: circle(0.2) | glow(intensity)
+                intensity: 2.0 ~ audio.bass * 4.0
+              }
+              layer b {
+                fn: ring(0.4, 0.03) | glow(intensity)
+                intensity: 1.0 ~ audio.treble * 3.0
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("should compile despite duplicate");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("duplicates a param")),
+            "should warn about duplicate param 'intensity': {:?}", output.warnings
+        );
+        // Should only have one param (first wins, second skipped)
+        assert_eq!(
+            output.params.iter().filter(|p| p.name == "intensity").count(),
+            1,
+            "should have exactly one 'intensity' param"
+        );
+    }
+
     // ── Define inlining tests ──────────────────────────────────────
 
     #[test]

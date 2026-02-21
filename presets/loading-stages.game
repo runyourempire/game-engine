@@ -1,0 +1,49 @@
+# Loading Stages — multi-phase loading animation with arcs
+# Showcases: arc timeline, defines, multi-layer, easing
+# Progresses through: pulse → ring grow → ring fill → complete
+cinematic "Loading Stages" {
+  define glow_ring(r, t) {
+    ring(r, t) | glow(ring_glow) | tint(cyan)
+  }
+
+  layer bg_ring {
+    fn: ring(0.3, 0.02) | glow(0.5) | tint(frost)
+  }
+
+  layer active_ring {
+    fn: glow_ring(ring_r, 0.03)
+    ring_r: 0.1
+    ring_glow: 1.0
+  }
+
+  layer center {
+    fn: circle(0.05) | glow(dot_glow) | tint(gold)
+    dot_glow: 2.0
+  }
+
+  arc {
+    0:00 "idle" {
+      ring_r: 0.05
+      ring_glow: 0.5
+      dot_glow: 1.0
+    }
+    0:01 "pulse" {
+      dot_glow -> 4.0 ease(expo_out) over 1s
+      ring_glow -> 1.5 ease(smooth) over 1s
+    }
+    0:03 "expand" {
+      ring_r -> 0.3 ease(expo_out) over 2s
+      ring_glow -> 3.0 ease(cubic_in_out) over 2s
+      dot_glow -> 2.0 ease(smooth) over 1s
+    }
+    0:07 "complete" {
+      ring_glow -> 5.0 ease(expo_out) over 1s
+      dot_glow -> 6.0 ease(expo_out) over 1s
+    }
+    0:10 "fade" {
+      ring_r -> 0.5 ease(smooth) over 3s
+      ring_glow -> 0.3 ease(expo_in) over 3s
+      dot_glow -> 0.5 ease(expo_in) over 3s
+    }
+  }
+}

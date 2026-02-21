@@ -1,0 +1,30 @@
+# Dashboard Gauge — data-driven arc gauge with defines + layers + data signals
+# Showcases: define blocks, multi-layer, data signals, mask_arc
+#
+# Usage as Web Component:
+#   <game-dashboard-gauge value="0.72" label-visible="1"></game-dashboard-gauge>
+#   el.value = 0.72;  // 0.0 to 1.0
+cinematic "Dashboard Gauge" {
+  define track(r, t) {
+    ring(r, t) | glow(0.8) | tint(frost)
+  }
+
+  define indicator(r, t) {
+    ring(r, t) | mask_arc(fill) | glow(intensity) | tint(cyan)
+  }
+
+  layer background {
+    fn: track(0.35, 0.025)
+  }
+
+  layer fill_arc {
+    fn: indicator(0.35, 0.03)
+    fill: 0.0 ~ data.value * 6.283
+    intensity: 2.0 ~ data.value * 4.0
+  }
+
+  layer center_dot {
+    fn: circle(0.04) | glow(center_glow) | tint(white)
+    center_glow: 1.5 ~ data.value * 3.0
+  }
+}
