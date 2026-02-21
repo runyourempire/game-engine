@@ -4,6 +4,9 @@ game-compiler/target/
 # Compiled output
 dist/
 output/
+presets/*.html
+presets/*.js
+mcp-game-server/dist/
 
 # OS files
 .DS_Store
