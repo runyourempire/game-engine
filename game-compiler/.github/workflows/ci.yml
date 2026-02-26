@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'game-compiler/**'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'game-compiler/**'
+
+defaults:
+  run:
+    working-directory: game-compiler
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            game-compiler/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('game-compiler/Cargo.lock') }}
+
+      - name: Build (default features)
+        run: cargo build
+
+      - name: Test
+        run: cargo test
+
+      - name: Build (snapshot feature)
+        run: cargo build --features snapshot
+
+      - name: Test (snapshot feature)
+        run: cargo test --features snapshot
+
+      - name: Compile examples
+        run: cargo run -- build examples --outdir dist
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            game-compiler/target
+          key: ubuntu-clippy-${{ hashFiles('game-compiler/Cargo.lock') }}
+
+      - name: Clippy (default)
+        run: cargo clippy -- -D warnings
+        working-directory: game-compiler
+
+      - name: Clippy (snapshot)
+        run: cargo clippy --features snapshot -- -D warnings
+        working-directory: game-compiler

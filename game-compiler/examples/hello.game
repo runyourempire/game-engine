@@ -1,0 +1,8 @@
+# Hello GAME — the simplest possible visual component
+# A breathing circle of light.
+
+cinematic "Hello" {
+  layer {
+    fn: circle(0.3) | glow(2.0)
+  }
+}

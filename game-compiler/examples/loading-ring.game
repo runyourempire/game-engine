@@ -1,0 +1,12 @@
+# Loading Ring — data-driven progress indicator
+# Use as <game-loading-ring progress="0.75"></game-loading-ring>
+
+cinematic "Loading Ring" {
+  layer track {
+    fn: ring(0.3, 0.04) | glow(1.0)
+  }
+  layer fill {
+    fn: ring(0.3, 0.04) | mask_arc(angle) | glow(3.0) | tint(cyan)
+    angle: 0.0 ~ data.progress * 6.283
+  }
+}

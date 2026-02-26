@@ -1,0 +1,14 @@
+# Galaxy — layered composite with depth
+# Background gradient, tiled rings, and a golden core.
+
+cinematic "Galaxy" {
+  layer bg {
+    fn: gradient(deep_blue, black, "radial")
+  }
+  layer rings {
+    fn: repeat(1.5) | ring(0.3, 0.04) | glow(2.0) | tint(cyan)
+  }
+  layer core {
+    fn: circle(0.1) | glow(4.0) | tint(gold)
+  }
+}

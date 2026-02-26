@@ -1,0 +1,20 @@
+# Dashboard Gauge — multi-layer data visualization component
+# Combines track ring, fill arc, and center value display.
+# Use as <game-dashboard-gauge value="0.82" target="0.90"></game-dashboard-gauge>
+
+cinematic "Dashboard Gauge" {
+  layer track {
+    fn: ring(0.35, 0.03) | glow(1.0)
+  }
+  layer fill {
+    fn: ring(0.35, 0.05) | mask_arc(fill_angle) | glow(2.5) | tint(cyan)
+    fill_angle: 0.0 ~ data.value * 6.283
+  }
+  layer target_mark {
+    fn: ring(0.35, 0.06) | mask_arc(target_angle) | glow(1.5) | tint(gold)
+    target_angle: 0.0 ~ data.target * 6.283
+  }
+  layer center {
+    fn: circle(0.15) | glow(1.5)
+  }
+}

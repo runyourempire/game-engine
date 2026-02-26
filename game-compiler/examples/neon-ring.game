@@ -1,0 +1,8 @@
+# Neon Ring — a glowing donut with animated pulse
+# Demonstrates ring + glow + tint + postprocessing.
+
+cinematic "Neon Ring" {
+  layer {
+    fn: ring(0.3, 0.04) | glow(3.0) | tint(cyan) | bloom(0.5, 1.5) | vignette(0.3)
+  }
+}

@@ -1,0 +1,8 @@
+# Starfield — repeated stars with onion outlines
+# Tiled star shapes with glow and color.
+
+cinematic "Starfield" {
+  layer {
+    fn: repeat(0.4) | star(5.0, 0.12, 0.05) | onion(0.01) | glow(2.5) | tint(gold)
+  }
+}

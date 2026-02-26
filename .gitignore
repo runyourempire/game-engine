@@ -8,6 +8,10 @@ presets/*.html
 presets/*.js
 mcp-game-server/dist/
 
+# Snapshot testing artifacts
+*.snap.png
+*.diff.png
+
 # OS files
 .DS_Store
 Thumbs.db
