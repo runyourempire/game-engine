@@ -5,6 +5,8 @@ pub mod lexer;
 pub mod parser;
 pub mod runtime;
 pub mod server;
+#[cfg(feature = "snapshot")]
+pub mod snapshot;
 pub mod token;
 
 use std::path::Path;
@@ -60,6 +62,14 @@ pub fn compile_full(source: &str) -> Result<codegen::CompileOutput> {
 pub fn compile_component(source: &str, tag_name: &str) -> Result<String> {
     let output = compile_full(source)?;
     Ok(runtime::wrap_web_component(&output, tag_name))
+}
+
+/// Generate x-ray variants: one WGSL shader per chain prefix per layer.
+pub fn compile_xray_variants(source: &str) -> Result<Vec<codegen::XrayVariant>> {
+    let tokens = lexer::lex(source)?;
+    let mut parser = parser::Parser::new(tokens);
+    let cinematic = parser.parse()?;
+    codegen::generate_xray_variants(&cinematic)
 }
 
 #[cfg(test)]
@@ -1186,5 +1196,66 @@ mod integration_tests {
         assert!(output.wgsl.contains("Layer 0: a"), "layer a in output");
         assert!(output.wgsl.contains("Layer 1: b"), "layer b in output");
         assert!(output.wgsl.contains("sdf_circle"), "circle should appear");
+    }
+
+    // ── X-Ray variant tests ─────────────────────────────────────────
+
+    #[test]
+    fn xray_single_layer_variants() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(cyan)
+              }
+            }
+        "#;
+
+        let variants = compile_xray_variants(source).expect("xray variants should succeed");
+        assert_eq!(variants.len(), 3, "3 stages = 3 variants");
+        assert_eq!(variants[0].stage_name, "circle");
+        assert_eq!(variants[1].stage_name, "glow");
+        assert_eq!(variants[2].stage_name, "tint");
+        // First variant (circle only) should have sdf_circle but no apply_glow
+        assert!(variants[0].wgsl.contains("sdf_circle"));
+        // Last variant should contain tint color
+        assert!(variants[2].wgsl.contains("tint") || variants[2].wgsl.contains("vec3f(glow_result)"));
+    }
+
+    #[test]
+    fn xray_multi_layer_variants() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) | tint(gold) }
+            }
+        "#;
+
+        let variants = compile_xray_variants(source).expect("xray variants should succeed");
+        // Layer a: 2 stages, layer b: 3 stages = 5 total
+        assert_eq!(variants.len(), 5, "should have 5 variants");
+        assert_eq!(variants[0].layer_index, 0);
+        assert_eq!(variants[0].stage_name, "circle");
+        assert_eq!(variants[2].layer_index, 1);
+        assert_eq!(variants[2].stage_name, "box");
+    }
+
+    #[test]
+    fn xray_variants_preserve_uniform_struct() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(radius) | glow(intensity)
+                radius: 0.3 ~ audio.bass * 0.2
+                intensity: 2.0
+              }
+            }
+        "#;
+
+        let variants = compile_xray_variants(source).expect("xray should succeed");
+        // Both variants should have the same uniform struct (both params declared)
+        for v in &variants {
+            assert!(v.wgsl.contains("p_radius: f32"), "variant '{}' should have p_radius", v.stage_name);
+            assert!(v.wgsl.contains("p_intensity: f32"), "variant '{}' should have p_intensity", v.stage_name);
+        }
     }
 }

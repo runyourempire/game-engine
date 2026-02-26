@@ -92,6 +92,58 @@ pub struct CompiledTransition {
 //   [10..] dynamic params
 const SYSTEM_FLOAT_COUNT: usize = 10;
 
+// ── X-Ray variant ─────────────────────────────────────────────────────
+
+/// A single x-ray variant: WGSL for a truncated pipe chain.
+#[derive(Debug, Clone)]
+pub struct XrayVariant {
+    pub layer_index: usize,
+    pub layer_name: String,
+    /// Stage index (0-based) — the last stage included in this variant.
+    pub stage_index: usize,
+    pub stage_name: String,
+    pub wgsl: String,
+}
+
+/// Generate x-ray variants: one WGSL shader per chain prefix per layer.
+/// Each variant truncates one layer's chain at stage K while keeping all
+/// other layers fully rendered. Uniform struct is identical across all.
+pub fn generate_xray_variants(cinematic: &Cinematic) -> Result<Vec<XrayVariant>> {
+    let mut cinematic = cinematic.clone();
+    expand_defines(&mut cinematic);
+
+    let mut variants = Vec::new();
+
+    for (layer_idx, layer) in cinematic.layers.iter().enumerate() {
+        let chain = match &layer.fn_chain {
+            Some(c) => c,
+            None => continue,
+        };
+
+        for stage_idx in 0..chain.stages.len() {
+            let mut modified = cinematic.clone();
+            if let Some(ref mut c) = modified.layers[layer_idx].fn_chain {
+                c.stages.truncate(stage_idx + 1);
+            }
+
+            let output = generate_full(&modified)?;
+
+            variants.push(XrayVariant {
+                layer_index: layer_idx,
+                layer_name: layer
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("layer_{}", layer_idx)),
+                stage_index: stage_idx,
+                stage_name: chain.stages[stage_idx].name.clone(),
+                wgsl: output.wgsl,
+            });
+        }
+    }
+
+    Ok(variants)
+}
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 /// Backward-compatible: compile to WGSL string only.

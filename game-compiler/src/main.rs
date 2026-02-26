@@ -55,6 +55,29 @@ enum Commands {
         #[arg(long, default_value = "dist")]
         outdir: PathBuf,
     },
+
+    /// Run visual snapshot tests against .game files
+    #[cfg(feature = "snapshot")]
+    Test {
+        /// .game files to test
+        files: Vec<PathBuf>,
+
+        /// Similarity threshold (0-100, default 99)
+        #[arg(long, default_value_t = 99.0)]
+        threshold: f64,
+
+        /// Update reference snapshots
+        #[arg(long)]
+        update: bool,
+
+        /// Render size in pixels
+        #[arg(long, default_value_t = 256)]
+        size: u32,
+
+        /// Time value for rendering (seconds)
+        #[arg(long, default_value_t = 0.5)]
+        time: f32,
+    },
 }
 
 fn main() {
@@ -126,6 +149,147 @@ fn main() {
                     process::exit(1);
                 }
             });
+        }
+
+        #[cfg(feature = "snapshot")]
+        Commands::Test {
+            files,
+            threshold,
+            update,
+            size,
+            time,
+        } => {
+            let renderer = match game_compiler::snapshot::SnapshotRenderer::new() {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: failed to initialize GPU: {e}");
+                    process::exit(1);
+                }
+            };
+
+            let mut passed = 0;
+            let mut failed = 0;
+            let mut updated = 0;
+
+            for file in &files {
+                let source = match fs::read_to_string(file) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("  {} ... READ ERROR: {e}", file.display());
+                        failed += 1;
+                        continue;
+                    }
+                };
+
+                let output = match game_compiler::compile_full(&source) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        eprintln!("  {} ... COMPILE ERROR: {e}", file.display());
+                        failed += 1;
+                        continue;
+                    }
+                };
+
+                let pixels = match renderer.render_frame(&output, size, size, time) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("  {} ... RENDER ERROR: {e}", file.display());
+                        failed += 1;
+                        continue;
+                    }
+                };
+
+                let snap_path = file.with_extension("game.snap.png");
+                let diff_path = file.with_extension("game.diff.png");
+
+                if update {
+                    if let Err(e) =
+                        game_compiler::snapshot::save_png(&pixels, size, size, &snap_path)
+                    {
+                        eprintln!("  {} ... SAVE ERROR: {e}", file.display());
+                        failed += 1;
+                    } else {
+                        eprintln!(
+                            "  {} ... UPDATED ({}x{})",
+                            file.display(),
+                            size,
+                            size
+                        );
+                        updated += 1;
+                    }
+                    continue;
+                }
+
+                if !snap_path.exists() {
+                    eprintln!(
+                        "  {} ... NO REFERENCE (run with --update)",
+                        file.display()
+                    );
+                    failed += 1;
+                    continue;
+                }
+
+                let (ref_pixels, ref_w, ref_h) =
+                    match game_compiler::snapshot::load_png(&snap_path) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            eprintln!("  {} ... REF ERROR: {e}", file.display());
+                            failed += 1;
+                            continue;
+                        }
+                    };
+
+                if ref_w != size || ref_h != size {
+                    eprintln!(
+                        "  {} ... SIZE MISMATCH (ref {}x{}, actual {}x{})",
+                        file.display(),
+                        ref_w,
+                        ref_h,
+                        size,
+                        size
+                    );
+                    failed += 1;
+                    continue;
+                }
+
+                let similarity =
+                    game_compiler::snapshot::compare_pixels(&pixels, &ref_pixels, 2);
+
+                if similarity >= threshold {
+                    eprintln!(
+                        "  {} ... PASS ({:.1}%)",
+                        file.display(),
+                        similarity
+                    );
+                    passed += 1;
+                    // Clean up any old diff
+                    let _ = fs::remove_file(&diff_path);
+                } else {
+                    eprintln!(
+                        "  {} ... FAIL ({:.1}%) -- diff: {}",
+                        file.display(),
+                        similarity,
+                        diff_path.display()
+                    );
+                    let diff_pixels =
+                        game_compiler::snapshot::generate_diff(&pixels, &ref_pixels, size, size);
+                    let _ =
+                        game_compiler::snapshot::save_png(&diff_pixels, size, size, &diff_path);
+                    failed += 1;
+                }
+            }
+
+            eprintln!();
+            if update {
+                eprintln!("{updated} snapshots updated, {failed} errors");
+            } else {
+                eprintln!(
+                    "{passed} passed, {failed} failed (threshold: {threshold}%)"
+                );
+            }
+            if failed > 0 {
+                process::exit(1);
+            }
         }
 
         Commands::Build { dir, outdir } => {
