@@ -4,6 +4,12 @@ version = "0.2.0"
 edition = "2021"
 description = "Compiler for the .game visual component language"
 license = "MIT"
+repository = "https://github.com/runyourempire/game-engine"
+homepage = "https://github.com/runyourempire/game-engine"
+authors = ["runyourempire"]
+keywords = ["shader", "webgpu", "wgsl", "web-components", "generative-art"]
+categories = ["compilers", "web-programming", "graphics"]
+exclude = ["target/", ".github/", "dist/"]
 
 [[bin]]
 name = "game"

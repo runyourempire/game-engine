@@ -1,0 +1,22 @@
+# Mouse Follow — interactive cursor tracking
+# Golden orb follows the mouse, cyan trail slightly behind.
+# Voronoi background texture for visual depth.
+# Demonstrates: translate + mouse.x/y modulation, bloom
+
+cinematic "Mouse Follow" {
+  layer bg {
+    fn: voronoi(5.0) | glow(0.8) | tint(deep_blue)
+  }
+
+  layer trail {
+    fn: translate(trail_x, trail_y) | circle(0.12) | glow(2.0) | tint(cyan) | bloom(0.3, 1.0)
+    trail_x: 0.0 ~ mouse.x * 1.8 - 0.9
+    trail_y: 0.0 ~ mouse.y * 1.8 - 0.9
+  }
+
+  layer cursor {
+    fn: translate(mx, my) | circle(0.06) | glow(4.0) | tint(gold)
+    mx: 0.0 ~ mouse.x * 2.0 - 1.0
+    my: 0.0 ~ mouse.y * 2.0 - 1.0
+  }
+}

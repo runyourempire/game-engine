@@ -1,0 +1,67 @@
+# Cinematic Arc — timeline-driven animation
+# A rotating hexagonal frame with a golden core,
+# evolving through 4 moments: void, ignite, bloom, dissolve.
+# Demonstrates: define blocks, arc timeline, rotate(time), polygon, onion, easings
+
+cinematic "Cinematic Arc" {
+  define hex_frame(size) {
+    polygon(6.0, size) | onion(0.02) | glow(hex_glow)
+  }
+
+  layer bg {
+    fn: gradient(black, deep_blue, "radial")
+  }
+
+  layer frame {
+    fn: rotate(time * 0.5) | hex_frame(hex_size) | tint(cyan)
+    hex_size: 0.3
+    hex_glow: 2.0
+  }
+
+  layer inner_frame {
+    fn: rotate(time * -0.3) | polygon(6.0, inner_size) | onion(0.01) | glow(inner_g) | tint(frost)
+    inner_size: 0.15
+    inner_g: 1.0
+  }
+
+  layer core {
+    fn: circle(core_r) | glow(core_g) | tint(gold)
+    core_r: 0.05
+    core_g: 1.0
+  }
+
+  arc {
+    0:00 "void" {
+      hex_size: 0.05
+      hex_glow: 0.3
+      inner_size: 0.02
+      inner_g: 0.2
+      core_r: 0.01
+      core_g: 0.5
+    }
+    0:02 "ignite" {
+      hex_size -> 0.25 ease(expo_out) over 2s
+      hex_glow -> 3.0 ease(smooth) over 2s
+      inner_size -> 0.12 ease(expo_out) over 2s
+      inner_g -> 2.0 ease(smooth) over 1s
+      core_r -> 0.06 ease(expo_out) over 1s
+      core_g -> 4.0 ease(expo_out) over 2s
+    }
+    0:06 "bloom" {
+      hex_size -> 0.35 ease(cubic_in_out) over 3s
+      hex_glow -> 5.0 ease(expo_out) over 2s
+      inner_size -> 0.20 ease(cubic_in_out) over 3s
+      inner_g -> 3.0 ease(smooth) over 2s
+      core_r -> 0.08 ease(smooth) over 2s
+      core_g -> 6.0 ease(expo_out) over 2s
+    }
+    0:12 "dissolve" {
+      hex_size -> 0.5 ease(smooth) over 4s
+      hex_glow -> 0.3 ease(expo_in) over 3s
+      inner_size -> 0.35 ease(smooth) over 4s
+      inner_g -> 0.2 ease(expo_in) over 3s
+      core_r -> 0.02 ease(expo_in) over 3s
+      core_g -> 0.5 ease(smooth) over 3s
+    }
+  }
+}

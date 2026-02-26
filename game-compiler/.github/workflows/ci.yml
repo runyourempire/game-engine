@@ -50,6 +50,9 @@ jobs:
       - name: Compile examples
         run: cargo run -- build examples --outdir dist
 
+      - name: Compile presets
+        run: cargo run -- build ../presets --outdir ../dist
+
   clippy:
     runs-on: ubuntu-latest
     steps:

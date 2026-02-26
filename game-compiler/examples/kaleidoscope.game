@@ -1,0 +1,18 @@
+# Kaleidoscope — symmetrical patterns with domain transforms
+# mirror + repeat + rotate + star shapes create kaleidoscopic patterns.
+# Ring overlay and simplex noise background add depth.
+# Demonstrates: domain transforms stacking, post-processing chain
+
+cinematic "Kaleidoscope" {
+  layer bg {
+    fn: simplex(3.0) | glow(1.0) | tint(deep_blue) | vignette(0.4)
+  }
+
+  layer pattern {
+    fn: mirror("xy") | repeat(0.6) | rotate(time * 0.4) | star(5.0, 0.15, 0.07) | glow(3.0) | tint(gold) | bloom(0.4, 1.2)
+  }
+
+  layer ring_overlay {
+    fn: ring(0.35, 0.02) | onion(0.01) | glow(2.0) | tint(cyan)
+  }
+}

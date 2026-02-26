@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAME — Showcase</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0A0A0A;
+    color: #E0E0E0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  header {
+    text-align: center;
+    padding: 3rem 1rem 2rem;
+    border-bottom: 1px solid #1F1F1F;
+  }
+
+  header h1 {
+    font-size: 2.5rem;
+    font-weight: 600;
+    color: #FFFFFF;
+    letter-spacing: 0.15em;
+    margin-bottom: 0.5rem;
+  }
+
+  header p {
+    color: #808080;
+    font-size: 1rem;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  header p a {
+    color: #808080;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  header p a:hover { color: #FFFFFF; }
+
+  .section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #555;
+    padding: 2rem 2rem 1rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding: 0 2rem 2rem;
+  }
+
+  .card {
+    background: #141414;
+    border: 1px solid #1F1F1F;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .card:hover { border-color: #333; }
+
+  .preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    background: #0A0A0A;
+  }
+
+  .preview > * {
+    width: 180px;
+    height: 180px;
+  }
+
+  .info {
+    padding: 1rem;
+    border-top: 1px solid #1F1F1F;
+  }
+
+  .info .name {
+    font-weight: 600;
+    color: #FFFFFF;
+    font-size: 0.95rem;
+    margin-bottom: 0.15rem;
+  }
+
+  .info .tag {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.75rem;
+    color: #00BFFF;
+    margin-bottom: 0.35rem;
+  }
+
+  .info .desc {
+    font-size: 0.8rem;
+    color: #777;
+    line-height: 1.4;
+  }
+
+  .controls {
+    padding: 0.5rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .control-row label {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #999;
+    min-width: 60px;
+  }
+
+  .control-row input[type="range"] {
+    flex: 1;
+    accent-color: #00BFFF;
+    height: 4px;
+  }
+
+  .control-row .val {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #555;
+    min-width: 32px;
+    text-align: right;
+  }
+
+  footer {
+    text-align: center;
+    padding: 2rem;
+    border-top: 1px solid #1F1F1F;
+    color: #555;
+    font-size: 0.8rem;
+  }
+
+  footer a {
+    color: #808080;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  footer a:hover { color: #FFFFFF; }
+
+  @media (max-width: 640px) {
+    header h1 { font-size: 1.8rem; }
+    .grid { grid-template-columns: 1fr; padding: 0 1rem 1rem; }
+    .section-title { padding: 1.5rem 1rem 0.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GAME</h1>
+  <p>GPU-accelerated Web Components from a 5-line DSL.<br>
+  Every component below is live — rendering on your GPU right now.<br>
+  <a href="https://github.com/runyourempire/game-engine">GitHub</a></p>
+</header>
+
+<!-- ── Presets ─────────────────────────────────────────── -->
+
+<div class="section-title">Presets — Production-Ready Components</div>
+<div class="grid">
+
+  <div class="card">
+    <div class="preview"><loading-ring id="lr" progress="0.72"></loading-ring></div>
+    <div class="info">
+      <div class="name">Loading Ring</div>
+      <div class="tag">&lt;loading-ring&gt;</div>
+      <div class="desc">Arc loading indicator bound to progress data.</div>
+    </div>
+    <div class="controls">
+      <div class="control-row">
+        <label>progress</label>
+        <input type="range" min="0" max="1" step="0.01" value="0.72"
+          oninput="document.getElementById('lr').progress=this.value; this.nextElementSibling.textContent=parseFloat(this.value).toFixed(2)">
+        <span class="val">0.72</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><metric-ring id="mr" value="0.65"></metric-ring></div>
+    <div class="info">
+      <div class="name">Metric Ring</div>
+      <div class="tag">&lt;metric-ring&gt;</div>
+      <div class="desc">Circular gauge for displaying a 0-1 metric value.</div>
+    </div>
+    <div class="controls">
+      <div class="control-row">
+        <label>value</label>
+        <input type="range" min="0" max="1" step="0.01" value="0.65"
+          oninput="document.getElementById('mr').value=this.value; this.nextElementSibling.textContent=parseFloat(this.value).toFixed(2)">
+        <span class="val">0.65</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><status-pulse id="sp" health="0.9"></status-pulse></div>
+    <div class="info">
+      <div class="name">Status Pulse</div>
+      <div class="tag">&lt;status-pulse&gt;</div>
+      <div class="desc">Health indicator — glows bright at 1.0, dims toward 0.</div>
+    </div>
+    <div class="controls">
+      <div class="control-row">
+        <label>health</label>
+        <input type="range" min="0" max="1" step="0.01" value="0.90"
+          oninput="document.getElementById('sp').health=this.value; this.nextElementSibling.textContent=parseFloat(this.value).toFixed(2)">
+        <span class="val">0.90</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><dashboard-gauge id="dg" value="0.82"></dashboard-gauge></div>
+    <div class="info">
+      <div class="name">Dashboard Gauge</div>
+      <div class="tag">&lt;dashboard-gauge&gt;</div>
+      <div class="desc">Multi-layer gauge with fill arc and track ring.</div>
+    </div>
+    <div class="controls">
+      <div class="control-row">
+        <label>value</label>
+        <input type="range" min="0" max="1" step="0.01" value="0.82"
+          oninput="document.getElementById('dg').value=this.value; this.nextElementSibling.textContent=parseFloat(this.value).toFixed(2)">
+        <span class="val">0.82</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><breathing-dot></breathing-dot></div>
+    <div class="info">
+      <div class="name">Breathing Dot</div>
+      <div class="tag">&lt;breathing-dot&gt;</div>
+      <div class="desc">Ambient breathing animation. Pure time-driven, no data input.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><game-spinner></game-spinner></div>
+    <div class="info">
+      <div class="name">Spinner</div>
+      <div class="tag">&lt;game-spinner&gt;</div>
+      <div class="desc">Rotating partial ring for indeterminate loading states.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Examples ────────────────────────────────────────── -->
+
+<div class="section-title">Examples — Language Features</div>
+<div class="grid">
+
+  <div class="card">
+    <div class="preview"><game-hello></game-hello></div>
+    <div class="info">
+      <div class="name">Hello</div>
+      <div class="tag">&lt;game-hello&gt;</div>
+      <div class="desc">Simplest possible component — a breathing circle of light.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><neon-ring></neon-ring></div>
+    <div class="info">
+      <div class="name">Neon Ring</div>
+      <div class="tag">&lt;neon-ring&gt;</div>
+      <div class="desc">Ring + glow + tint + bloom + vignette post-processing.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><game-galaxy></game-galaxy></div>
+    <div class="info">
+      <div class="name">Galaxy</div>
+      <div class="tag">&lt;game-galaxy&gt;</div>
+      <div class="desc">3-layer composite: gradient background, tiled rings, golden core.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><game-starfield></game-starfield></div>
+    <div class="info">
+      <div class="name">Starfield</div>
+      <div class="tag">&lt;game-starfield&gt;</div>
+      <div class="desc">Repeated star shapes with onion outlines and glow.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><game-kaleidoscope></game-kaleidoscope></div>
+    <div class="info">
+      <div class="name">Kaleidoscope</div>
+      <div class="tag">&lt;game-kaleidoscope&gt;</div>
+      <div class="desc">mirror + repeat + rotate + stars. Domain transforms stacking.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><mouse-follow></mouse-follow></div>
+    <div class="info">
+      <div class="name">Mouse Follow</div>
+      <div class="tag">&lt;mouse-follow&gt;</div>
+      <div class="desc">Golden orb tracks cursor with cyan trail. Voronoi background.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><audio-spectrum></audio-spectrum></div>
+    <div class="info">
+      <div class="name">Audio Spectrum</div>
+      <div class="tag">&lt;audio-spectrum&gt;</div>
+      <div class="desc">4 rings reacting to bass/mid/treble/energy. Needs microphone.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Cinematics ──────────────────────────────────────── -->
+
+<div class="section-title">Cinematics — Timeline Animations (arc)</div>
+<div class="grid">
+
+  <div class="card">
+    <div class="preview"><cinematic-arc></cinematic-arc></div>
+    <div class="info">
+      <div class="name">Cinematic Arc</div>
+      <div class="tag">&lt;cinematic-arc&gt;</div>
+      <div class="desc">Rotating hexagonal frame evolving through 4 moments with easings.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><layered-scene></layered-scene></div>
+    <div class="info">
+      <div class="name">Layered Scene</div>
+      <div class="tag">&lt;layered-scene&gt;</div>
+      <div class="desc">3-layer scene with arc timeline: dim, ignite, breathe.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><arc-demo></arc-demo></div>
+    <div class="info">
+      <div class="name">Arc Demo</div>
+      <div class="tag">&lt;arc-demo&gt;</div>
+      <div class="desc">Circle evolves: void, appear, breathe, fade. 4 easing curves.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="preview"><loading-stages></loading-stages></div>
+    <div class="info">
+      <div class="name">Loading Stages</div>
+      <div class="tag">&lt;loading-stages&gt;</div>
+      <div class="desc">Multi-phase loading: pulse, ring grow, fill, complete, fade.</div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Built with <strong>GAME</strong> — Generative Animation Matrix Engine<br>
+  <a href="https://github.com/runyourempire/game-engine">Source on GitHub</a>
+</footer>
+
+<!-- Component imports -->
+<script type="module" src="dist/loading-ring.js"></script>
+<script type="module" src="dist/metric-ring.js"></script>
+<script type="module" src="dist/status-pulse.js"></script>
+<script type="module" src="dist/dashboard-gauge.js"></script>
+<script type="module" src="dist/breathing-dot.js"></script>
+<script type="module" src="dist/game-spinner.js"></script>
+<script type="module" src="dist/game-hello.js"></script>
+<script type="module" src="dist/neon-ring.js"></script>
+<script type="module" src="dist/game-galaxy.js"></script>
+<script type="module" src="dist/game-starfield.js"></script>
+<script type="module" src="dist/game-kaleidoscope.js"></script>
+<script type="module" src="dist/mouse-follow.js"></script>
+<script type="module" src="dist/audio-spectrum.js"></script>
+<script type="module" src="dist/cinematic-arc.js"></script>
+<script type="module" src="dist/layered-scene.js"></script>
+<script type="module" src="dist/arc-demo.js"></script>
+<script type="module" src="dist/loading-stages.js"></script>
+
+</body>
+</html>

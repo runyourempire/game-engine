@@ -1,8 +1,7 @@
 # Build artifacts
 game-compiler/target/
 
-# Compiled output
-dist/
+# Compiled output (dist/ is committed — small deterministic components)
 output/
 presets/*.html
 presets/*.js

@@ -245,20 +245,54 @@ element.progress = 0.5;  // JS property (preferred, no string conversion)
 
 ---
 
+## Dev Server
+
+The dev server is a full visual debugging environment for `.game` files:
+
+```bash
+game dev my-component.game
+# → http://localhost:3333
+```
+
+Features:
+- **Live reload** — edit the source file, browser updates instantly
+- **Stage X-Ray** — click any pipe stage to see its isolated visual contribution
+- **Live Editor** — edit `.game` source directly in the browser
+- **Pixel Autopsy** — click any pixel to inspect UV, color, distance values
+- **One-Click Export** — PNG screenshot, Video (WebM), React/Vue wrappers, CSS fallback
+- **WGSL Viewer** — syntax-highlighted shader output
+- **API Docs** — auto-generated component API from your data signals
+- **Arc Timeline** — scrub through timeline moments for cinematic animations
+
+<p align="center">
+  <img src="screenshots/01-load.png" width="400" alt="Dev server with live preview and toolbar">
+  <img src="screenshots/03-wgsl.png" width="400" alt="WGSL shader viewer with syntax highlighting">
+</p>
+
+---
+
+## Showcase
+
+Open [`showcase.html`](showcase.html) to see all components rendering live in a single page. Data-driven components have interactive sliders.
+
+---
+
 ## Examples
 
-The `examples/` directory contains `.game` files demonstrating language features:
+The `game-compiler/examples/` directory contains `.game` files demonstrating language features:
 
 | File | Features |
 |------|----------|
-| `001-hello.game` | Minimal — breathing circle |
-| `002-audio-reactive.game` | Audio modulation, FFT bands |
-| `003-interactive.game` | Mouse input, impulse signals |
-| `004-resonance.game` | Cross-layer feedback |
-| `005-audio-hello.game` | Audio + parameter binding |
-| `006-spectrum.game` | Multi-band audio visualization |
-| `007-showcase.game` | Multiple features combined |
-| `008-mouse-follow.game` | Mouse tracking, translate |
+| `hello.game` | Minimal — breathing circle |
+| `neon-ring.game` | Ring + glow + tint + bloom + vignette |
+| `galaxy.game` | 3-layer composite with gradient, repeat, tint |
+| `starfield.game` | Repeated stars with onion outlines |
+| `loading-ring.game` | Data-driven arc loading indicator |
+| `dashboard-gauge.game` | Multi-layer data visualization with track + fill + target |
+| `audio-spectrum.game` | 4 concentric rings reacting to bass/mid/treble/energy |
+| `mouse-follow.game` | Interactive cursor tracking with voronoi background |
+| `cinematic-arc.game` | Timeline-driven animation with defines, polygon, onion, easings |
+| `kaleidoscope.game` | mirror + repeat + rotate + star domain transforms |
 
 ---
 
@@ -284,9 +318,10 @@ The compiler is written in Rust. The output is pure JavaScript + WGSL — no Rus
 | `lexer.rs` | Tokenizer (logos) |
 | `parser.rs` | Recursive descent parser |
 | `ast.rs` | Abstract syntax tree types |
-| `codegen.rs` | WGSL shader generation |
+| `codegen/` | WGSL shader generation + x-ray variants |
 | `runtime.rs` | HTML + Web Component wrappers |
-| `server.rs` | Dev server (axum + file watcher) |
+| `server/` | Dev server (axum + livereload + 6 debug tools) |
+| `snapshot.rs` | GPU headless rendering + pixel comparison (optional) |
 | `main.rs` | CLI (clap) |
 
 ---

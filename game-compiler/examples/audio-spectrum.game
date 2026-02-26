@@ -1,0 +1,30 @@
+# Audio Spectrum — multi-layer audio-reactive rings
+# Four concentric rings responding to bass/mid/treble/energy,
+# gradient background, and a golden core that pulses with energy.
+# Demonstrates: multi-layer, audio signals, tint colors, gradient
+
+cinematic "Audio Spectrum" {
+  layer bg {
+    fn: gradient(deep_blue, black, "radial")
+  }
+
+  layer bass_ring {
+    fn: ring(0.15, 0.04) | glow(bass_g) | tint(ember)
+    bass_g: 1.0 ~ audio.bass * 6.0
+  }
+
+  layer mid_ring {
+    fn: ring(0.25, 0.03) | glow(mid_g) | tint(cyan)
+    mid_g: 1.0 ~ audio.mid * 5.0
+  }
+
+  layer treble_ring {
+    fn: ring(0.35, 0.02) | glow(treble_g) | tint(frost)
+    treble_g: 1.0 ~ audio.treble * 4.0
+  }
+
+  layer core {
+    fn: circle(0.06) | glow(energy_g) | tint(gold)
+    energy_g: 2.0 ~ audio.energy * 8.0
+  }
+}
