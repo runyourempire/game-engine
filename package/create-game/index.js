@@ -74,37 +74,9 @@ if (!validTemplates.includes(template)) {
 const templates = {
   hello: {
     tagName: 'game-hello',
-    gameFile: `// ${projectName} — A glowing circle component
-// Compiled with: game build .
-
-@component ${projectName} {
-  @canvas(400, 400)
-
-  @state {
-    time: 0
-  }
-
-  @vertex {
-    // Full-screen quad
-    let positions = array<vec2f>(
-      vec2f(-1, -1), vec2f(1, -1), vec2f(1, 1),
-      vec2f(-1, -1), vec2f(1, 1), vec2f(-1, 1)
-    );
-    output.position = vec4f(positions[vertex_index], 0, 1);
-    output.uv = positions[vertex_index] * 0.5 + 0.5;
-  }
-
-  @fragment {
-    let center = vec2f(0.5, 0.5);
-    let dist = distance(input.uv, center);
-    let glow = smoothstep(0.3, 0.0, dist);
-    let pulse = sin(state.time * 2.0) * 0.5 + 0.5;
-    let color = vec3f(0.2, 0.6, 1.0) * glow * (0.5 + pulse * 0.5);
-    output.color = vec4f(color, glow);
-  }
-
-  @tick {
-    state.time += dt;
+    gameFile: `cinematic "Hello" {
+  layer {
+    fn: circle(0.3 + sin(time) * 0.05) | glow(2.0) | tint(gold)
   }
 }
 `,
@@ -112,39 +84,10 @@ const templates = {
   },
   'loading-ring': {
     tagName: 'loading-ring',
-    gameFile: `// ${projectName} — A loading ring component
-// Compiled with: game build .
-
-@component ${projectName} {
-  @canvas(200, 200)
-
-  @state {
-    time: 0
-    progress: 0
-  }
-
-  @vertex {
-    let positions = array<vec2f>(
-      vec2f(-1, -1), vec2f(1, -1), vec2f(1, 1),
-      vec2f(-1, -1), vec2f(1, 1), vec2f(-1, 1)
-    );
-    output.position = vec4f(positions[vertex_index], 0, 1);
-    output.uv = positions[vertex_index] * 0.5 + 0.5;
-  }
-
-  @fragment {
-    let center = vec2f(0.5, 0.5);
-    let uv = input.uv - center;
-    let angle = atan2(uv.y, uv.x);
-    let dist = length(uv);
-    let ring = smoothstep(0.02, 0.0, abs(dist - 0.35));
-    let sweep = step(angle, state.time * 3.0 - 3.14159);
-    let color = vec3f(1.0, 1.0, 1.0) * ring * sweep;
-    output.color = vec4f(color, ring * sweep);
-  }
-
-  @tick {
-    state.time += dt;
+    gameFile: `cinematic "Loading Ring" {
+  layer {
+    fn: ring(0.3, 0.02) | rotate(time * 0.5) | mask_arc(angle) | glow(3.0) | tint(gold)
+    angle: 4.0 ~ data.progress * 6.283
   }
 }
 `,
@@ -152,40 +95,13 @@ const templates = {
   },
   'dashboard-gauge': {
     tagName: 'dashboard-gauge',
-    gameFile: `// ${projectName} — A dashboard gauge component
-// Compiled with: game build .
-
-@component ${projectName} {
-  @canvas(300, 300)
-
-  @state {
-    value: 0.65
-    time: 0
+    gameFile: `cinematic "Dashboard Gauge" {
+  layer bg {
+    fn: ring(0.35, 0.01) | glow(1.0) | tint(charcoal)
   }
-
-  @vertex {
-    let positions = array<vec2f>(
-      vec2f(-1, -1), vec2f(1, -1), vec2f(1, 1),
-      vec2f(-1, -1), vec2f(1, 1), vec2f(-1, 1)
-    );
-    output.position = vec4f(positions[vertex_index], 0, 1);
-    output.uv = positions[vertex_index] * 0.5 + 0.5;
-  }
-
-  @fragment {
-    let center = vec2f(0.5, 0.35);
-    let uv = input.uv - center;
-    let angle = atan2(uv.y, uv.x);
-    let dist = length(uv);
-    let arc = smoothstep(0.02, 0.0, abs(dist - 0.4));
-    let gauge_angle = -3.14159 + state.value * 3.14159;
-    let fill = step(angle, gauge_angle) * step(-3.14159, angle);
-    let color = mix(vec3f(0.2, 0.2, 0.2), vec3f(0.2, 0.8, 0.4), fill);
-    output.color = vec4f(color * arc, arc);
-  }
-
-  @tick {
-    state.time += dt;
+  layer fill {
+    fn: ring(0.35, 0.03) | mask_arc(fill_angle) | glow(2.0) | tint(gold)
+    fill_angle: 0.0 ~ data.value * 6.283
   }
 }
 `,
@@ -193,42 +109,9 @@ const templates = {
   },
   spectrum: {
     tagName: 'game-spectrum',
-    gameFile: `// ${projectName} — A spectrum visualizer component
-// Compiled with: game build .
-
-@component ${projectName} {
-  @canvas(600, 200)
-
-  @state {
-    time: 0
-  }
-
-  @vertex {
-    let positions = array<vec2f>(
-      vec2f(-1, -1), vec2f(1, -1), vec2f(1, 1),
-      vec2f(-1, -1), vec2f(1, 1), vec2f(-1, 1)
-    );
-    output.position = vec4f(positions[vertex_index], 0, 1);
-    output.uv = positions[vertex_index] * 0.5 + 0.5;
-  }
-
-  @fragment {
-    let bars = 16.0;
-    let bar_idx = floor(input.uv.x * bars);
-    let bar_x = fract(input.uv.x * bars);
-    let height = sin(bar_idx * 0.5 + state.time * 3.0) * 0.5 + 0.5;
-    let bar = step(input.uv.y, height) * step(0.1, bar_x) * step(bar_x, 0.9);
-    let hue = bar_idx / bars;
-    let color = vec3f(
-      sin(hue * 6.28) * 0.5 + 0.5,
-      sin(hue * 6.28 + 2.09) * 0.5 + 0.5,
-      sin(hue * 6.28 + 4.19) * 0.5 + 0.5
-    );
-    output.color = vec4f(color * bar, bar);
-  }
-
-  @tick {
-    state.time += dt;
+    gameFile: `cinematic "Spectrum" {
+  layer {
+    fn: spectrum(audio.bass, audio.mid, audio.treble) | glow(2.0)
   }
 }
 `,

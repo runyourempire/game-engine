@@ -91,10 +91,6 @@
           "name": "variable.other.signal.data.game"
         },
         {
-          "match": "\\b(mic)\\.(amplitude|[a-zA-Z_][a-zA-Z0-9_]*)\\b",
-          "name": "variable.other.signal.mic.game"
-        },
-        {
           "match": "\\b(time|beat|random)\\b",
           "name": "variable.other.signal.builtin.game"
         },
@@ -111,79 +107,58 @@
       }
     },
     "named-colors": {
-      "match": "\\b(gold|cyan|ember|frost|midnight|deep_blue|crimson|white|black|ash|charcoal|plasma|violet|magenta|red|blue|green|orange|ivory|obsidian|indigo|fire)\\b",
+      "match": "\\b(gold|cyan|ember|frost|midnight|deep_blue|white|black|ash|charcoal|plasma|violet|magenta|red|blue|green|orange|ivory|obsidian)\\b",
       "name": "constant.language.color.game"
     },
     "builtin-functions": {
       "patterns": [
         {
           "comment": "SDF primitives",
-          "match": "\\b(circle|sphere|box|ring|polygon|star|line|torus|plane|cylinder)\\s*(?=\\()",
+          "match": "\\b(circle|sphere|box|ring|polygon|star|line|torus|plane|cylinder|progress_arc|hexgrid|shield|pulse_wave)\\s*(?=\\()",
           "captures": {
             "1": { "name": "support.function.sdf.game" }
           }
         },
         {
           "comment": "Noise functions",
-          "match": "\\b(fbm|simplex|voronoi|curl_noise|curl|concentric_waves|worley|value)\\s*(?=\\()",
+          "match": "\\b(fbm|simplex|voronoi|curl_noise|concentric_waves)\\s*(?=\\()",
           "captures": {
             "1": { "name": "support.function.noise.game" }
           }
         },
         {
           "comment": "Domain operations",
-          "match": "\\b(translate|rotate|scale|repeat|mirror|twist|displace|bend|elongate|extrude)\\s*(?=\\()",
+          "match": "\\b(translate|rotate|scale|repeat|mirror|twist)\\s*(?=\\()",
           "captures": {
             "1": { "name": "support.function.domain.game" }
           }
         },
         {
-          "comment": "Boolean operations",
-          "match": "\\b(union|intersect|subtract|smooth_union)\\s*(?=\\()",
-          "captures": {
-            "1": { "name": "support.function.boolean.game" }
-          }
-        },
-        {
           "comment": "Visual / shading functions",
-          "match": "\\b(glow|tint|shade|gradient|spectrum|particles|threshold|iridescent|emissive|fresnel|colormap)\\s*(?=\\()",
+          "match": "\\b(glow|tint|shade|gradient|spectrum|particles|threshold|iridescent|emissive|colormap)\\s*(?=\\()",
           "captures": {
             "1": { "name": "support.function.visual.game" }
           }
         },
         {
           "comment": "Post-processing functions",
-          "match": "\\b(bloom|chromatic|vignette|grain|fog|scanlines|tonemap|invert|saturate_color|distort|glitch)\\s*(?=\\()",
+          "match": "\\b(bloom|chromatic|vignette|grain|fog|scanlines|tonemap|invert|saturate_color|glitch)\\s*(?=\\()",
           "captures": {
             "1": { "name": "support.function.post.game" }
           }
         },
         {
           "comment": "SDF modifier functions",
-          "match": "\\b(onion|round|mask_arc|blend)\\s*(?=\\()",
+          "match": "\\b(onion|round|displace|mask_arc|blend)\\s*(?=\\()",
           "captures": {
             "1": { "name": "support.function.modifier.game" }
           }
         },
         {
           "comment": "Camera functions",
-          "match": "\\b(orbit|dolly|crane|handheld|track|closeup|pullback)\\s*(?=\\()",
+          "match": "\\b(orbit)\\s*(?=\\()",
           "captures": {
             "1": { "name": "support.function.camera.game" }
-          }
-        },
-        {
-          "comment": "Lighting functions",
-          "match": "\\b(sun|ambient|emissive_pass)\\b",
-          "captures": {
-            "1": { "name": "support.function.lighting.game" }
-          }
-        },
-        {
-          "comment": "Transition / stdlib functions",
-          "match": "\\b(fade|morph|shatter|dissolve|ripple|bloom_wipe|burst|stream|swarm|fireflies|rain|sparks)\\s*(?=\\()",
-          "captures": {
-            "1": { "name": "support.function.stdlib.game" }
           }
         },
         {

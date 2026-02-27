@@ -244,11 +244,11 @@ const PRIMITIVES_DATA = {
     entries: [
       { name: "define", syntax: "define name(params) { stages }", params: "Reusable macro. Expands inline at compile time. E.g., define glow_ring(r, t) { ring(r, t) | glow(2.0) }" },
       { name: "layer", syntax: "layer name { fn: chain }", params: "Named visual layer. Multiple layers composite additively. Params use ~ for modulation." },
-      { name: "arc", syntax: "arc { time label { transitions } }", params: "Timeline system. Moments at timestamps with param transitions. E.g., 0:03 \"expand\" { radius -> 0.5 ease(expo_out) over 2s }" },
+      { name: "arc", syntax: "arc { time label { transitions } }", params: "Timeline system. Moments at timestamps with param transitions. Supports ALL keyword: `ALL.intensity -> 0.0 ease(smooth) over 2s` targets all params named intensity across layers. E.g., 0:03 \"expand\" { radius -> 0.5 ease(expo_out) over 2s }" },
       { name: "lens", syntax: "lens { mode: raymarch ... }", params: "Camera/render mode. Default: flat (2D). Options: raymarch (with orbit camera)." },
       { name: "math constants", syntax: "pi, tau, e, phi", params: "pi=3.14159, tau=6.28318, e=2.71828, phi=1.61803 (golden ratio)" },
       { name: "import", syntax: "import \"path\" expose name1, name2", params: "Import defines from external .game files. Also supports `expose ALL` to import everything." },
-      { name: "react", syntax: "react { signal -> action }", params: "Map user inputs to actions. E.g., `mouse.click -> particles.burst(...)`, `key(\"space\") -> arc.pause_toggle`" },
+      { name: "react", syntax: "react { signal -> action }", params: "Map user inputs to actions. Signals: mouse.click, key(\"x\"), mouse.x/y, audio.field > threshold. Actions: arc.pause_toggle, arc.restart, param.set(value), param.toggle(a, b), param.bias(amount). E.g., `key(\"r\") -> arc.restart`, `audio.bass > 0.5 -> opacity.toggle(0.0, 1.0)`" },
       { name: "resonate", syntax: "resonate { a.param ~ b.param * factor, damping: 0.95 }", params: "Cross-layer parameter feedback. Bidirectional coupling between layers. Damping prevents runaway feedback." },
     ],
   },
@@ -328,6 +328,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             source: {
               type: "string",
               description: "The .game DSL source code to validate",
+            },
+          },
+          required: ["source"],
+        },
+      },
+      {
+        name: "lint",
+        description:
+          "Lint .game source code — validates syntax/semantics AND surfaces structured warnings " +
+          "(e.g., unresolvable arc targets, unrecognized react signals, unused lens properties). " +
+          "Returns { valid, warnings[], error? }.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            source: {
+              type: "string",
+              description: "The .game DSL source code to lint",
             },
           },
           required: ["source"],
@@ -486,6 +503,78 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     {
                       valid: false,
                       error: errorOutput,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+        } finally {
+          await cleanupTempFile(tempFile);
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // lint
+      // -----------------------------------------------------------------------
+      case "lint": {
+        const source = (args as Record<string, unknown>)?.source;
+        if (typeof source !== "string" || source.trim().length === 0) {
+          throw new Error("'source' is required and must be a non-empty string");
+        }
+
+        if (!existsSync(COMPILER_PATH)) {
+          throw new Error(
+            `GAME compiler not found at: ${COMPILER_PATH}\n` +
+            `Set the GAME_COMPILER_PATH environment variable to the correct path.`
+          );
+        }
+
+        const tempFile = await writeTempGameFile(source);
+        try {
+          const result = await runCompiler(["compile", tempFile]);
+
+          // Parse warnings from stderr (compiler prints "warning: <msg>" lines)
+          const warnings = result.stderr
+            .split("\n")
+            .filter((line) => line.startsWith("warning:"))
+            .map((line) => line.replace(/^warning:\s*/, "").trim());
+
+          if (result.exitCode === 0) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      valid: true,
+                      warnings,
+                      warningCount: warnings.length,
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          } else {
+            const errorOutput = result.stderr
+              .split("\n")
+              .filter((line) => !line.startsWith("warning:"))
+              .join("\n")
+              .trim() || result.stdout.trim() || "Unknown error";
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      valid: false,
+                      error: errorOutput,
+                      warnings,
+                      warningCount: warnings.length,
                     },
                     null,
                     2
@@ -682,9 +771,71 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
           },
         ],
       },
+      {
+        name: "generate-4da-component",
+        description:
+          "Generate a .game component tuned for the 4DA desktop app. " +
+          "Produces small, data-driven components with gold/dark theme, " +
+          "no audio signals, and subtle animations suited for UI integration.",
+        arguments: [
+          {
+            name: "description",
+            description:
+              "What the component should visualize (e.g., 'progress ring for task completion', 'status indicator that breathes when active')",
+            required: true,
+          },
+        ],
+      },
+      {
+        name: "generate-achievement-visual",
+        description:
+          "Generate a .game component for achievement/progression UI. " +
+          "Produces progress rings, unlock glows, and badge visuals " +
+          "driven by data.progress and data.unlocked signals.",
+        arguments: [
+          {
+            name: "description",
+            description:
+              "What the achievement visual should show (e.g., 'circular progress ring with gold glow on unlock', 'star badge that scales with completion')",
+            required: true,
+          },
+        ],
+      },
+      {
+        name: "generate-game-indicator",
+        description:
+          "Generate a .game component for status indicators, health bars, " +
+          "and XP gauges. Produces compact, data-driven visual indicators " +
+          "using data.value and data.status signals.",
+        arguments: [
+          {
+            name: "description",
+            description:
+              "What the indicator should visualize (e.g., 'health orb that dims when low', 'XP bar with glow at fill milestones')",
+            required: true,
+          },
+        ],
+      },
     ],
   };
 });
+
+/**
+ * Try to load a prompt template from the prompts/ directory.
+ * Returns the file contents with {{placeholders}} substituted, or null if the file doesn't exist.
+ */
+async function loadPromptFile(
+  name: string,
+  vars: Record<string, string>,
+): Promise<string | null> {
+  const promptPath = join(GAME_ROOT, "mcp-game-server", "prompts", `${name}.md`);
+  if (!existsSync(promptPath)) return null;
+  let content = await readFile(promptPath, "utf-8");
+  for (const [key, value] of Object.entries(vars)) {
+    content = content.replaceAll(`{{${key}}}`, value);
+  }
+  return content;
+}
 
 /**
  * Load reference material (language spec, primitives, examples) for prompt context.
@@ -736,6 +887,15 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
         throw new Error("'description' argument is required");
       }
 
+      // Try loading from prompts/generate.md first
+      const promptFile = await loadPromptFile("generate", { description });
+      if (promptFile) {
+        return {
+          messages: [{ role: "user", content: { type: "text", text: promptFile } }],
+        };
+      }
+
+      // Inline fallback
       const { languageRef, primitivesRef, examplesRef } = await loadReferenceContext();
 
       return {
@@ -803,6 +963,15 @@ ${examplesRef}`,
         throw new Error("'feedback' argument is required");
       }
 
+      // Try loading from prompts/iterate.md first
+      const iteratePrompt = await loadPromptFile("iterate", { source, feedback });
+      if (iteratePrompt) {
+        return {
+          messages: [{ role: "user", content: { type: "text", text: iteratePrompt } }],
+        };
+      }
+
+      // Inline fallback
       const { languageRef } = await loadReferenceContext();
 
       return {
@@ -866,6 +1035,15 @@ ${languageRef}`,
         throw new Error("'source' argument is required");
       }
 
+      // Try loading from prompts/describe.md first
+      const describePrompt = await loadPromptFile("describe", { source });
+      if (describePrompt) {
+        return {
+          messages: [{ role: "user", content: { type: "text", text: describePrompt } }],
+        };
+      }
+
+      // Inline fallback
       return {
         messages: [
           {
@@ -894,6 +1072,123 @@ Provide a clear, concise description covering:
 8. **Lens/camera** — describe the rendering mode and camera setup
 
 Be concise but thorough. Use plain language a non-programmer could understand. Avoid repeating the source code verbatim.`,
+            },
+          },
+        ],
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // generate-4da-component
+    // -----------------------------------------------------------------------
+    case "generate-4da-component": {
+      const description = args?.description;
+      if (typeof description !== "string" || description.trim().length === 0) {
+        throw new Error("'description' argument is required");
+      }
+
+      const prompt4da = await loadPromptFile("generate-4da", { description });
+      if (prompt4da) {
+        return {
+          messages: [{ role: "user", content: { type: "text", text: prompt4da } }],
+        };
+      }
+
+      // Inline fallback — minimal version of the 4DA prompt
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `You are a GAME language expert generating components for the 4DA desktop app.
+
+**Description:** ${description}
+
+## 4DA Constraints
+- Small UI component (16–64px canvas)
+- Color: gold (#D4AF37) accent on dark background
+- Use \`data.*\` signals for the main driving value (no audio)
+- 1–3 layers max, subtle glow (1.0–2.5)
+- Gentle animation — breathing/pulsing, not rapid
+
+## Quick Reference
+Pipe order: domain ops | SDF primitives | SDF modifiers | glow | color | post
+Modulation: \`param: base ~ signal * scale\`
+Colors: gold, white, obsidian, black, ivory, deep_blue
+Signals: time, data.*, mouse.x/y
+
+Return ONLY .game source in a fenced code block.`,
+            },
+          },
+        ],
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // generate-achievement-visual
+    // -----------------------------------------------------------------------
+    case "generate-achievement-visual": {
+      const description = args?.description;
+      if (typeof description !== "string" || description.trim().length === 0) {
+        throw new Error("'description' argument is required");
+      }
+
+      const achievementPrompt = await loadPromptFile("generate-achievement", { description });
+      if (achievementPrompt) {
+        return {
+          messages: [{ role: "user", content: { type: "text", text: achievementPrompt } }],
+        };
+      }
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `You are a GAME language expert creating achievement visuals.
+
+**Description:** ${description}
+
+Use data.progress (0-1) for fill, data.unlocked (0 or 1) for completion.
+Gold palette on dark. 2-4 layers. ring() + mask_arc() for progress arcs.
+Return ONLY .game source in a fenced code block.`,
+            },
+          },
+        ],
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // generate-game-indicator
+    // -----------------------------------------------------------------------
+    case "generate-game-indicator": {
+      const description = args?.description;
+      if (typeof description !== "string" || description.trim().length === 0) {
+        throw new Error("'description' argument is required");
+      }
+
+      const indicatorPrompt = await loadPromptFile("generate-indicator", { description });
+      if (indicatorPrompt) {
+        return {
+          messages: [{ role: "user", content: { type: "text", text: indicatorPrompt } }],
+        };
+      }
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `You are a GAME language expert creating status indicators.
+
+**Description:** ${description}
+
+Use data.value (0-1) as primary signal, optional data.status for state.
+Gold/amber palette on dark. 1-3 layers. Gentle breathing animation.
+Return ONLY .game source in a fenced code block.`,
             },
           },
         ],

@@ -1,0 +1,68 @@
+# Void Heartbeat - ambient intelligence state indicator for 4DA.
+#
+# Replicates the 12-uniform WebGL2 shader in .game format.
+# A luminous sphere with noise-distorted edges that shifts color
+# based on system state: amber idle, gold active, red error.
+#
+# Signals:
+#   data.pulse       - 0-1: source fetch activity
+#   data.heat        - 0-1: average relevance from last analysis
+#   data.burst       - 0-1: discovery flash (decays after high-score item)
+#   data.error       - 0-1: recent error indicator
+#   data.staleness   - 0-1: hours since last analysis / 24
+#   data.morph       - 0-1: ACE file change activity
+#   data.critical    - 0-1: critical signal presence (0 or 1)
+#
+# Size: designed for 48-200px canvas. Gold/amber palette.
+
+cinematic "Void Heartbeat" {
+  # Core sphere - breathing SDF circle with noise distortion
+  layer core {
+    fn: fbm(p * noise_freq, octaves: 3, persistence: 0.5) | displace(morph_str) | circle(radius) | glow(core_glow) | tint(gold)
+    radius: 0.35 ~ sin(time * 1.0) * 0.06 + data.pulse * 0.04
+    noise_freq: 3.0 ~ data.morph * 2.0
+    morph_str: 0.04 ~ data.morph * 0.06
+    core_glow: 2.5 ~ data.heat * 1.5
+  }
+
+  # Heat aura - warm glow that intensifies with relevance
+  layer heat_aura {
+    fn: circle(0.2) | glow(heat_g) | tint(ember)
+    heat_g: 0.3 ~ data.heat * 1.8
+    blend_mode: additive
+    opacity: 0.6
+  }
+
+  # Error overlay - red pulse when errors occur
+  # Glow drives visibility: 0 when no error, up to 2.1 at full error
+  layer error_pulse {
+    fn: circle(err_r) | glow(err_g) | tint(red)
+    err_r: 0.15 ~ data.error * 0.1 + sin(time * 4.0) * data.error * 0.03
+    err_g: 0.0 ~ data.error * 2.1
+    blend_mode: additive
+  }
+
+  # Burst flash - short-lived radial flash on high-score discovery
+  layer burst_flash {
+    fn: circle(burst_r) | glow(burst_g) | tint(ivory)
+    burst_r: 0.1 ~ data.burst * 0.3
+    burst_g: 0.0 ~ data.burst * 3.2
+    blend_mode: additive
+  }
+
+  # Critical double-pulse - secondary pulse at 2x frequency
+  layer critical_ring {
+    fn: ring(crit_r, 0.01) | glow(crit_g) | tint(gold)
+    crit_r: 0.25 ~ sin(time * 6.0) * 0.05 * data.critical
+    crit_g: 0.0 ~ data.critical * 1.25
+    blend_mode: additive
+  }
+
+  # Stale dimming - outer vignette that encroaches when data is old
+  layer stale_veil {
+    fn: circle(0.5) | glow(1.0) | tint(obsidian) | vignette(stale_v)
+    stale_v: 0.0 ~ data.staleness * 0.3
+    blend_mode: multiply
+    opacity: 0.15
+  }
+}

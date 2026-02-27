@@ -1,0 +1,25 @@
+# Streak Flame - animated fire indicator driven by streak count.
+# Intensity scales with data.streak (0 = dormant, 7+ = blazing).
+# Used in 4DA's game state dashboard and achievements panel.
+
+cinematic "Streak Flame" {
+  # Inner core - bright gold ember, size driven by streak
+  layer core {
+    fn: circle(r) | glow(g) | tint(gold)
+    r: 0.08 ~ data.streak * 0.015
+    g: 3.0 ~ data.streak * 0.3
+  }
+
+  # Flickering flame body - noise-distorted ring
+  layer flame {
+    fn: fbm(p * freq, octaves: 4, persistence: 0.6) | threshold(0.35) | glow(2.5) | tint(ember)
+    freq: 4.0 ~ data.streak * 0.5 + sin(time * 3.0) * 0.8
+  }
+
+  # Outer heat shimmer - subtle breathing ring
+  layer shimmer {
+    fn: ring(0.25, 0.01) | glow(1.2) | tint(gold)
+    blend_mode: additive
+    opacity: 0.3
+  }
+}

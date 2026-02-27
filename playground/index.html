@@ -251,6 +251,42 @@ button.accent:hover {
   display: block;
 }
 
+#warning-bar {
+  display: none;
+  padding: 8px 12px;
+  background: rgba(212, 175, 55, 0.10);
+  border-top: 1px solid rgba(212, 175, 55, 0.3);
+  color: var(--accent-gold);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 100px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+#warning-bar.visible {
+  display: block;
+}
+
+.copy-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.copy-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
 /* ── WGSL Output ─────────────────────────────────────────── */
 
 #wgsl-output {
@@ -426,6 +462,7 @@ button.accent:hover {
     <div id="editor-wrap">
       <textarea id="editor" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Write your .game shader here..."></textarea>
     </div>
+    <div id="warning-bar"></div>
     <div id="error-bar"></div>
   </div>
 
@@ -433,7 +470,10 @@ button.accent:hover {
   <div class="panel" id="wgsl-panel">
     <div class="panel-header">
       <span>WGSL Output</span>
-      <span class="badge" id="wgsl-size"></span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <button class="copy-btn" id="copy-wgsl-btn" title="Copy WGSL to clipboard">Copy</button>
+        <span class="badge" id="wgsl-size"></span>
+      </span>
     </div>
     <div id="wgsl-output"><span class="wgsl-placeholder">Compiled WGSL will appear here...</span></div>
   </div>
@@ -608,6 +648,8 @@ const examplesSelect = document.getElementById('examples-select');
 const exportSelect = document.getElementById('export-select');
 const shareBtn = document.getElementById('share-btn');
 const wasmStatus = document.getElementById('wasm-status');
+const warningBar = document.getElementById('warning-bar');
+const copyWgslBtn = document.getElementById('copy-wgsl-btn');
 const compileDot = document.getElementById('compile-dot');
 const statusCompile = document.getElementById('status-compile');
 const statusLayers = document.getElementById('status-layers');
@@ -771,12 +813,33 @@ function hideError() {
   errorBar.classList.remove('visible');
 }
 
+function showWarnings(warnings) {
+  if (warnings && warnings.length > 0) {
+    warningBar.textContent = warnings.map(w => `⚠ ${w}`).join('\n');
+    warningBar.classList.add('visible');
+  } else {
+    warningBar.textContent = '';
+    warningBar.classList.remove('visible');
+  }
+}
+
+copyWgslBtn.addEventListener('click', () => {
+  const text = wgslOutput.textContent;
+  if (!text || text.includes('will appear here')) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = copyWgslBtn.textContent;
+    copyWgslBtn.textContent = 'Copied!';
+    setTimeout(() => { copyWgslBtn.textContent = orig; }, 1200);
+  });
+});
+
 function doCompile() {
   if (!wasmReady) return;
   const source = editor.value;
 
   if (!source.trim()) {
     hideError();
+    showWarnings([]);
     wgslOutput.innerHTML = '<span class="wgsl-placeholder">Compiled WGSL will appear here...</span>';
     wgslSize.textContent = '';
     previewMessage.textContent = 'Compile a .game file to see the preview';
@@ -791,6 +854,8 @@ function doCompile() {
     const info = validate(source);
     updateStatus(info);
 
+    showWarnings(info.warnings || []);
+
     if (!info.valid) {
       showError(info.error || 'Validation failed');
       compileDot.className = 'status-dot error';
@@ -799,6 +864,7 @@ function doCompile() {
     }
   } catch (err) {
     // Validation itself threw — still try to compile
+    showWarnings([]);
   }
 
   // Compile WGSL

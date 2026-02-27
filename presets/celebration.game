@@ -1,0 +1,30 @@
+# Celebration - achievement unlock burst effect
+# Golden ring expansion with particle glow and bloom.
+# Triggered by setting intensity to 1.0, decays to 0.0.
+#
+# Usage:
+#   <game-celebration intensity="1.0"></game-celebration>
+#   el.intensity = 1.0;  // triggers burst, set to 0 to reset
+
+cinematic "Celebration" {
+  define burst_ring(r, t) {
+    ring(r, t) | glow(glow_str, 3.0) | bloom(0.3, 2.0) | tint(gold)
+  }
+
+  layer ring_outer {
+    fn: burst_ring(ring_r, 0.02)
+    ring_r: 0.1 ~ 0.1 + data.intensity * 0.4
+    glow_str: 4.0 ~ data.intensity * 6.0
+  }
+
+  layer ring_inner {
+    fn: ring(inner_r, 0.015) | glow(inner_glow, 3.0) | bloom(0.3, 2.0) | tint(gold)
+    inner_r: 0.05 ~ 0.05 + data.intensity * 0.2
+    inner_glow: 3.0 ~ data.intensity * 5.0
+  }
+
+  layer center_flash {
+    fn: circle(0.08) | glow(flash_str, 2.5) | bloom(0.4, 3.0) | tint(white)
+    flash_str: 2.0 ~ data.intensity * 8.0
+  }
+}

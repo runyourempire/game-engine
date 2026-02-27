@@ -1,0 +1,57 @@
+# Level-Up Burst - celebration sequence with arc timeline.
+# Triggered on achievement unlock. Build -> peak -> settle over 2.5 seconds.
+
+cinematic "Level Up" {
+  # Central star flash
+  layer star_flash {
+    fn: star(6, outer, 0.08) | glow(g) | tint(gold)
+    outer: 0.05
+    g: 1.0
+  }
+
+  # Expanding ring 1
+  layer ring1 {
+    fn: ring(r1, 0.02) | glow(g1) | tint(gold)
+    r1: 0.05
+    g1: 1.0
+  }
+
+  # Expanding ring 2 (delayed)
+  layer ring2 {
+    fn: ring(r2, 0.015) | glow(g2) | tint(ivory)
+    r2: 0.03
+    g2: 0.5
+  }
+
+  arc {
+    # Build phase: star brightens
+    0:00 {
+      outer: 0.05
+      g: 1.0
+      r1: 0.05
+      g1: 0.5
+      r2: 0.03
+      g2: 0.0
+    }
+
+    # Peak: everything expands
+    0:00 {
+      outer -> 0.25 ease(expo_out) over 0.5s
+      g -> 4.0 ease(expo_out) over 0.3s
+      r1 -> 0.35 ease(expo_out) over 0.6s
+      g1 -> 3.0 ease(expo_out) over 0.4s
+      r2 -> 0.25 ease(expo_out) over 0.8s
+      g2 -> 2.0 ease(expo_out) over 0.5s
+    }
+
+    # Settle: decay to ambient
+    0:01 {
+      outer -> 0.1 ease(cubic_in_out) over 1.0s
+      g -> 1.5 ease(cubic_in_out) over 1.0s
+      r1 -> 0.45 ease(cubic_in_out) over 1.0s
+      g1 -> 0.8 ease(cubic_in_out) over 1.0s
+      r2 -> 0.4 ease(cubic_in_out) over 1.0s
+      g2 -> 0.5 ease(cubic_in_out) over 1.0s
+    }
+  }
+}
