@@ -1,17 +1,24 @@
 use std::collections::HashMap;
 
 use crate::ast::*;
+use crate::error::{GameError, Result};
 
 use super::RenderMode;
+
+/// Maximum define expansion depth (prevents infinite recursion in nested defines).
+const MAX_DEFINE_DEPTH: usize = 16;
 
 // ── Define expansion ──────────────────────────────────────────────────
 
 /// Expand all define calls in pipe chains (macro-style inlining).
 /// Mutates the cinematic in place, replacing define calls with their
 /// expanded bodies after parameter substitution.
-pub(super) fn expand_defines(cinematic: &mut Cinematic) {
+///
+/// Supports nested defines: loops until no more expansions happen (max depth 16).
+/// Returns an error if arity mismatches or expansion depth is exceeded.
+pub(super) fn expand_defines(cinematic: &mut Cinematic) -> Result<()> {
     if cinematic.defines.is_empty() {
-        return;
+        return Ok(());
     }
 
     let defines: HashMap<String, DefineBlock> = cinematic.defines.iter()
@@ -20,16 +27,47 @@ pub(super) fn expand_defines(cinematic: &mut Cinematic) {
 
     for layer in &mut cinematic.layers {
         if let Some(chain) = &mut layer.fn_chain {
-            expand_chain(chain, &defines);
+            // Loop until no more expansions (supports nested defines)
+            for depth in 0..MAX_DEFINE_DEPTH {
+                let expanded = expand_chain_once(chain, &defines)?;
+                if !expanded {
+                    break;
+                }
+                if depth == MAX_DEFINE_DEPTH - 1 {
+                    return Err(GameError::parse(&format!(
+                        "define expansion exceeded maximum depth of {MAX_DEFINE_DEPTH} — \
+                         check for recursive defines"
+                    )));
+                }
+            }
         }
     }
+
+    Ok(())
 }
 
-fn expand_chain(chain: &mut PipeChain, defines: &HashMap<String, DefineBlock>) {
+/// Expand one pass of define calls in a pipe chain.
+/// Returns `true` if any expansion occurred (caller should loop for nested defines).
+fn expand_chain_once(chain: &mut PipeChain, defines: &HashMap<String, DefineBlock>) -> Result<bool> {
     let mut new_stages = Vec::new();
+    let mut expanded_any = false;
 
     for stage in &chain.stages {
         if let Some(define) = defines.get(&stage.name) {
+            // Arity check: number of args must match number of formal params
+            let actual_count = stage.args.len();
+            let formal_count = define.params.len();
+            if actual_count != formal_count {
+                return Err(GameError {
+                    kind: crate::error::ErrorKind::Message(format!(
+                        "define '{}' expects {} argument(s) but got {}",
+                        stage.name, formal_count, actual_count
+                    )),
+                    span: stage.span.clone(),
+                    source_text: None,
+                });
+            }
+
             // Build substitution map: formal param → actual argument expr
             let subs: HashMap<&str, Expr> = define.params.iter()
                 .zip(stage.args.iter())
@@ -53,12 +91,14 @@ fn expand_chain(chain: &mut PipeChain, defines: &HashMap<String, DefineBlock>) {
                 }
                 new_stages.push(expanded);
             }
+            expanded_any = true;
         } else {
             new_stages.push(stage.clone());
         }
     }
 
     chain.stages = new_stages;
+    Ok(expanded_any)
 }
 
 fn substitute_expr(expr: &mut Expr, subs: &HashMap<&str, Expr>) {

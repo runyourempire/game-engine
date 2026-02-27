@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::ast::{Cinematic, DefineBlock, ImportDecl};
+use crate::ast::{Cinematic, DefineBlock, ImportDecl, Layer};
 use crate::error::{GameError, Result};
 use crate::lexer;
 use crate::parser::Parser;
@@ -71,9 +71,10 @@ fn resolve_imports_inner(
             .to_path_buf();
         resolve_imports_inner(&mut imported, &import_dir, lib_dirs, visited)?;
 
-        // Extract requested defines
-        let defines = extract_defines(&imported, &import)?;
+        // Extract requested defines and layers
+        let (defines, layers) = extract_imports(&imported, &import)?;
         cinematic.defines.extend(defines);
+        cinematic.layers.extend(layers);
 
         // Allow re-visiting from other import chains
         visited.remove(&canonical);
@@ -118,33 +119,51 @@ fn resolve_path(
     )))
 }
 
-/// Extract the requested defines from an imported cinematic.
-fn extract_defines(
+/// Extract the requested defines and layers from an imported cinematic.
+fn extract_imports(
     imported: &Cinematic,
     import: &ImportDecl,
-) -> Result<Vec<DefineBlock>> {
-    // ALL imports everything
+) -> Result<(Vec<DefineBlock>, Vec<Layer>)> {
+    // ALL imports everything (defines + named layers)
     if import.names.len() == 1 && import.names[0] == "ALL" {
-        return Ok(imported.defines.clone());
+        let layers: Vec<Layer> = imported.layers.iter()
+            .filter(|l| l.name.is_some())
+            .cloned()
+            .collect();
+        return Ok((imported.defines.clone(), layers));
     }
 
-    let mut result = Vec::new();
+    let mut defines = Vec::new();
+    let mut layers = Vec::new();
+
     for name in &import.names {
-        let found = imported
+        // Check defines first
+        let found_define = imported
             .defines
             .iter()
             .find(|d| d.name == *name);
 
-        match found {
-            Some(define) => result.push(define.clone()),
-            None => {
-                return Err(GameError::parse(&format!(
-                    "import '{}' does not define '{name}'",
-                    import.path
-                )));
-            }
+        if let Some(define) = found_define {
+            defines.push(define.clone());
+            continue;
         }
+
+        // Check named layers
+        let found_layer = imported
+            .layers
+            .iter()
+            .find(|l| l.name.as_deref() == Some(name.as_str()));
+
+        if let Some(layer) = found_layer {
+            layers.push(layer.clone());
+            continue;
+        }
+
+        return Err(GameError::parse(&format!(
+            "import '{}' does not define or contain a layer named '{name}'",
+            import.path
+        )));
     }
 
-    Ok(result)
+    Ok((defines, layers))
 }

@@ -364,28 +364,5 @@ fn main() {
 }
 
 fn print_error(e: &game_compiler::error::GameError, source: &str) {
-    eprintln!("error: {e}");
-
-    if let Some(span) = &e.span {
-        if span.start <= source.len() {
-            let line_num =
-                source[..span.start].chars().filter(|c| *c == '\n').count() + 1;
-            let line_start =
-                source[..span.start].rfind('\n').map(|i| i + 1).unwrap_or(0);
-            let line_end = source[span.start..]
-                .find('\n')
-                .map(|i| span.start + i)
-                .unwrap_or(source.len());
-            let line = &source[line_start..line_end];
-            let col = span.start - line_start;
-
-            eprintln!();
-            eprintln!("  {line_num} | {line}");
-            eprintln!(
-                "  {} | {}^",
-                " ".repeat(line_num.to_string().len()),
-                " ".repeat(col)
-            );
-        }
-    }
+    eprintln!("{}", game_compiler::error::render_with_source(e, source));
 }

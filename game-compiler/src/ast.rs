@@ -79,6 +79,8 @@ pub struct PipeChain {
 pub struct FnCall {
     pub name: String,
     pub args: Vec<Arg>,
+    /// Byte span of the function name in source, for error reporting.
+    pub span: Option<std::ops::Range<usize>>,
 }
 
 /// Function argument — positional or named.

@@ -12,7 +12,7 @@
 //! values based on other param values. The damping factor prevents runaway
 //! feedback loops.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::ResonanceBlock;
 use crate::codegen::expr::compile_expr_js;
@@ -33,6 +33,7 @@ pub struct CompiledResonance {
 pub fn compile_resonance(
     block: &ResonanceBlock,
     params: &[CompiledParam],
+    warnings: &mut Vec<String>,
 ) -> CompiledResonance {
     let damping = block.damping.unwrap_or(0.95);
 
@@ -49,6 +50,30 @@ pub fn compile_resonance(
         .map(|(i, p)| (p.name.as_str(), i))
         .collect();
 
+    // ── Cycle detection ────────────────────────────────────────────────
+    // Build dependency graph: target → set of source params it reads
+    let mut deps: HashMap<String, HashSet<String>> = HashMap::new();
+    for binding in &block.bindings {
+        let target_name = extract_param_name(&binding.target);
+        let source_js = compile_expr_js(&binding.source);
+        let source_params: HashSet<String> = param_map.keys()
+            .filter(|&&name| is_word_present(&source_js, name))
+            .map(|&name| name.to_string())
+            .collect();
+        deps.entry(target_name).or_default().extend(source_params);
+    }
+
+    // Check for cycles: if A depends on B and B depends on A (mutual), warn without damping
+    if damping >= 1.0 {
+        if let Some(cycle) = detect_cycle(&deps) {
+            warnings.push(format!(
+                "resonance cycle detected ({}) without damping < 1.0 — this will cause runaway feedback. Add `damping: 0.95` or similar",
+                cycle.join(" <-> ")
+            ));
+        }
+    }
+
+    // ── Generate JS ──────────────────────────────────────────────────
     let mut js = String::with_capacity(512);
     js.push_str("// ── Resonance: cross-layer parameter modulation ──\n");
     js.push_str("(function resonanceUpdate(params, dt) {\n");
@@ -71,6 +96,11 @@ pub fn compile_resonance(
 
             js.push_str(&format!(
                 "  deltas[{idx}] += ({resolved_js}) * damp * dt;\n"
+            ));
+        } else {
+            warnings.push(format!(
+                "resonance target '{}' does not match any declared param",
+                binding.target
             ));
         }
     }
@@ -97,6 +127,43 @@ fn extract_param_name(target: &str) -> String {
     }
 }
 
+/// Check if a word (identifier) appears as a standalone token in the string.
+fn is_word_present(text: &str, word: &str) -> bool {
+    let mut start = 0;
+    while let Some(pos) = text[start..].find(word) {
+        let abs_pos = start + pos;
+        let before_ok = abs_pos == 0 || {
+            let prev = text.as_bytes()[abs_pos - 1];
+            !prev.is_ascii_alphanumeric() && prev != b'_'
+        };
+        let after_pos = abs_pos + word.len();
+        let after_ok = after_pos >= text.len() || {
+            let next = text.as_bytes()[after_pos];
+            !next.is_ascii_alphanumeric() && next != b'_'
+        };
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs_pos + 1;
+    }
+    false
+}
+
+/// Detect cycles in the dependency graph. Returns the first cycle found.
+fn detect_cycle(deps: &HashMap<String, HashSet<String>>) -> Option<Vec<String>> {
+    // Simple cycle detection: check for mutual dependencies
+    for (target, sources) in deps {
+        for source in sources {
+            if let Some(source_deps) = deps.get(source) {
+                if source_deps.contains(target) {
+                    return Some(vec![target.clone(), source.clone()]);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Replace param names in a JS expression with `params[N].value` lookups.
 fn resolve_param_refs(js: &str, param_map: &HashMap<&str, usize>) -> String {
     let mut result = js.to_string();
@@ -106,8 +173,6 @@ fn resolve_param_refs(js: &str, param_map: &HashMap<&str, usize>) -> String {
     entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
     for (name, idx) in entries {
-        // Only replace standalone identifiers (not inside other words)
-        // Simple approach: replace if preceded/followed by non-alphanumeric
         let replacement = format!("params[{idx}].value");
         result = replace_word(&result, name, &replacement);
     }
@@ -118,7 +183,6 @@ fn resolve_param_refs(js: &str, param_map: &HashMap<&str, usize>) -> String {
 /// Replace a word (identifier) in a string, only matching whole words.
 fn replace_word(text: &str, word: &str, replacement: &str) -> String {
     let mut result = String::with_capacity(text.len());
-    let _word_len = word.len(); // touch word for validation
     let mut i = 0;
 
     while i < text.len() {
@@ -126,14 +190,14 @@ fn replace_word(text: &str, word: &str, replacement: &str) -> String {
             let before_ok = if i == 0 {
                 true
             } else {
-                let prev = text.as_bytes()[i - 1] as char;
-                !prev.is_alphanumeric() && prev != '_'
+                let prev = text.as_bytes()[i - 1];
+                !prev.is_ascii_alphanumeric() && prev != b'_'
             };
             let after_ok = if i + word.len() >= text.len() {
                 true
             } else {
-                let next = text.as_bytes()[i + word.len()] as char;
-                !next.is_alphanumeric() && next != '_'
+                let next = text.as_bytes()[i + word.len()];
+                !next.is_ascii_alphanumeric() && next != b'_'
             };
 
             if before_ok && after_ok {

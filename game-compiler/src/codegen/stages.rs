@@ -476,6 +476,34 @@ impl WgslGen {
                 self.line(&format!("sdf_result = step({value}, sdf_result);"));
             }
 
+            // ── Phase 5.4: Game-specific primitives ───────────────────
+            "progress_arc" => {
+                let start = self.compile_arg(&stage.args, 0, "0.0")?;
+                let end = self.compile_arg(&stage.args, 1, "6.283")?;
+                let thickness = self.compile_arg(&stage.args, 2, "0.04")?;
+                self.used_builtins.insert("sdf_progress_arc");
+                self.line(&format!(
+                    "var sdf_result = sdf_progress_arc(p, 0.3, {thickness}, {start}, {end});"
+                ));
+            }
+            "hexgrid" => {
+                let spacing = self.compile_arg(&stage.args, 0, "0.2")?;
+                self.used_builtins.insert("sdf_hexgrid");
+                self.line(&format!("var sdf_result = sdf_hexgrid(p, {spacing});"));
+            }
+            "shield" => {
+                let layers_count = self.compile_arg(&stage.args, 0, "3.0")?;
+                self.used_builtins.insert("sdf_shield");
+                self.line(&format!("var sdf_result = sdf_shield(p, {layers_count});"));
+            }
+            "pulse_wave" => {
+                let frequency = self.compile_arg(&stage.args, 0, "5.0")?;
+                let decay = self.compile_arg(&stage.args, 1, "2.0")?;
+                self.line(&format!(
+                    "var sdf_result = sin(length(p) * {frequency} - time * 3.0) * exp(-length(p) * {decay});"
+                ));
+            }
+
             other => {
                 return Err(GameError::unknown_function(other));
             }

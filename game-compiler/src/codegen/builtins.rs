@@ -309,6 +309,69 @@ impl WgslGen {
             self.blank();
         }
 
+        // ── Game-specific primitives ─────────────────────────────────
+
+        if self.used_builtins.contains("sdf_progress_arc") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_progress_arc(p: vec2f, radius: f32, thickness: f32, start_angle: f32, end_angle: f32) -> f32 {");
+            self.indent += 1;
+            self.line("let d_ring = abs(length(p) - radius) - thickness;");
+            self.line("let angle = atan2(p.x, p.y) + 3.14159265359;");
+            self.line("let in_arc = select(999.0, d_ring, angle >= start_angle && angle <= end_angle);");
+            self.line("return in_arc;");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("sdf_hexgrid") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_hexgrid(p: vec2f, spacing: f32) -> f32 {");
+            self.indent += 1;
+            self.line("let s = vec2f(1.0, 1.7320508); // 1, sqrt(3)");
+            self.line("let hs = s * spacing * 0.5;");
+            self.line("let a = p / hs - floor(p / hs) - 0.5;");
+            self.line("let b = (p - hs * 0.5) / hs - floor((p - hs * 0.5) / hs) - 0.5;");
+            self.line("let ga = vec2f(abs(a.x), abs(a.y));");
+            self.line("let gb = vec2f(abs(b.x), abs(b.y));");
+            self.line("let da = 0.5 - max(ga.x * 1.5 + ga.y * 0.866, ga.y * 1.732);");
+            self.line("let db = 0.5 - max(gb.x * 1.5 + gb.y * 0.866, gb.y * 1.732);");
+            self.line("return -max(da, db) * spacing;");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("sdf_shield") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_shield(p: vec2f, layers: f32) -> f32 {");
+            self.indent += 1;
+            self.line("var d: f32 = 999.0;");
+            self.line("for (var i: f32 = 1.0; i <= layers; i += 1.0) {");
+            self.indent += 1;
+            self.line("let r = 0.1 + i * 0.12;");
+            self.line("let ring_d = abs(length(p) - r) - 0.008;");
+            self.line("d = min(d, ring_d);");
+            self.indent -= 1;
+            self.line("}");
+            self.line("return d;");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
         if self.used_builtins.contains("particle_field") {
             if !emitted_any {
                 self.line("// ── Built-in functions ──────────────────────────────────");

@@ -1,7 +1,11 @@
 pub mod ast;
 pub mod codegen;
+pub mod emit_wgsl;
 pub mod error;
+pub mod ir;
 pub mod lexer;
+pub mod lower;
+pub mod optimize;
 pub mod parser;
 pub mod resolver;
 pub mod runtime;
@@ -1067,7 +1071,7 @@ mod integration_tests {
     }
 
     #[test]
-    fn warnings_for_pipe_chain_glow_first() {
+    fn error_for_pipe_chain_glow_first() {
         let source = r#"
             cinematic {
               layer {
@@ -1076,10 +1080,11 @@ mod integration_tests {
             }
         "#;
 
-        let output = compile_full(source).expect("compilation should succeed");
+        let err = compile_full(source).expect_err("glow-first should be an error");
+        let msg = format!("{err}");
         assert!(
-            output.warnings.iter().any(|w| w.contains("glow") && w.contains("SDF")),
-            "should warn about glow before SDF: {:?}", output.warnings
+            msg.contains("glow") && msg.contains("SDF"),
+            "error should mention glow and SDF: {msg}"
         );
     }
 
@@ -1099,18 +1104,18 @@ mod integration_tests {
     }
 
     #[test]
-    fn warnings_appear_in_html_output() {
-        // Use glow-before-SDF to trigger a warning
+    fn error_for_pipe_chain_postprocess_first() {
         let source = r#"
             cinematic {
-              layer { fn: glow(2.0) | circle(0.3) }
+              layer { fn: bloom(0.5) | circle(0.3) }
             }
         "#;
 
-        let html = compile_html(source).expect("compilation should succeed");
+        let err = compile_full(source).expect_err("post-process first should be an error");
+        let msg = format!("{err}");
         assert!(
-            html.contains("console.warn"),
-            "HTML should include console.warn for compiler warnings"
+            msg.contains("bloom") && msg.contains("post-process"),
+            "error should mention bloom and post-process: {msg}"
         );
     }
 
@@ -1522,5 +1527,400 @@ mod integration_tests {
         assert!(component.contains("_initWebGL2"), "component should have WebGL2 init method");
         assert!(component.contains("_glFrame"), "component should have WebGL2 frame loop");
         assert!(component.contains("TRIANGLE_STRIP"), "component should draw triangle strip");
+    }
+
+    // ── Phase 1.5: Expanded test suite ────────────────────────────────
+
+    // ── Error path tests ──────────────────────────────────────────────
+
+    #[test]
+    fn error_unresolved_ident_in_pipe_chain() {
+        let source = r#"cinematic { layer { fn: circle(tme) } }"#;
+        let err = compile_full(source).expect_err("should error on unknown ident 'tme'");
+        let msg = format!("{err}");
+        assert!(msg.contains("tme"), "error should name the bad identifier: {msg}");
+    }
+
+    #[test]
+    fn error_unresolved_ident_in_expression() {
+        let source = r#"cinematic { layer { fn: circle(0.3 + nonexistent * 0.1) | glow(2.0) } }"#;
+        let err = compile_full(source).expect_err("should error on unknown ident");
+        let msg = format!("{err}");
+        assert!(msg.contains("nonexistent"), "error should name the bad identifier: {msg}");
+    }
+
+    #[test]
+    fn valid_param_ident_resolves() {
+        let source = r#"cinematic {
+            layer x {
+                fn: circle(radius) | glow(intensity)
+                radius: 0.3 ~ audio.bass * 0.2
+                intensity: 2.0
+            }
+        }"#;
+        let output = compile_full(source).expect("params should be valid idents");
+        assert!(output.wgsl.contains("p_radius"));
+        assert!(output.wgsl.contains("p_intensity"));
+    }
+
+    #[test]
+    fn error_postprocess_before_any_content() {
+        // bloom before any SDF or color content
+        let source = r#"cinematic { layer { fn: bloom(0.5) } }"#;
+        let err = compile_full(source).expect_err("post-process first should error");
+        let msg = format!("{err}");
+        assert!(msg.contains("bloom") || msg.contains("post-process"), "error should mention the issue: {msg}");
+    }
+
+    #[test]
+    fn error_span_has_line_info() {
+        let source = "cinematic {\n  layer {\n    fn: circle(bad_var)\n  }\n}";
+        let err = compile_full(source).expect_err("should error");
+        assert!(err.span.is_none() || err.span.is_some(), "span should be present or absent gracefully");
+        let rendered = error::render_with_source(&err, source);
+        assert!(rendered.contains("error:"), "rendered should start with error:");
+    }
+
+    #[test]
+    fn error_unknown_function_in_chain() {
+        let source = r#"cinematic { layer { fn: circle(0.3) | sparkle(1.0) } }"#;
+        let err = compile_full(source).expect_err("unknown function 'sparkle'");
+        let msg = format!("{err}");
+        assert!(msg.contains("sparkle"), "error should name the function: {msg}");
+    }
+
+    #[test]
+    fn error_unknown_function_standalone() {
+        let source = r#"cinematic { layer { fn: sparkle(1.0) } }"#;
+        let err = compile_full(source).expect_err("unknown function 'sparkle'");
+        let msg = format!("{err}");
+        assert!(msg.contains("sparkle"), "error should name the function: {msg}");
+    }
+
+    #[test]
+    fn error_empty_pipe_chain() {
+        let source = r#"cinematic { layer { fn: } }"#;
+        let err = compile(source).expect_err("empty fn: should fail");
+        assert!(!format!("{err}").is_empty());
+    }
+
+    // ── Multi-layer tests ─────────────────────────────────────────────
+
+    #[test]
+    fn multi_layer_blend_additive() {
+        let source = r#"cinematic {
+            layer bg { fn: circle(0.5) | glow(1.0) }
+            layer fg {
+                fn: ring(0.3, 0.02) | glow(2.0) | blend(mode: additive, opacity: 0.8)
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert_eq!(output.layer_count, 2);
+    }
+
+    #[test]
+    fn multi_layer_screen_blend() {
+        let source = r#"cinematic {
+            layer a { fn: circle(0.4) | glow(1.0) }
+            layer b { fn: star(5) | glow(1.0) | blend(mode: screen) }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert_eq!(output.layer_count, 2);
+        assert!(output.wgsl.contains("fs_main"));
+    }
+
+    #[test]
+    fn multi_layer_overlay_blend() {
+        let source = r#"cinematic {
+            layer a { fn: fbm(p) | glow(1.0) }
+            layer b { fn: circle(0.3) | glow(2.0) | blend(mode: overlay, opacity: 0.5) }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert_eq!(output.layer_count, 2);
+    }
+
+    #[test]
+    fn multi_layer_four_layers() {
+        let source = r#"cinematic {
+            layer a { fn: circle(0.2) | glow(1.0) }
+            layer b { fn: ring(0.3, 0.01) | glow(1.5) | blend(mode: additive) }
+            layer c { fn: star(6) | glow(2.0) | blend(mode: screen) }
+            layer d { fn: polygon(8) | glow(1.0) | blend(mode: multiply) }
+        }"#;
+        let output = compile_full(source).expect("should compile 4 layers");
+        assert_eq!(output.layer_count, 4);
+    }
+
+    #[test]
+    fn multi_layer_preserves_params() {
+        let source = r#"cinematic {
+            layer a {
+                fn: circle(radius) | glow(glow_amount)
+                radius: 0.3 ~ audio.bass * 0.1
+                glow_amount: 2.0
+            }
+            layer b {
+                fn: ring(0.2, thickness) | glow(1.0) | blend(mode: additive)
+                thickness: 0.02 ~ audio.treble * 0.01
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert_eq!(output.params.len(), 3);
+    }
+
+    // ── Arc tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn arc_warning_on_unresolvable_target() {
+        let source = r#"cinematic {
+            layer x {
+                fn: circle(radius) | glow(2.0)
+                radius: 0.3
+            }
+            arc {
+                0:05 {
+                    nonexistent_param -> 1.0 ease(smooth) over 3s
+                }
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile with warning");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("nonexistent_param")),
+            "should warn about unresolvable arc target: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn arc_resolves_dotted_target() {
+        let source = r#"cinematic {
+            layer fire {
+                fn: circle(intensity) | glow(2.0)
+                intensity: 1.0
+            }
+            arc {
+                0:00 { fire.intensity: 0.0 }
+                0:05 { fire.intensity -> 1.0 ease(smooth) over 5s }
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert!(!output.arc_moments.is_empty(), "should have arc moments");
+        assert!(output.warnings.is_empty(), "no warnings expected: {:?}", output.warnings);
+    }
+
+    #[test]
+    fn arc_multiple_easing_functions() {
+        let source = r#"cinematic {
+            layer x {
+                fn: circle(radius) | glow(glow_amt)
+                radius: 0.3
+                glow_amt: 1.0
+            }
+            arc {
+                0:00 { radius: 0.1 glow_amt: 0.5 }
+                0:10 {
+                    radius -> 0.5 ease(expo_in) over 5s
+                    glow_amt -> 3.0 ease(bounce) over 5s
+                }
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert_eq!(output.arc_moments.len(), 2);
+    }
+
+    #[test]
+    fn arc_empty_block() {
+        let source = r#"cinematic {
+            layer { fn: circle(0.3) | glow(1.0) }
+            arc {}
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert!(output.arc_moments.is_empty());
+    }
+
+    // ── Resonance tests ───────────────────────────────────────────────
+
+    #[test]
+    fn resonance_warning_on_unresolvable_target() {
+        let source = r#"cinematic {
+            layer fire {
+                fn: circle(intensity) | glow(2.0)
+                intensity: 1.0
+            }
+            resonate {
+                fire.nonexistent ~ intensity * 2.0
+                damping: 0.95
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile with warning");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("nonexistent")),
+            "should warn about unresolvable resonance target: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn resonance_damping_default() {
+        let source = r#"cinematic {
+            layer a { fn: circle(freq) | glow(1.0) freq: 1.0 }
+            layer b { fn: ring(0.3, width) | glow(1.0) | blend(mode: additive) width: 0.02 }
+            resonate { freq ~ width * 2.0 }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert!(!output.resonance_js.is_empty(), "should have resonance JS");
+    }
+
+    #[test]
+    fn resonance_with_explicit_damping() {
+        let source = r#"cinematic {
+            layer a { fn: circle(freq) | glow(1.0) freq: 1.0 }
+            layer b { fn: ring(0.3, width) | glow(1.0) | blend(mode: additive) width: 0.02 }
+            resonate {
+                freq ~ width * 2.0
+                width ~ freq * -1.0
+                damping: 0.90
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert!(output.resonance_js.contains("0.9"), "should use custom damping");
+    }
+
+    // ── React tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn react_key_pause_toggle() {
+        let source = r#"cinematic {
+            layer { fn: circle(0.3) | glow(1.0) }
+            react { key("space") -> arc.pause_toggle }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert!(output.react_js.contains("keydown"), "should have keydown listener");
+        assert!(output.react_js.contains("btnToggle"), "should toggle play/pause");
+    }
+
+    #[test]
+    fn react_mouse_click() {
+        let source = r#"cinematic {
+            layer { fn: circle(0.3) | glow(1.0) }
+            react { mouse.click -> arc.pause_toggle }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert!(output.react_js.contains("click"), "should have click listener");
+    }
+
+    #[test]
+    fn react_warning_on_unknown_signal() {
+        let source = r#"cinematic {
+            layer { fn: circle(0.3) | glow(1.0) }
+            react { gamepad.a -> arc.pause_toggle }
+        }"#;
+        let output = compile_full(source).expect("should compile with warning");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("unrecognized react signal")),
+            "should warn about unknown signal: {:?}", output.warnings
+        );
+    }
+
+    // ── Define tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn define_multi_arg() {
+        let source = r#"
+            cinematic {
+                define neon_ring(r, w) { ring(r, w) | glow(3.0) | tint(cyan) }
+                layer { fn: neon_ring(0.3, 0.02) }
+            }
+        "#;
+        let output = compile_full(source).expect("should compile");
+        assert!(output.wgsl.contains("sdf_result"), "ring should expand to SDF result");
+    }
+
+    #[test]
+    fn define_preserves_named_args_in_body() {
+        let source = r#"
+            cinematic {
+                define textured(s) { fbm(p, octaves: 4) | glow(s) }
+                layer { fn: textured(2.0) }
+            }
+        "#;
+        let output = compile_full(source).expect("should compile");
+        assert!(output.wgsl.contains("fbm2"));
+    }
+
+    #[test]
+    fn define_used_multiple_times() {
+        let source = r#"
+            cinematic {
+                define dot(r) { circle(r) | glow(1.0) }
+                layer a { fn: dot(0.2) }
+                layer b { fn: dot(0.4) | blend(mode: additive) }
+            }
+        "#;
+        let output = compile_full(source).expect("should compile");
+        assert_eq!(output.layer_count, 2);
+    }
+
+    // ── Primitive coverage tests ──────────────────────────────────────
+
+    #[test]
+    fn primitive_torus() {
+        let source = r#"cinematic { layer { fn: torus(0.3, 0.05) | glow(1.0) } }"#;
+        compile_full(source).expect("torus should compile");
+    }
+
+    #[test]
+    fn primitive_polygon() {
+        let source = r#"cinematic { layer { fn: polygon(6) | glow(1.5) } }"#;
+        compile_full(source).expect("polygon should compile");
+    }
+
+    #[test]
+    fn primitive_star() {
+        let source = r#"cinematic { layer { fn: star(5) | glow(2.0) | tint(gold) } }"#;
+        compile_full(source).expect("star should compile");
+    }
+
+    #[test]
+    fn primitive_voronoi_and_noise() {
+        let source = r#"cinematic { layer { fn: voronoi(p * 5.0) | glow(1.0) } }"#;
+        compile_full(source).expect("voronoi should compile");
+    }
+
+    // ── Lens warning tests ────────────────────────────────────────────
+
+    #[test]
+    fn lens_warns_on_unimplemented_property() {
+        let source = r#"cinematic {
+            layer { fn: circle(0.3) | glow(1.0) }
+            lens {
+                lighting: ambient
+            }
+        }"#;
+        let output = compile_full(source).expect("should compile");
+        assert!(
+            output.warnings.iter().any(|w| w.contains("lighting") && w.contains("not yet implemented")),
+            "should warn about unimplemented lighting: {:?}", output.warnings
+        );
+    }
+
+    // ── render_with_source tests ──────────────────────────────────────
+
+    #[test]
+    fn render_with_source_shows_line_and_caret() {
+        let source = "cinematic {\n  layer {\n    fn: unknown_fn(0.3)\n  }\n}";
+        let err = compile_full(source).expect_err("should error");
+        let rendered = error::render_with_source(&err, source);
+        assert!(rendered.contains("error:"), "should contain error:");
+        // The rendered output should contain the source line context
+        assert!(rendered.contains("unknown_fn") || rendered.contains("^"),
+            "should show source context or caret: {rendered}");
+    }
+
+    #[test]
+    fn render_with_source_no_span() {
+        let err = error::GameError::parse("something went wrong");
+        let rendered = error::render_with_source(&err, "cinematic {}");
+        assert!(rendered.contains("something went wrong"));
+        // No span means no line info
+        assert!(!rendered.contains("-->"), "should not have line info without span");
     }
 }

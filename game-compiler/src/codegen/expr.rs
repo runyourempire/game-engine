@@ -46,7 +46,7 @@ impl WgslGen {
                 }
             }
             Expr::String(s) => Ok(format!("\"{s}\"")),
-            Expr::Ident(name) => Ok(compile_ident(name)),
+            Expr::Ident(name) => self.compile_ident(name),
             Expr::FieldAccess { object, field } => {
                 let obj = self.compile_expr(object)?;
                 Ok(format!("{obj}.{field}"))
@@ -114,9 +114,25 @@ impl WgslGen {
     }
 }
 
-// ── Free functions ─────────────────────────────────────────────────────
+// ── Identifier resolution ──────────────────────────────────────────────
 
-fn compile_ident(name: &str) -> String {
+impl WgslGen {
+    /// Resolve an identifier to WGSL, validating it against known names.
+    fn compile_ident(&self, name: &str) -> Result<String> {
+        let wgsl = resolve_ident_to_wgsl(name);
+
+        // If the name didn't resolve to a known mapping, check valid_idents
+        if wgsl == name && !self.valid_idents.contains(name) {
+            return Err(GameError::unresolved_ident(name));
+        }
+
+        Ok(wgsl)
+    }
+}
+
+/// Map an identifier to its WGSL representation. Returns the name unchanged
+/// if it isn't a known system uniform, constant, or color.
+pub(crate) fn resolve_ident_to_wgsl(name: &str) -> String {
     match name {
         "time" => "time".to_string(),
         "p" => "p".to_string(),

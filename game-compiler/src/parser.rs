@@ -241,6 +241,37 @@ impl Parser {
                     self.advance(); // consume 'fn'
                     self.expect(&Token::Colon)?;
                     layer.fn_chain = Some(self.parse_pipe_chain()?);
+                } else if name_str == "blend_mode" {
+                    // blend_mode: additive — layer metadata, not a param
+                    self.advance(); // consume 'blend_mode'
+                    self.expect(&Token::Colon)?;
+                    let mode_name = self.expect_ident()?;
+                    layer.blend_mode = Some(match mode_name.as_str() {
+                        "additive" => BlendMode::Additive,
+                        "multiply" => BlendMode::Multiply,
+                        "screen" => BlendMode::Screen,
+                        "overlay" => BlendMode::Overlay,
+                        "normal" => BlendMode::Normal,
+                        _ => BlendMode::Additive,
+                    });
+                } else if name_str == "opacity" {
+                    // opacity: 0.6 — layer metadata (static blend opacity)
+                    // opacity: 0.0 ~ expr — becomes a param for dynamic blending
+                    let prop = self.parse_property_or_param()?;
+                    match prop {
+                        PropertyOrParam::Param(p) => {
+                            // Dynamic opacity (has ~ modulation) — keep as param
+                            layer.params.push(p);
+                        }
+                        PropertyOrParam::Property(p) => {
+                            // Static opacity — set blend_opacity directly
+                            if let Expr::Number(n) = &p.value {
+                                layer.blend_opacity = Some(*n);
+                            } else {
+                                layer.properties.push(p);
+                            }
+                        }
+                    }
                 } else {
                     // Could be a param (with ~) or a plain property
                     let prop = self.parse_property_or_param()?;
@@ -649,6 +680,7 @@ impl Parser {
     }
 
     fn parse_fn_call(&mut self) -> Result<FnCall> {
+        let name_span = self.peek_spanned().map(|s| s.span.clone());
         let name = self.expect_ident()?;
         self.expect(&Token::LParen)?;
 
@@ -684,7 +716,7 @@ impl Parser {
         }
 
         self.expect(&Token::RParen)?;
-        Ok(FnCall { name, args })
+        Ok(FnCall { name, args, span: name_span })
     }
 
     // ── Expressions (Pratt precedence climbing) ───────────────────────
@@ -783,17 +815,36 @@ impl Parser {
                     let call = self.parse_fn_call_with_name(name)?;
                     Expr::Call(call)
                 }
-                // Field access: ident.ident.ident
+                // Field access: ident.ident.ident  OR  method call: ident.method(args)
                 else if self.at(&Token::Dot) {
                     let mut expr = Expr::Ident(name);
                     while self.at(&Token::Dot) {
                         self.advance();
-                        // Field name can also be a keyword used as identifier
                         let field = match self.peek() {
                             Some(Token::Ident(_)) => self.expect_ident()?,
                             Some(Token::Arc) => { self.advance(); "arc".to_string() }
                             _ => self.expect_ident()?,
                         };
+                        // Check for method call: obj.method(args)
+                        if self.at(&Token::LParen) {
+                            // Build a dotted name for the FnCall (e.g., "density.set")
+                            let obj_name = match &expr {
+                                Expr::Ident(n) => n.clone(),
+                                Expr::FieldAccess { .. } => {
+                                    // Flatten nested accesses for the name
+                                    format!("{}.{field}", compile_expr_path(&expr))
+                                }
+                                _ => field.clone(),
+                            };
+                            let full_name = if matches!(&expr, Expr::Ident(_)) {
+                                format!("{obj_name}.{field}")
+                            } else {
+                                obj_name
+                            };
+                            let call = self.parse_fn_call_with_name(full_name)?;
+                            expr = Expr::Call(call);
+                            break; // Call terminates the dot chain
+                        }
                         expr = Expr::FieldAccess {
                             object: Box::new(expr),
                             field,
@@ -866,7 +917,7 @@ impl Parser {
             }
         }
         self.expect(&Token::RParen)?;
-        Ok(FnCall { name, args })
+        Ok(FnCall { name, args, span: None })
     }
 
     fn parse_number(&mut self) -> Result<f64> {
@@ -903,6 +954,17 @@ impl Parser {
 enum PropertyOrParam {
     Property(Property),
     Param(ParamDecl),
+}
+
+/// Flatten an expression to a dotted path string (for method call name construction).
+fn compile_expr_path(expr: &Expr) -> String {
+    match expr {
+        Expr::Ident(name) => name.clone(),
+        Expr::FieldAccess { object, field } => {
+            format!("{}.{field}", compile_expr_path(object))
+        }
+        _ => String::new(),
+    }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

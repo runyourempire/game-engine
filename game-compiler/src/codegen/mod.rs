@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::error::Result;
+use crate::error::{GameError, Result};
 
 mod builtins;
 mod stages;
@@ -123,7 +123,7 @@ pub struct XrayVariant {
 /// other layers fully rendered. Uniform struct is identical across all.
 pub fn generate_xray_variants(cinematic: &Cinematic) -> Result<Vec<XrayVariant>> {
     let mut cinematic = cinematic.clone();
-    expand_defines(&mut cinematic);
+    expand_defines(&mut cinematic)?;
 
     let mut variants = Vec::new();
 
@@ -172,52 +172,108 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
 
     // Expand define calls before any other processing
     let mut cinematic = cinematic.clone();
-    expand_defines(&mut cinematic);
-
-    // (resonance and react blocks are now compiled)
+    expand_defines(&mut cinematic)?;
 
     // Validate pipe chain ordering for all layers (after define expansion)
     for layer in &cinematic.layers {
         if let Some(chain) = &layer.fn_chain {
-            validate_pipe_chain(chain, &mut warnings);
+            validate_pipe_chain(chain, &mut warnings)?;
         }
     }
 
-    // Collect params from all layers
+    // Collect params from all layers (needed for IR lowering)
     gen.collect_params(&cinematic, &mut warnings);
 
     // Determine rendering mode from lens block
     gen.render_mode = determine_render_mode(&cinematic);
 
-    // Raymarch mode still only uses first layer
-    if matches!(gen.render_mode, RenderMode::Raymarch { .. }) && cinematic.layers.len() > 1 {
+    // ── IR pipeline: lower → optimize → reconstruct ──────────────────
+    //
+    // The IR captures the shader structure with semantic metadata, enabling
+    // optimization passes (constant folding, no-op elimination, dead uniform
+    // removal). After optimization, the IR is reconstructed back to an AST
+    // that the existing WgslGen pipeline emits as WGSL.
+    let mut ir = crate::lower::lower(&cinematic, &gen.params, &gen.render_mode);
+    let opt_stats = crate::optimize::optimize(&mut ir);
+    let (optimized_cinematic, optimized_params, optimized_render_mode) =
+        crate::emit_wgsl::reconstruct(&ir);
+
+    // Log optimization results as warnings (visible in MCP lint output)
+    if opt_stats.constants_folded > 0 || opt_stats.noop_stages_removed > 0
+        || opt_stats.dead_uniforms_marked > 0
+    {
         warnings.push(format!(
-            "raymarch mode only uses the first layer; {} additional layer(s) will be ignored",
-            cinematic.layers.len() - 1
+            "[optimizer] {} constant(s) folded, {} no-op stage(s) removed, {} dead uniform(s) eliminated",
+            opt_stats.constants_folded,
+            opt_stats.noop_stages_removed,
+            opt_stats.dead_uniforms_marked,
         ));
     }
 
-    // Generate WGSL
-    gen.generate(&cinematic)?;
+    // Apply optimized params and render mode
+    gen.params = optimized_params;
+    gen.render_mode = optimized_render_mode;
+    gen.valid_idents.clear();
+    // Rebuild valid_idents with optimized param names
+    for name in &[
+        "time", "p", "uv", "height", "pi", "tau", "e", "phi",
+        "black", "white", "red", "green", "blue", "gold", "midnight",
+        "obsidian", "ember", "cyan", "ivory", "frost", "orange",
+        "deep_blue", "ash", "charcoal", "plasma", "violet", "magenta",
+        "audio", "mouse", "data", "i",
+    ] {
+        gen.valid_idents.insert(name.to_string());
+    }
+    for p in &gen.params {
+        gen.valid_idents.insert(p.name.clone());
+    }
+    // ── end IR pipeline ──────────────────────────────────────────────
+
+    // Raymarch mode still only uses first layer
+    if matches!(gen.render_mode, RenderMode::Raymarch { .. }) && optimized_cinematic.layers.len() > 1 {
+        warnings.push(format!(
+            "raymarch mode only uses the first layer; {} additional layer(s) will be ignored",
+            optimized_cinematic.layers.len() - 1
+        ));
+    }
+
+    // Warn for parsed-but-unused lens properties (from original AST)
+    for lens in &cinematic.lenses {
+        for prop in &lens.properties {
+            match prop.name.as_str() {
+                "mode" | "camera" => {} // Handled by determine_render_mode
+                "lighting" | "fields" | "overlay" | "dof" | "motion_blur" => {
+                    warnings.push(format!(
+                        "lens property '{}' is parsed but not yet implemented — it will be ignored",
+                        prop.name
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Generate WGSL from optimized AST
+    gen.generate(&optimized_cinematic)?;
 
     let title = cinematic.name.clone().unwrap_or_else(|| "Untitled".to_string());
     let audio_file = extract_audio_file(&cinematic);
     let param_count = gen.params.len();
 
-    // Compile arc timeline
-    let arc_moments = compile_arc(&cinematic, &gen.params);
+    // Compile arc timeline (from original AST — arc references original param names)
+    let arc_moments = compile_arc(&cinematic, &gen.params, &mut warnings);
 
-    // Compile resonance block
+    // Compile resonance block (from original AST)
     let resonance_js = if let Some(res_block) = &cinematic.resonance {
-        let compiled = resonance::compile_resonance(res_block, &gen.params);
+        let compiled = resonance::compile_resonance(res_block, &gen.params, &mut warnings);
         compiled.js_code
     } else {
         String::new()
     };
 
-    // Compile react block
+    // Compile react block (from original AST)
     let react_js = if let Some(react_block) = &cinematic.react {
-        react::compile_react(react_block, &gen.params)
+        react::compile_react(react_block, &gen.params, &mut warnings)
     } else {
         String::new()
     };
@@ -243,14 +299,19 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
         warnings,
         resonance_js,
         react_js,
-        layer_count: cinematic.layers.len(),
+        layer_count: optimized_cinematic.layers.len(),
         glsl_vertex,
         glsl_fragment,
     })
 }
 
 /// Compile arc block into resolved moments with param indices.
-fn compile_arc(cinematic: &Cinematic, params: &[CompiledParam]) -> Vec<CompiledMoment> {
+///
+/// Supports:
+/// - `param_name` → matches first param with that name
+/// - `layer.param` → matches param named `param` (layer prefix stripped)
+/// - `ALL.param` → expands to target every param named `param` across all layers
+fn compile_arc(cinematic: &Cinematic, params: &[CompiledParam], warnings: &mut Vec<String>) -> Vec<CompiledMoment> {
     let arc = match &cinematic.arc {
         Some(a) => a,
         None => return Vec::new(),
@@ -259,27 +320,61 @@ fn compile_arc(cinematic: &Cinematic, params: &[CompiledParam]) -> Vec<CompiledM
     arc.moments
         .iter()
         .map(|moment| {
-            let transitions = moment
-                .transitions
-                .iter()
-                .filter_map(|t| {
-                    // Resolve "layer.param" or just "param" to a param index
-                    let param_name = resolve_transition_target(&t.target);
-                    let param_idx = params.iter().position(|p| p.name == param_name);
-                    let param_idx = param_idx?; // skip unresolvable targets
+            let mut transitions = Vec::new();
 
-                    let target_value = extract_number(&t.value).unwrap_or(0.0);
-                    let easing = t.easing.clone().unwrap_or_else(|| "linear".to_string());
+            for t in &moment.transitions {
+                let target_value = extract_number(&t.value).unwrap_or(0.0);
+                let easing = t.easing.clone().unwrap_or_else(|| "linear".to_string());
 
-                    Some(CompiledTransition {
-                        param_index: param_idx,
-                        target_value,
-                        is_animated: t.is_animated,
-                        easing,
-                        duration_secs: t.duration_secs,
-                    })
-                })
-                .collect();
+                // Check for ALL keyword: "ALL.param_name"
+                if t.target.starts_with("ALL.") {
+                    let param_suffix = &t.target[4..]; // strip "ALL."
+                    let matching: Vec<usize> = params.iter()
+                        .enumerate()
+                        .filter(|(_, p)| p.name == param_suffix)
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    if matching.is_empty() {
+                        warnings.push(format!(
+                            "arc ALL target '{}' does not match any declared param",
+                            t.target
+                        ));
+                    }
+
+                    for param_idx in matching {
+                        transitions.push(CompiledTransition {
+                            param_index: param_idx,
+                            target_value,
+                            is_animated: t.is_animated,
+                            easing: easing.clone(),
+                            duration_secs: t.duration_secs,
+                        });
+                    }
+                    continue;
+                }
+
+                // Standard resolution: try full name first, then strip layer prefix
+                let param_idx = resolve_param_index(&t.target, params);
+
+                match param_idx {
+                    Some(idx) => {
+                        transitions.push(CompiledTransition {
+                            param_index: idx,
+                            target_value,
+                            is_animated: t.is_animated,
+                            easing,
+                            duration_secs: t.duration_secs,
+                        });
+                    }
+                    None => {
+                        warnings.push(format!(
+                            "arc transition target '{}' does not match any declared param",
+                            t.target
+                        ));
+                    }
+                }
+            }
 
             CompiledMoment {
                 time_seconds: moment.time_seconds,
@@ -290,28 +385,58 @@ fn compile_arc(cinematic: &Cinematic, params: &[CompiledParam]) -> Vec<CompiledM
         .collect()
 }
 
-/// Extract the param name from a transition target like "terrain.scale" or "scale".
-fn resolve_transition_target(target: &str) -> &str {
-    // "layer.param" → "param", "param" → "param"
-    target.rsplit('.').next().unwrap_or(target)
+/// Resolve a transition target to a param index.
+///
+/// Strategy:
+/// 1. Exact match on full target name (e.g., param named "scale" matches "scale")
+/// 2. Strip layer prefix from "layer.param" and match on "param"
+fn resolve_param_index(target: &str, params: &[CompiledParam]) -> Option<usize> {
+    // Try exact match first
+    if let Some(idx) = params.iter().position(|p| p.name == target) {
+        return Some(idx);
+    }
+    // Try stripping layer prefix: "layer.param" → "param"
+    if let Some(dot_pos) = target.rfind('.') {
+        let param_name = &target[dot_pos + 1..];
+        return params.iter().position(|p| p.name == param_name);
+    }
+    None
 }
 
-/// Validate pipe chain stage ordering and emit warnings for likely mistakes.
-fn validate_pipe_chain(chain: &PipeChain, warnings: &mut Vec<String>) {
+/// Validate pipe chain stage ordering.
+///
+/// Critical violations (would produce invalid WGSL) are returned as errors.
+/// Non-critical concerns are pushed to the warnings vec.
+fn validate_pipe_chain(chain: &PipeChain, warnings: &mut Vec<String>) -> Result<()> {
     if chain.stages.is_empty() {
-        return;
+        return Ok(());
     }
 
-    let first = &chain.stages[0].name;
-    let first_kind = classify_stage_kind(first);
+    let first = &chain.stages[0];
+    let first_kind = classify_stage_kind(&first.name);
 
-    // First stage should produce geometry (SDF) or transform position
-    if matches!(first_kind, StageKind::Glow | StageKind::PostProcess) {
-        warnings.push(format!(
-            "pipe chain starts with '{}' which expects a prior SDF stage; \
-             consider starting with a shape (circle, box, ring, etc.)",
-            first
-        ));
+    // Critical: glow as first stage produces invalid WGSL (no SDF input)
+    if matches!(first_kind, StageKind::Glow) {
+        return Err(GameError {
+            kind: crate::error::ErrorKind::Message(format!(
+                "pipe chain starts with '{}' which requires a prior SDF shape (circle, box, ring, etc.)",
+                first.name
+            )),
+            span: first.span.clone(),
+            source_text: None,
+        });
+    }
+
+    // Critical: post-process without any prior visual content
+    if matches!(first_kind, StageKind::PostProcess) {
+        return Err(GameError {
+            kind: crate::error::ErrorKind::Message(format!(
+                "pipe chain starts with post-process '{}' which requires prior visual content",
+                first.name
+            )),
+            span: first.span.clone(),
+            source_text: None,
+        });
     }
 
     // Track what state we've seen to catch ordering issues
@@ -324,10 +449,15 @@ fn validate_pipe_chain(chain: &PipeChain, warnings: &mut Vec<String>) {
             StageKind::Sdf | StageKind::Position => has_sdf = true,
             StageKind::Glow => {
                 if !has_sdf {
-                    warnings.push(format!(
-                        "'{}' appears before any SDF shape — it needs an SDF input",
-                        stage.name
-                    ));
+                    // Critical: glow before any SDF — produces invalid WGSL
+                    return Err(GameError {
+                        kind: crate::error::ErrorKind::Message(format!(
+                            "'{}' appears before any SDF shape — it needs an SDF input",
+                            stage.name
+                        )),
+                        span: stage.span.clone(),
+                        source_text: None,
+                    });
                 }
             }
             StageKind::Color => has_color = true,
@@ -342,6 +472,8 @@ fn validate_pipe_chain(chain: &PipeChain, warnings: &mut Vec<String>) {
             StageKind::Unknown => {}
         }
     }
+
+    Ok(())
 }
 
 /// Lightweight stage classification for validation (separate from ShaderState).
@@ -362,6 +494,7 @@ fn classify_stage_kind(name: &str) -> StageKind {
         | "line" | "polygon" | "star" | "fbm" | "simplex" | "voronoi" | "noise"
         | "mask_arc" | "displace" | "round" | "onion"
         | "curl_noise" | "concentric_waves" | "threshold"
+        | "progress_arc" | "hexgrid" | "shield" | "pulse_wave"
             => StageKind::Sdf,
         "glow" => StageKind::Glow,
         "shade" | "emissive" | "colormap" | "spectrum" | "tint" | "gradient"
@@ -386,10 +519,31 @@ pub(super) struct WgslGen {
     pub(super) data_fields: Vec<String>,
     pub(super) render_mode: RenderMode,
     pub(super) used_builtins: std::collections::HashSet<&'static str>,
+    /// Valid identifiers for expression validation. Populated during collect_params().
+    pub(super) valid_idents: std::collections::HashSet<String>,
 }
 
 impl WgslGen {
     fn new() -> Self {
+        // System uniforms, constants, and named colors that are always valid
+        let mut valid_idents: std::collections::HashSet<String> = [
+            // System uniforms / variables
+            "time", "p", "uv", "height",
+            // Math constants
+            "pi", "tau", "e", "phi",
+            // Named colors
+            "black", "white", "red", "green", "blue", "gold", "midnight",
+            "obsidian", "ember", "cyan", "ivory", "frost", "orange",
+            "deep_blue", "ash", "charcoal", "plasma", "violet", "magenta",
+            // Signal roots (validated by FieldAccess, not bare ident)
+            "audio", "mouse", "data",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        // Add 'i' which is used as loop variable in raymarch and elsewhere
+        valid_idents.insert("i".to_string());
+
         Self {
             output: String::with_capacity(8192),
             indent: 0,
@@ -400,6 +554,7 @@ impl WgslGen {
             data_fields: Vec::new(),
             render_mode: RenderMode::Flat,
             used_builtins: std::collections::HashSet::new(),
+            valid_idents,
         }
     }
 
@@ -454,6 +609,7 @@ impl WgslGen {
 
                 let base_value = extract_number(&param.base_value).unwrap_or(0.0);
 
+                self.valid_idents.insert(param.name.clone());
                 self.params.push(CompiledParam {
                     name: param.name.clone(),
                     uniform_field,
@@ -474,6 +630,7 @@ impl WgslGen {
                     }
                     let idx = SYSTEM_FLOAT_COUNT + self.params.len();
                     let uniform_field = format!("p_{}", prop.name);
+                    self.valid_idents.insert(prop.name.clone());
                     self.params.push(CompiledParam {
                         name: prop.name.clone(),
                         uniform_field,
@@ -617,7 +774,8 @@ impl WgslGen {
     pub(super) fn classify_stage(&self, name: &str) -> Result<ShaderState> {
         match name {
             "circle" | "sphere" | "ring" | "box" | "torus" | "cylinder" | "plane"
-            | "line" | "polygon" | "star" => Ok(ShaderState::Sdf),
+            | "line" | "polygon" | "star"
+            | "progress_arc" | "hexgrid" | "shield" | "pulse_wave" => Ok(ShaderState::Sdf),
             "glow" => Ok(ShaderState::Glow),
             "shade" | "emissive" | "colormap" | "spectrum" | "tint"
             | "gradient" | "particles" => Ok(ShaderState::Color),
