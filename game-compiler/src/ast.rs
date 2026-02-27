@@ -8,6 +8,7 @@
 #[derive(Debug, Clone)]
 pub struct Cinematic {
     pub name: Option<String>,
+    pub imports: Vec<ImportDecl>,
     pub properties: Vec<Property>,
     pub layers: Vec<Layer>,
     pub lenses: Vec<Lens>,
@@ -17,11 +18,28 @@ pub struct Cinematic {
     pub defines: Vec<DefineBlock>,
 }
 
+/// Import declaration: `import "path" expose name1, name2`
+#[derive(Debug, Clone)]
+pub struct ImportDecl {
+    pub path: String,
+    pub names: Vec<String>,
+}
+
 /// A key-value property: `resolution: 1920x1080` or `audio: "track.ogg"`
 #[derive(Debug, Clone)]
 pub struct Property {
     pub name: String,
     pub value: Expr,
+}
+
+/// Blend mode for multi-layer compositing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlendMode {
+    Additive,
+    Multiply,
+    Screen,
+    Overlay,
+    Normal,
 }
 
 /// A generative layer — the fundamental visual unit.
@@ -31,6 +49,8 @@ pub struct Layer {
     pub fn_chain: Option<PipeChain>,
     pub params: Vec<ParamDecl>,
     pub properties: Vec<Property>,
+    pub blend_mode: Option<BlendMode>,
+    pub blend_opacity: Option<f64>,
 }
 
 /// A parameter declaration with optional modulation.

@@ -1,0 +1,50 @@
+{
+  "name": "game-language",
+  "displayName": "GAME Language",
+  "description": "Syntax highlighting, live preview, and diagnostics for .game shader files",
+  "version": "0.1.0",
+  "publisher": "runyourempire",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Visualization"],
+  "activationEvents": ["onLanguage:game"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [{
+      "id": "game",
+      "aliases": ["GAME", "game"],
+      "extensions": [".game"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "game",
+      "scopeName": "source.game",
+      "path": "./syntaxes/game.tmLanguage.json"
+    }],
+    "commands": [
+      { "command": "game.preview", "title": "GAME: Open Preview" },
+      { "command": "game.compile", "title": "GAME: Compile to WGSL" },
+      { "command": "game.compileHtml", "title": "GAME: Compile to HTML" },
+      { "command": "game.compileComponent", "title": "GAME: Compile to Component" }
+    ],
+    "snippets": [{
+      "language": "game",
+      "path": "./snippets/game.json"
+    }],
+    "configuration": {
+      "title": "GAME",
+      "properties": {
+        "game.autoPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open preview when editing .game files"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0"
+  }
+}

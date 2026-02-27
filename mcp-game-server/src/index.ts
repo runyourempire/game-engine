@@ -18,6 +18,8 @@
  *
  * Prompts:
  *   - generate-component: Guide an LLM to produce .game source from a description
+ *   - iterate-component: Refine existing .game source based on natural language feedback
+ *   - describe-component: Describe what a .game visual effect does in plain English
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -158,6 +160,7 @@ const PRIMITIVES_DATA = {
       { name: "displace", syntax: "displace(strength)", params: "strength: noise displacement amount (default 0.1). Uses simplex noise." },
       { name: "round", syntax: "round(r)", params: "r: rounding radius (default 0.05). Rounds sharp edges." },
       { name: "onion", syntax: "onion(thickness)", params: "thickness: shell wall width (default 0.02). Creates concentric shells." },
+      { name: "threshold", syntax: "threshold(value)", params: "Binary step threshold on SDF result. value: cutoff (default 0.5). Produces hard edges." },
     ],
   },
   noise_functions: {
@@ -166,6 +169,8 @@ const PRIMITIVES_DATA = {
       { name: "fbm", syntax: "fbm(pos, octaves:N, persistence:P, lacunarity:L)", params: "Fractal Brownian Motion. pos: coordinate (default p), octaves: 1-8 (default 6), persistence (default 0.5), lacunarity (default 2.0)" },
       { name: "simplex", syntax: "simplex(frequency)", params: "frequency: spatial frequency (default 1.0). Smooth organic noise." },
       { name: "voronoi", syntax: "voronoi(frequency)", params: "frequency: cell density (default 1.0). Cellular/crystal pattern." },
+      { name: "curl_noise", syntax: "curl_noise(pos, frequency, amplitude)", params: "Curl of 2D simplex noise. Creates flowing, divergence-free patterns. pos: coordinate (default p), frequency (default 1.0), amplitude (default 1.0)" },
+      { name: "concentric_waves", syntax: "concentric_waves(origins, decay, speed)", params: "Expanding concentric wave pattern from center. origins: number of wave centers (default 1), decay: falloff (default 1.0), speed: expansion rate (default 1.0)" },
     ],
   },
   glow: {
@@ -183,6 +188,7 @@ const PRIMITIVES_DATA = {
       { name: "spectrum", syntax: "spectrum(bass, mid, treble)", params: "Audio-reactive concentric rings. Each param maps to frequency band intensity." },
       { name: "tint", syntax: "tint(color)", params: "Multiplies current glow/color by a color. Accepts named colors or vec3f." },
       { name: "gradient", syntax: "gradient(color_a, color_b, direction)", params: "Spatial gradient. direction: 'x', 'y', or 'radial' (default 'y')." },
+      { name: "particles", syntax: "particles(count, size, color, trail)", params: "Hash-based pseudo-particle field. count: number of particles (default 1000), size: particle radius (default 1.5), color: named color or vec3f (default white), trail: motion blur length (default 0.0)" },
     ],
   },
   post_processing: {
@@ -198,6 +204,7 @@ const PRIMITIVES_DATA = {
       { name: "tonemap", syntax: "tonemap(exposure)", params: "exposure: brightness (default 1.0). Reinhard-style HDR compression." },
       { name: "invert", syntax: "invert()", params: "Inverts all colors (1.0 - rgb)." },
       { name: "saturate_color", syntax: "saturate_color(amount)", params: "amount: saturation multiplier (default 1.5). >1 increases, <1 decreases." },
+      { name: "iridescent", syntax: "iridescent(strength)", params: "Thin-film interference / rainbow color shift effect. strength: effect intensity (default 0.3). Best after shading stages." },
     ],
   },
   signals: {
@@ -240,6 +247,9 @@ const PRIMITIVES_DATA = {
       { name: "arc", syntax: "arc { time label { transitions } }", params: "Timeline system. Moments at timestamps with param transitions. E.g., 0:03 \"expand\" { radius -> 0.5 ease(expo_out) over 2s }" },
       { name: "lens", syntax: "lens { mode: raymarch ... }", params: "Camera/render mode. Default: flat (2D). Options: raymarch (with orbit camera)." },
       { name: "math constants", syntax: "pi, tau, e, phi", params: "pi=3.14159, tau=6.28318, e=2.71828, phi=1.61803 (golden ratio)" },
+      { name: "import", syntax: "import \"path\" expose name1, name2", params: "Import defines from external .game files. Also supports `expose ALL` to import everything." },
+      { name: "react", syntax: "react { signal -> action }", params: "Map user inputs to actions. E.g., `mouse.click -> particles.burst(...)`, `key(\"space\") -> arc.pause_toggle`" },
+      { name: "resonate", syntax: "resonate { a.param ~ b.param * factor, damping: 0.95 }", params: "Cross-layer parameter feedback. Bidirectional coupling between layers. Damping prevents runaway feedback." },
     ],
   },
   easing_functions: {
@@ -263,7 +273,7 @@ const PRIMITIVES_DATA = {
 const server = new Server(
   {
     name: "game-server",
-    version: "0.1.0",
+    version: "0.2.0",
   },
   {
     capabilities: {
@@ -640,23 +650,51 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
           },
         ],
       },
+      {
+        name: "iterate-component",
+        description:
+          "Refine existing .game source code based on natural language feedback. " +
+          "Preserves working parts and applies targeted modifications. " +
+          "Includes language reference for context.",
+        arguments: [
+          {
+            name: "source",
+            description: "The current .game source code to modify",
+            required: true,
+          },
+          {
+            name: "feedback",
+            description: "Natural language description of what to change (e.g., 'make it glow more', 'add a blue tint', 'slow down the animation')",
+            required: true,
+          },
+        ],
+      },
+      {
+        name: "describe-component",
+        description:
+          "Describe what a .game visual effect does in plain English. " +
+          "Explains layers, parameters, modulation, timeline events, and overall aesthetic.",
+        arguments: [
+          {
+            name: "source",
+            description: "The .game source code to describe",
+            required: true,
+          },
+        ],
+      },
     ],
   };
 });
 
-server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
-  if (name !== "generate-component") {
-    throw new Error(`Unknown prompt: ${name}`);
-  }
-
-  const description = args?.description;
-  if (typeof description !== "string" || description.trim().length === 0) {
-    throw new Error("'description' argument is required");
-  }
-
-  // Load language reference and primitives for context
+/**
+ * Load reference material (language spec, primitives, examples) for prompt context.
+ * Returns { languageRef, primitivesRef, examplesRef } with empty strings if files are missing.
+ */
+async function loadReferenceContext(): Promise<{
+  languageRef: string;
+  primitivesRef: string;
+  examplesRef: string;
+}> {
   let languageRef = "";
   let primitivesRef = "";
   let examplesRef = "";
@@ -682,13 +720,31 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     examplesRef = sections.join("\n\n");
   }
 
-  return {
-    messages: [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: `You are a GAME language expert. Generate a .game file that creates the following visual effect:
+  return { languageRef, primitivesRef, examplesRef };
+}
+
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  switch (name) {
+    // -----------------------------------------------------------------------
+    // generate-component
+    // -----------------------------------------------------------------------
+    case "generate-component": {
+      const description = args?.description;
+      if (typeof description !== "string" || description.trim().length === 0) {
+        throw new Error("'description' argument is required");
+      }
+
+      const { languageRef, primitivesRef, examplesRef } = await loadReferenceContext();
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `You are a GAME language expert. Generate a .game file that creates the following visual effect:
 
 **Description:** ${description}
 
@@ -703,6 +759,9 @@ Use the language reference, primitives, and examples below to produce valid .gam
 5. Include post-processing effects for visual polish
 6. Use descriptive names for layers and parameters
 7. Keep it focused — a good effect is simple but expressive
+8. Use \`define\` for reusable patterns when you repeat similar pipe chains
+9. Use \`resonate\` for cross-layer feedback when multiple layers should interact
+10. Use \`react\` to map user inputs (mouse, keyboard) to actions
 
 ## Output Format
 
@@ -725,10 +784,125 @@ ${primitivesRef}
 ## Examples
 
 ${examplesRef}`,
-        },
-      },
-    ],
-  };
+            },
+          },
+        ],
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // iterate-component
+    // -----------------------------------------------------------------------
+    case "iterate-component": {
+      const source = args?.source;
+      if (typeof source !== "string" || source.trim().length === 0) {
+        throw new Error("'source' argument is required");
+      }
+      const feedback = args?.feedback;
+      if (typeof feedback !== "string" || feedback.trim().length === 0) {
+        throw new Error("'feedback' argument is required");
+      }
+
+      const { languageRef } = await loadReferenceContext();
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `You are a GAME language expert. Modify the following .game source code to address the user's feedback.
+
+## Current Source
+
+\`\`\`game
+${source}
+\`\`\`
+
+## Requested Changes
+
+${feedback}
+
+## Instructions
+
+1. **Preserve working parts** — only change what is needed to address the feedback
+2. **Maintain structure** — keep the cinematic block, layer names, and overall organization unless the feedback specifically asks to restructure
+3. **Validate your changes** — ensure pipe chains follow correct stage ordering (domain ops -> SDF -> modifiers -> glow -> shading -> post-processing)
+4. **Use existing primitives** — refer to the language reference below for valid syntax
+
+## Common Refinement Patterns
+
+- **Add glow:** append \`| glow(intensity)\` after an SDF stage
+- **Change color:** add or modify \`| tint(color_name)\` or \`| shade(albedo: color)\`
+- **Add animation:** use \`time\` in expressions (e.g., \`rotate(time * 0.5)\`) or modulation (\`param: base ~ signal\`)
+- **Add post-processing:** append effects like \`| bloom(0.5, 1.2)\`, \`| vignette(0.3)\`, \`| grain(0.02)\`
+- **Make it reactive:** add \`~ audio.bass\`, \`~ mouse.x\`, or other signal modulation to parameters
+- **Add layers:** create additional \`layer name { fn: ... }\` blocks for composite effects
+- **Add timeline:** use an \`arc { ... }\` block with named moments and transitions
+- **Add interaction:** use a \`react { ... }\` block to map inputs to actions
+- **Cross-layer feedback:** use \`resonate { ... }\` for emergent behavior between layers
+
+## Output Format
+
+Return ONLY the modified .game source code inside a single code block. No explanation before or after.
+
+---
+
+## Language Reference
+
+${languageRef}`,
+            },
+          },
+        ],
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // describe-component
+    // -----------------------------------------------------------------------
+    case "describe-component": {
+      const source = args?.source;
+      if (typeof source !== "string" || source.trim().length === 0) {
+        throw new Error("'source' argument is required");
+      }
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `You are a GAME language expert. Describe what the following .game visual effect does in plain English.
+
+## Source Code
+
+\`\`\`game
+${source}
+\`\`\`
+
+## Instructions
+
+Provide a clear, concise description covering:
+
+1. **Overall effect** — what does this look like when rendered? What is the visual impression?
+2. **Layers** — describe each layer: what shape/noise it uses, how it is colored, its role in the composition
+3. **Parameters and modulation** — which parameters are defined, and which react to signals (audio, mouse, time)? What is the practical effect of each modulation?
+4. **Timeline (arc)** — if present, describe the sequence of events: what happens when, and how do transitions unfold?
+5. **Interaction (react)** — if present, describe what user inputs trigger
+6. **Resonance (resonate)** — if present, explain the cross-layer feedback and what emergent behavior it creates
+7. **Post-processing** — describe any screen-space effects applied (bloom, vignette, grain, etc.)
+8. **Lens/camera** — describe the rendering mode and camera setup
+
+Be concise but thorough. Use plain language a non-programmer could understand. Avoid repeating the source code verbatim.`,
+            },
+          },
+        ],
+      };
+    }
+
+    default:
+      throw new Error(`Unknown prompt: ${name}`);
+  }
 });
 
 // =============================================================================
@@ -761,7 +935,7 @@ async function main() {
     process.exit(0);
   });
 
-  console.error("GAME MCP Server v0.1.0 started — 3 tools, 3 resources, 1 prompt | stdio transport");
+  console.error("GAME MCP Server v0.2.0 started — 3 tools, 3 resources, 3 prompts | stdio transport");
 }
 
 main().catch((error) => {

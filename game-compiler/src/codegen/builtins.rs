@@ -128,10 +128,12 @@ impl WgslGen {
 
         // ── Noise functions ──────────────────────────────────────────
 
-        // hash2 is a dependency shared by fbm2, simplex2, voronoi2
+        // hash2 is a dependency shared by fbm2, simplex2, voronoi2, curl2, particle_field
         let needs_hash2 = self.used_builtins.contains("fbm2")
             || self.used_builtins.contains("simplex2")
-            || self.used_builtins.contains("voronoi2");
+            || self.used_builtins.contains("voronoi2")
+            || self.used_builtins.contains("curl2")
+            || self.used_builtins.contains("particle_field");
 
         if needs_hash2 {
             if !emitted_any {
@@ -149,9 +151,11 @@ impl WgslGen {
             self.blank();
         }
 
-        // hash2v is needed by voronoi2 and simplex2 (returns vec2f)
+
+        // hash2v is needed by voronoi2, simplex2, and curl2 (returns vec2f)
         let needs_hash2v = self.used_builtins.contains("simplex2")
-            || self.used_builtins.contains("voronoi2");
+            || self.used_builtins.contains("voronoi2")
+            || self.used_builtins.contains("curl2");
 
         if needs_hash2v {
             if !emitted_any {
@@ -169,9 +173,11 @@ impl WgslGen {
             self.blank();
         }
 
-        // noise2 is a dependency for fbm2 and simplex2-as-fbm fallback
+
+        // noise2 is a dependency for fbm2, simplex2, and curl2
         let needs_noise2 = self.used_builtins.contains("fbm2")
-            || self.used_builtins.contains("simplex2");
+            || self.used_builtins.contains("simplex2")
+            || self.used_builtins.contains("curl2");
 
         if needs_noise2 {
             if !emitted_any {
@@ -222,7 +228,7 @@ impl WgslGen {
             self.blank();
         }
 
-        if self.used_builtins.contains("simplex2") {
+        if self.used_builtins.contains("simplex2") || self.used_builtins.contains("curl2") {
             if !emitted_any {
                 self.line("// ── Built-in functions ──────────────────────────────────");
                 self.blank();
@@ -255,8 +261,7 @@ impl WgslGen {
             if !emitted_any {
                 self.line("// ── Built-in functions ──────────────────────────────────");
                 self.blank();
-                #[allow(unused_assignments)]
-                { emitted_any = true; }
+                emitted_any = true;
             }
             self.line("fn voronoi2(p: vec2f) -> f32 {");
             self.indent += 1;
@@ -277,6 +282,53 @@ impl WgslGen {
             self.indent -= 1;
             self.line("}");
             self.line("return sqrt(md);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        // ── Curl & particle functions ────────────────────────────
+
+        if self.used_builtins.contains("curl2") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn curl2(p: vec2f, freq: f32, amp: f32) -> vec2f {");
+            self.indent += 1;
+            self.line("let eps: f32 = 0.001;");
+            self.line("let n0 = simplex2(p * freq);");
+            self.line("let nx = simplex2((p + vec2f(eps, 0.0)) * freq);");
+            self.line("let ny = simplex2((p + vec2f(0.0, eps)) * freq);");
+            self.line("let dndx = (nx - n0) / eps;");
+            self.line("let dndy = (ny - n0) / eps;");
+            self.line("return vec2f(dndy, -dndx) * amp;");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("particle_field") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                #[allow(unused_assignments)]
+                { emitted_any = true; }
+            }
+            self.line("fn particle_field(p: vec2f, count: f32, size: f32) -> f32 {");
+            self.indent += 1;
+            self.line("var brightness: f32 = 0.0;");
+            self.line("for (var i: f32 = 0.0; i < count; i += 1.0) {");
+            self.indent += 1;
+            self.line("let h = hash2(vec2f(i * 127.1, i * 311.7));");
+            self.line("let h2 = hash2(vec2f(i * 269.5, i * 183.3));");
+            self.line("let pp = vec2f(h * 2.0 - 1.0, h2 * 2.0 - 1.0);");
+            self.line("let d = length(p - pp);");
+            self.line("brightness += exp(-d * d / (size * size * 0.01)) * 0.5;");
+            self.indent -= 1;
+            self.line("}");
+            self.line("return brightness;");
             self.indent -= 1;
             self.line("}");
             self.blank();

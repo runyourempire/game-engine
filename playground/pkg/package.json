@@ -1,0 +1,32 @@
+{
+  "name": "game-compiler",
+  "type": "module",
+  "collaborators": [
+    "runyourempire"
+  ],
+  "description": "Compiler for the .game visual component language",
+  "version": "0.2.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/runyourempire/game-engine"
+  },
+  "files": [
+    "game_compiler_bg.wasm",
+    "game_compiler.js",
+    "game_compiler.d.ts"
+  ],
+  "main": "game_compiler.js",
+  "homepage": "https://github.com/runyourempire/game-engine",
+  "types": "game_compiler.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "shader",
+    "webgpu",
+    "wgsl",
+    "web-components",
+    "generative-art"
+  ]
+}

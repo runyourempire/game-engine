@@ -1,6 +1,6 @@
 {
   "name": "game-components",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "GPU-accelerated visual components compiled from .game files. Zero dependencies, Web Components.",
   "type": "module",
   "license": "MIT",
@@ -17,19 +17,49 @@
     "loading",
     "spinner",
     "animation",
-    "gpu"
+    "gpu",
+    "audio",
+    "visualization",
+    "dashboard"
   ],
+  "bin": {
+    "create-game": "./create-game/index.js"
+  },
   "exports": {
+    "./arc-demo": "./dist/arc-demo.js",
+    "./audio-layers": "./dist/audio-layers.js",
+    "./audio-reactive": "./dist/audio-reactive.js",
+    "./audio-spectrum": "./dist/audio-spectrum.js",
+    "./audio-hello": "./dist/audio-hello.js",
     "./breathing-dot": "./dist/breathing-dot.js",
-    "./loading-ring": "./dist/loading-ring.js",
-    "./metric-ring": "./dist/metric-ring.js",
+    "./cinematic-arc": "./dist/cinematic-arc.js",
+    "./dashboard-gauge": "./dist/dashboard-gauge.js",
+    "./game-galaxy": "./dist/game-galaxy.js",
+    "./game-hello": "./dist/game-hello.js",
+    "./game-interactive": "./dist/game-interactive.js",
+    "./game-kaleidoscope": "./dist/game-kaleidoscope.js",
+    "./game-resonance": "./dist/game-resonance.js",
+    "./game-showcase": "./dist/game-showcase.js",
+    "./game-spectrum": "./dist/game-spectrum.js",
     "./spinner": "./dist/game-spinner.js",
+    "./game-starfield": "./dist/game-starfield.js",
+    "./layered-scene": "./dist/layered-scene.js",
+    "./loading-ring": "./dist/loading-ring.js",
+    "./loading-stages": "./dist/loading-stages.js",
+    "./metric-ring": "./dist/metric-ring.js",
+    "./mouse-follow": "./dist/mouse-follow.js",
+    "./neon-ring": "./dist/neon-ring.js",
     "./status-pulse": "./dist/status-pulse.js",
-    "./react": "./react/index.js"
+    "./react": "./react/index.js",
+    "./vue": "./vue/index.js",
+    "./svelte": "./svelte/index.js"
   },
   "files": [
     "dist/",
     "react/",
+    "vue/",
+    "svelte/",
+    "create-game/",
     "README.md"
   ],
   "scripts": {

@@ -1,0 +1,31 @@
+# GAME Standard Library — Background Patterns
+#
+# Usage: import "backgrounds" expose starfield, nebula, grid_bg
+
+cinematic "stdlib/backgrounds" {
+
+  # A starfield of repeated tiny circles
+  define starfield(density, size) {
+    repeat(density) | circle(size) | glow(3.0)
+  }
+
+  # A nebula-like background
+  define nebula(scale) {
+    fbm(scale, octaves: 5, persistence: 0.45) | glow(2.0) | tint(violet)
+  }
+
+  # A vertical gradient background
+  define gradient_bg(color_a, color_b) {
+    gradient(color_a, color_b, "y")
+  }
+
+  # A radial gradient from center
+  define radial_bg(color_a, color_b) {
+    gradient(color_a, color_b, "radial")
+  }
+
+  # Animated noise background
+  define noise_bg(scale) {
+    simplex(scale) | glow(1.5) | vignette(0.4)
+  }
+}

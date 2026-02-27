@@ -55,3 +55,12 @@ fn all_presets_compile() {
         .join("presets");
     compile_all_in_dir(&dir);
 }
+
+#[test]
+fn all_aspirational_examples_compile() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("game-compiler should have a parent dir")
+        .join("examples");
+    compile_all_in_dir(&dir);
+}

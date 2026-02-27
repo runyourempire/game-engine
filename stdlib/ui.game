@@ -1,0 +1,31 @@
+# GAME Standard Library — UI Components
+#
+# Usage: import "ui" expose loading_spinner, progress_ring, pulse_dot
+
+cinematic "stdlib/ui" {
+
+  # A loading spinner — rotating masked ring
+  define loading_spinner(radius, thickness, angle) {
+    ring(radius, thickness) | mask_arc(angle) | glow(2.0)
+  }
+
+  # A progress ring bound to data.progress
+  define progress_ring(radius, thickness, fill) {
+    ring(radius, thickness) | mask_arc(fill) | glow(3.0)
+  }
+
+  # A pulsing status dot
+  define pulse_dot(radius, intensity) {
+    circle(radius) | glow(intensity)
+  }
+
+  # A metric gauge ring with glow
+  define metric_ring(radius, thickness, fill) {
+    ring(radius, thickness) | mask_arc(fill) | glow(4.0)
+  }
+
+  # A notification badge
+  define badge(size) {
+    circle(size) | glow(2.0) | tint(crimson)
+  }
+}

@@ -34,6 +34,10 @@ enum Commands {
         /// Write output to file instead of stdout
         #[arg(short)]
         o: Option<PathBuf>,
+
+        /// Additional library search paths for imports (e.g., stdlib directory)
+        #[arg(long = "lib")]
+        lib_dirs: Vec<PathBuf>,
     },
 
     /// Start a hot-reload dev server for a .game file
@@ -54,6 +58,10 @@ enum Commands {
         /// Output directory for compiled files
         #[arg(long, default_value = "dist")]
         outdir: PathBuf,
+
+        /// Additional library search paths for imports (e.g., stdlib directory)
+        #[arg(long = "lib")]
+        lib_dirs: Vec<PathBuf>,
     },
 
     /// Run visual snapshot tests against .game files
@@ -90,6 +98,7 @@ fn main() {
             html,
             tag,
             o,
+            lib_dirs,
         } => {
             let source = match fs::read_to_string(&file) {
                 Ok(s) => s,
@@ -99,8 +108,8 @@ fn main() {
                 }
             };
 
-            // Use compile_full to get warnings, then wrap for the target format
-            let full_output = match game_compiler::compile_full(&source) {
+            // Use compile_file for import resolution, falling back to compile_full
+            let full_output = match game_compiler::compile_file(&file, &lib_dirs) {
                 Ok(o) => o,
                 Err(e) => {
                     print_error(&e, &source);
@@ -292,7 +301,7 @@ fn main() {
             }
         }
 
-        Commands::Build { dir, outdir } => {
+        Commands::Build { dir, outdir, lib_dirs } => {
             if !dir.is_dir() {
                 eprintln!("error: '{}' is not a directory", dir.display());
                 process::exit(1);
@@ -327,16 +336,7 @@ fn main() {
                 let tag = game_compiler::derive_tag_name(&path);
                 let out_file = outdir.join(format!("{tag}.js"));
 
-                let source = match fs::read_to_string(&path) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("  error: {}: {e}", path.display());
-                        errors += 1;
-                        continue;
-                    }
-                };
-
-                match game_compiler::compile_full(&source) {
+                match game_compiler::compile_file(&path, &lib_dirs) {
                     Ok(full) => {
                         for w in &full.warnings {
                             eprintln!("  warning: {}: {w}", path.display());

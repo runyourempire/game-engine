@@ -1,18 +1,20 @@
 # Interactive — the viewer shapes the experience
-# Mouse controls the world. Click to create.
+# Mouse controls the world. Fluid field follows the cursor.
 
 cinematic "Touch" {
   layer fluid {
     fn: curl_noise(p, frequency: freq, amplitude: amp)
-      | colormap(plasma)
+      | glow(3.0)
+      | tint(plasma)
     freq: 3.0 ~ mouse.x * 4.0
     amp: 0.5 ~ mouse.y
   }
 
   layer ripples {
-    fn: concentric_waves(origins, decay: 2.0, speed: 3.0)
+    fn: concentric_waves(p, decay: 2.0, speed: 3.0)
+      | glow(2.0)
+      | tint(cyan)
       | blend(mode: additive, opacity: 0.6)
-    origins: []
   }
 
   lens {
@@ -22,7 +24,6 @@ cinematic "Touch" {
   }
 
   react {
-    mouse.click -> ripples.add_origin(at: mouse.uv, strength: 1.0)
-    key("c") -> ripples.origins.clear
+    key("c") -> arc.pause_toggle
   }
 }

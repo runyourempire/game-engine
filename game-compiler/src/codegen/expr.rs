@@ -141,6 +141,11 @@ fn compile_ident(name: &str) -> String {
         "frost" => "vec3f(0.85, 0.92, 1.0)".to_string(),
         "orange" => "vec3f(1.0, 0.5, 0.0)".to_string(),
         "deep_blue" => "vec3f(0.0, 0.02, 0.15)".to_string(),
+        "ash" => "vec3f(0.45, 0.42, 0.40)".to_string(),
+        "charcoal" => "vec3f(0.15, 0.15, 0.17)".to_string(),
+        "plasma" => "vec3f(0.5, 0.0, 1.0)".to_string(),
+        "violet" => "vec3f(0.5, 0.0, 1.0)".to_string(),
+        "magenta" => "vec3f(1.0, 0.0, 1.0)".to_string(),
         _ => name.to_string(),
     }
 }

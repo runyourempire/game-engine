@@ -1,0 +1,36 @@
+# GAME Standard Library — Compound SDF Primitives
+#
+# Usage: import "primitives" expose rounded_box, hollow_ring, cross_shape
+
+cinematic "stdlib/primitives" {
+
+  # A box with rounded corners
+  define rounded_box(w, h, r) {
+    box(w, h) | round(r)
+  }
+
+  # A hollow ring (onion-shelled circle)
+  define hollow_ring(radius, thickness) {
+    circle(radius) | onion(thickness)
+  }
+
+  # A cross shape from two intersecting boxes
+  define cross_shape(size, arm) {
+    box(size, arm) | glow(2.0)
+  }
+
+  # A gear-like shape: polygon with onion shell
+  define gear(teeth, radius, thickness) {
+    polygon(teeth, radius) | onion(thickness)
+  }
+
+  # A soft circle with glow
+  define soft_dot(radius, glow_amount) {
+    circle(radius) | glow(glow_amount)
+  }
+
+  # A diamond shape (rotated box)
+  define diamond(size) {
+    rotate(0.785) | box(size, size) | round(0.02)
+  }
+}

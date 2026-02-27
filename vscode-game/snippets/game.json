@@ -1,0 +1,115 @@
+{
+  "cinematic": {
+    "prefix": "cinematic",
+    "body": [
+      "cinematic \"${1:Name}\" {",
+      "  layer ${2:main} {",
+      "    fn: ${3:circle(0.3)} | ${4:glow(2.0)}",
+      "  }",
+      "}"
+    ],
+    "description": "Full cinematic block with a layer"
+  },
+  "layer": {
+    "prefix": "layer",
+    "body": [
+      "layer ${1:name} {",
+      "  fn: ${2:circle(0.3)} | ${3:glow(2.0)}",
+      "}"
+    ],
+    "description": "Layer block with generative function"
+  },
+  "define": {
+    "prefix": "define",
+    "body": [
+      "define ${1:name}(${2:params}) {",
+      "  ${3:circle($2)} | ${4:glow(2.0)}",
+      "}"
+    ],
+    "description": "Define a reusable generative function"
+  },
+  "arc": {
+    "prefix": "arc",
+    "body": [
+      "arc {",
+      "  0:00 \"${1:start}\" {",
+      "    ${2:param}: ${3:0.0}",
+      "  }",
+      "",
+      "  ${4:0:05} \"${5:build}\" {",
+      "    ${2:param} -> ${6:1.0} ease(${7:expo_out}) over ${8:3}s",
+      "  }",
+      "}"
+    ],
+    "description": "Arc timeline block with moments"
+  },
+  "react": {
+    "prefix": "react",
+    "body": [
+      "react {",
+      "  ${1:mouse.click} -> ${2:particles.burst}(",
+      "    at: ${3:mouse.world},",
+      "    count: ${4:200},",
+      "    color: ${5:white}",
+      "  )",
+      "}"
+    ],
+    "description": "React block for interaction bindings"
+  },
+  "resonate": {
+    "prefix": "resonate",
+    "body": [
+      "resonate {",
+      "  ${1:a.param} ~ ${2:b.param} * ${3:0.5}",
+      "  ${4:b.param} ~ ${5:a.param} * ${6:-0.5}",
+      "  damping: ${7:0.95}",
+      "}"
+    ],
+    "description": "Resonate block for cross-layer feedback"
+  },
+  "lens-flat": {
+    "prefix": "lens-flat",
+    "body": [
+      "lens ${1:main} {",
+      "  mode: flat",
+      "  fields: [${2:layer_name}]",
+      "  post: [${3:bloom(1.0)}, ${4:vignette(0.3)}]",
+      "}"
+    ],
+    "description": "Flat (2D fragment shader) lens configuration"
+  },
+  "lens-raymarch": {
+    "prefix": "lens-raymarch",
+    "body": [
+      "lens ${1:main} {",
+      "  mode: raymarch",
+      "  fields: [${2:terrain}]",
+      "  camera: orbit(radius: ${3:4.0}, height: ${4:2.0}, speed: ${5:0.05})",
+      "  lighting: sun([0.5, 0.8, 1.0], 0.8) + ambient(0.15)",
+      "  post: [bloom(${6:1.2}), vignette(${7:0.3})]",
+      "}"
+    ],
+    "description": "Raymarch (3D) lens configuration"
+  },
+  "param-audio": {
+    "prefix": "param-audio",
+    "body": [
+      "${1:param}: ${2:0.0} ~ audio.${3|bass,mid,treble,energy,beat|} * ${4:1.0}"
+    ],
+    "description": "Audio-reactive parameter with modulation"
+  },
+  "param-data": {
+    "prefix": "param-data",
+    "body": [
+      "${1:param}: ${2:0.0} ~ data.${3:value} * ${4:1.0}"
+    ],
+    "description": "Data-driven parameter with modulation"
+  },
+  "param-mouse": {
+    "prefix": "param-mouse",
+    "body": [
+      "${1:param}: ${2:0.0} ~ mouse.${3|x,y,click,velocity|} * ${4:1.0}"
+    ],
+    "description": "Mouse-reactive parameter with modulation"
+  }
+}

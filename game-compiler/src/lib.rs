@@ -3,15 +3,37 @@ pub mod codegen;
 pub mod error;
 pub mod lexer;
 pub mod parser;
+pub mod resolver;
 pub mod runtime;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod server;
 #[cfg(feature = "snapshot")]
 pub mod snapshot;
 pub mod token;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use error::Result;
+
+/// Compile a `.game` file with import resolution.
+///
+/// `file_path` is the `.game` file being compiled.
+/// `lib_dirs` are additional search paths for imports (e.g., stdlib directory).
+pub fn compile_file(file_path: &Path, lib_dirs: &[PathBuf]) -> Result<codegen::CompileOutput> {
+    let source = std::fs::read_to_string(file_path).map_err(|e| {
+        error::GameError::parse(&format!("cannot read '{}': {e}", file_path.display()))
+    })?;
+    let tokens = lexer::lex(&source)?;
+    let mut parser = parser::Parser::new(tokens);
+    let mut cinematic = parser.parse()?;
+
+    let base_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    resolver::resolve_imports(&mut cinematic, &base_dir, lib_dirs)?;
+
+    codegen::generate_full(&cinematic)
+}
 
 /// Derive a custom element tag name from a file path.
 ///
@@ -955,18 +977,33 @@ mod integration_tests {
     // ── Compiler warnings tests ────────────────────────────────────
 
     #[test]
-    fn warnings_for_unimplemented_resonance() {
+    fn resonance_block_compiles() {
         let source = r#"
             cinematic {
-              layer { fn: circle(0.3) | glow(2.0) }
-              resonate { something: 1.0 }
+              layer fire {
+                fn: circle(0.3) | glow(intensity)
+                intensity: 0.5
+              }
+              layer ice {
+                fn: ring(0.4, 0.03) | glow(clarity)
+                clarity: 0.5
+              }
+              resonate {
+                intensity ~ clarity * 2.0
+                damping: 0.96
+              }
             }
         "#;
 
-        let output = compile_full(source).expect("compilation should succeed");
+        let output = compile_full(source).expect("resonance compilation should succeed");
+        // Resonance is now compiled — should produce JS code, not a warning
         assert!(
-            output.warnings.iter().any(|w| w.contains("resonance")),
-            "should warn about resonance: {:?}", output.warnings
+            !output.resonance_js.is_empty(),
+            "resonance should produce JS code"
+        );
+        assert!(
+            output.resonance_js.contains("resonanceUpdate"),
+            "should contain resonance update function"
         );
     }
 
@@ -1063,11 +1100,10 @@ mod integration_tests {
 
     #[test]
     fn warnings_appear_in_html_output() {
-        // Use resonance (unimplemented) to trigger a warning
+        // Use glow-before-SDF to trigger a warning
         let source = r#"
             cinematic {
-              layer { fn: circle(0.3) | glow(2.0) }
-              resonate { something: 1.0 }
+              layer { fn: glow(2.0) | circle(0.3) }
             }
         "#;
 
@@ -1257,5 +1293,234 @@ mod integration_tests {
             assert!(v.wgsl.contains("p_radius: f32"), "variant '{}' should have p_radius", v.stage_name);
             assert!(v.wgsl.contains("p_intensity: f32"), "variant '{}' should have p_intensity", v.stage_name);
         }
+    }
+
+    // ── Import system tests ──────────────────────────────────────────
+
+    #[test]
+    fn parse_import_declaration() {
+        let source = r#"
+            import "stdlib/ui.game" expose loading_spinner, pulse_dot
+            cinematic {
+              layer { fn: circle(0.3) | glow(2.0) }
+            }
+        "#;
+        let tokens = lexer::lex(source).expect("lex should succeed");
+        let mut p = parser::Parser::new(tokens);
+        let cinematic = p.parse().expect("parse should succeed");
+        assert_eq!(cinematic.imports.len(), 1);
+        assert_eq!(cinematic.imports[0].path, "stdlib/ui.game");
+        assert_eq!(cinematic.imports[0].names, vec!["loading_spinner", "pulse_dot"]);
+    }
+
+    #[test]
+    fn parse_import_all() {
+        let source = r#"
+            import "stdlib/primitives.game" expose ALL
+            cinematic {
+              layer { fn: circle(0.3) | glow(2.0) }
+            }
+        "#;
+        let tokens = lexer::lex(source).expect("lex should succeed");
+        let mut p = parser::Parser::new(tokens);
+        let cinematic = p.parse().expect("parse should succeed");
+        assert_eq!(cinematic.imports.len(), 1);
+        assert_eq!(cinematic.imports[0].names, vec!["ALL"]);
+    }
+
+    #[test]
+    fn parse_multiple_imports() {
+        let source = r#"
+            import "a.game" expose foo
+            import "b.game" expose bar, baz
+            cinematic {
+              layer { fn: circle(0.3) | glow(2.0) }
+            }
+        "#;
+        let tokens = lexer::lex(source).expect("lex should succeed");
+        let mut p = parser::Parser::new(tokens);
+        let cinematic = p.parse().expect("parse should succeed");
+        assert_eq!(cinematic.imports.len(), 2);
+        assert_eq!(cinematic.imports[0].path, "a.game");
+        assert_eq!(cinematic.imports[1].names, vec!["bar", "baz"]);
+    }
+
+    #[test]
+    fn import_resolve_from_file() {
+        use std::io::Write;
+
+        // Create temp directory with a library file
+        let dir = std::env::temp_dir().join("game_import_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        // Write a library file
+        let lib_file = dir.join("mylib.game");
+        let mut f = std::fs::File::create(&lib_file).expect("create lib file");
+        writeln!(f, r#"cinematic "mylib" {{
+            define glowing_ring(r, t) {{
+                ring(r, t) | glow(3.0)
+            }}
+        }}"#).expect("write lib file");
+
+        // Write a main file that imports from it
+        let main_file = dir.join("main.game");
+        let mut f = std::fs::File::create(&main_file).expect("create main file");
+        writeln!(f, r#"import "mylib.game" expose glowing_ring
+        cinematic "Test" {{
+            layer {{
+                fn: glowing_ring(0.3, 0.04) | tint(gold)
+            }}
+        }}"#).expect("write main file");
+
+        // Compile with import resolution
+        let output = compile_file(&main_file, &[]).expect("import compile should succeed");
+        // Ring is inlined as abs(length(p) - r) - t, glow is apply_glow
+        assert!(output.wgsl.contains("abs(length(p)"), "ring SDF should be expanded from imported define");
+        assert!(output.wgsl.contains("apply_glow"), "glow should be expanded from imported define");
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_circular_detected() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("game_circular_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        // a.game imports b.game, b.game imports a.game
+        let a_file = dir.join("a.game");
+        let mut f = std::fs::File::create(&a_file).expect("create a.game");
+        writeln!(f, r#"import "b.game" expose foo
+        cinematic "A" {{
+            define bar(r) {{ circle(r) | glow(2.0) }}
+            layer {{ fn: circle(0.3) | glow(2.0) }}
+        }}"#).expect("write a.game");
+
+        let b_file = dir.join("b.game");
+        let mut f = std::fs::File::create(&b_file).expect("create b.game");
+        writeln!(f, r#"import "a.game" expose bar
+        cinematic "B" {{
+            define foo(r) {{ circle(r) | glow(3.0) }}
+            layer {{ fn: circle(0.3) | glow(2.0) }}
+        }}"#).expect("write b.game");
+
+        let result = compile_file(&a_file, &[]);
+        assert!(result.is_err(), "circular import should produce error");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("circular"), "error should mention circular: {err_msg}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_missing_define_produces_error() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("game_missing_define_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let lib_file = dir.join("lib.game");
+        let mut f = std::fs::File::create(&lib_file).expect("create lib.game");
+        writeln!(f, r#"cinematic "lib" {{
+            define exists(r) {{ circle(r) | glow(2.0) }}
+        }}"#).expect("write lib.game");
+
+        let main_file = dir.join("main.game");
+        let mut f = std::fs::File::create(&main_file).expect("create main.game");
+        writeln!(f, r#"import "lib.game" expose does_not_exist
+        cinematic "Test" {{
+            layer {{ fn: circle(0.3) | glow(2.0) }}
+        }}"#).expect("write main.game");
+
+        let result = compile_file(&main_file, &[]);
+        assert!(result.is_err(), "missing define should produce error");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("does_not_exist"), "error should mention missing name: {err_msg}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_with_lib_dirs() {
+        use std::io::Write;
+
+        let lib_dir = std::env::temp_dir().join("game_lib_dir_test");
+        let main_dir = std::env::temp_dir().join("game_lib_main_test");
+        let _ = std::fs::create_dir_all(&lib_dir);
+        let _ = std::fs::create_dir_all(&main_dir);
+
+        // Library file in lib_dir
+        let lib_file = lib_dir.join("shared.game");
+        let mut f = std::fs::File::create(&lib_file).expect("create shared.game");
+        writeln!(f, r#"cinematic "shared" {{
+            define dot(r) {{ circle(r) | glow(2.0) }}
+        }}"#).expect("write shared.game");
+
+        // Main file in main_dir imports from lib_dir
+        let main_file = main_dir.join("main.game");
+        let mut f = std::fs::File::create(&main_file).expect("create main.game");
+        writeln!(f, r#"import "shared.game" expose dot
+        cinematic "Test" {{
+            layer {{ fn: dot(0.2) | tint(cyan) }}
+        }}"#).expect("write main.game");
+
+        // Without lib_dirs, should fail (file not in same dir)
+        let result = compile_file(&main_file, &[]);
+        assert!(result.is_err(), "should fail without lib_dir");
+
+        // With lib_dirs, should succeed
+        let output = compile_file(&main_file, &[lib_dir.clone()])
+            .expect("should succeed with lib_dir");
+        assert!(output.wgsl.contains("sdf_circle"), "imported define should expand");
+
+        let _ = std::fs::remove_dir_all(&lib_dir);
+        let _ = std::fs::remove_dir_all(&main_dir);
+    }
+
+    // ── GLSL fallback tests ──────────────────────────────────────
+
+    #[test]
+    fn glsl_fallback_generated_for_hello() {
+        let source = r#"
+            cinematic "Hello" {
+              layer {
+                fn: circle(0.3) | glow(2.0)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("compile should succeed");
+
+        // GLSL vertex shader checks
+        assert!(output.glsl_vertex.contains("#version 300 es"), "GLSL VS should have version");
+        assert!(output.glsl_vertex.contains("gl_VertexID"), "GLSL VS should use gl_VertexID");
+        assert!(output.glsl_vertex.contains("v_uv"), "GLSL VS should output v_uv");
+
+        // GLSL fragment shader checks
+        assert!(output.glsl_fragment.contains("#version 300 es"), "GLSL FS should have version");
+        assert!(output.glsl_fragment.contains("out vec4 fragColor"), "GLSL FS should have fragColor");
+        assert!(output.glsl_fragment.contains("uniform float u_time"), "GLSL FS should have time uniform");
+        assert!(!output.glsl_fragment.contains("vec2f("), "GLSL FS should not contain WGSL vec2f");
+        assert!(!output.glsl_fragment.contains("@fragment"), "GLSL FS should not contain @fragment");
+    }
+
+    #[test]
+    fn glsl_component_contains_fallback_code() {
+        let source = r#"
+            cinematic "Test" {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("compile should succeed");
+        let component = runtime::wrap_web_component(&output, "test-glsl");
+
+        assert!(component.contains("GLSL_VS"), "component should embed GLSL vertex shader");
+        assert!(component.contains("GLSL_FS"), "component should embed GLSL fragment shader");
+        assert!(component.contains("_initWebGL2"), "component should have WebGL2 init method");
+        assert!(component.contains("_glFrame"), "component should have WebGL2 frame loop");
+        assert!(component.contains("TRIANGLE_STRIP"), "component should draw triangle strip");
     }
 }

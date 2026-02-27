@@ -88,4 +88,13 @@ impl GameError {
             source_text: None,
         }
     }
+
+    /// General parse/resolve error with a message.
+    pub fn parse(msg: &str) -> Self {
+        Self {
+            kind: ErrorKind::Message(msg.to_string()),
+            span: None,
+            source_text: None,
+        }
+    }
 }

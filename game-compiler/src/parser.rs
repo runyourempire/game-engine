@@ -82,7 +82,53 @@ impl Parser {
 
     /// Parse a complete `.game` file.
     pub fn parse(&mut self) -> Result<Cinematic> {
-        self.parse_cinematic()
+        // Parse top-level imports before the cinematic block
+        let mut imports = Vec::new();
+        while self.at(&Token::Import) {
+            imports.push(self.parse_import()?);
+        }
+        let mut cinematic = self.parse_cinematic()?;
+        cinematic.imports = imports;
+        Ok(cinematic)
+    }
+
+    /// Parse: `import "path" expose name1, name2`
+    fn parse_import(&mut self) -> Result<ImportDecl> {
+        self.expect(&Token::Import)?;
+        let path = match self.advance() {
+            Some(s) if matches!(s.token, Token::String(_)) => {
+                if let Token::String(p) = &s.token { p.clone() } else { unreachable!() }
+            }
+            _ => return Err(GameError::parse("expected string path after 'import'")),
+        };
+        self.expect(&Token::Expose)?;
+
+        let mut names = Vec::new();
+        // Check for ALL keyword
+        if self.at(&Token::All) {
+            self.advance();
+            names.push("ALL".to_string());
+        } else {
+            // Parse comma-separated identifier list
+            loop {
+                match self.advance() {
+                    Some(s) => {
+                        if let Token::Ident(name) = &s.token {
+                            names.push(name.clone());
+                        } else {
+                            return Err(GameError::parse("expected identifier in expose list"));
+                        }
+                    }
+                    None => return Err(GameError::unexpected_eof("identifier in expose list")),
+                }
+                if !self.at(&Token::Comma) {
+                    break;
+                }
+                self.advance(); // consume comma
+            }
+        }
+
+        Ok(ImportDecl { path, names })
     }
 
     fn parse_cinematic(&mut self) -> Result<Cinematic> {
@@ -103,6 +149,7 @@ impl Parser {
 
         let mut cinematic = Cinematic {
             name,
+            imports: Vec::new(),
             properties: Vec::new(),
             layers: Vec::new(),
             lenses: Vec::new(),
@@ -172,6 +219,8 @@ impl Parser {
             fn_chain: None,
             params: Vec::new(),
             properties: Vec::new(),
+            blend_mode: None,
+            blend_opacity: None,
         };
 
         while !self.at(&Token::RBrace) {
@@ -211,6 +260,41 @@ impl Parser {
         }
 
         self.expect(&Token::RBrace)?;
+
+        // Extract blend() from pipe chain if present — it's layer metadata, not a stage
+        if let Some(chain) = &mut layer.fn_chain {
+            chain.stages.retain(|stage| {
+                if stage.name == "blend" {
+                    // Extract blend mode and opacity
+                    for arg in &stage.args {
+                        match arg {
+                            Arg::Named { name, value } if name == "mode" => {
+                                if let Expr::Ident(mode) = value {
+                                    layer.blend_mode = Some(match mode.as_str() {
+                                        "additive" => BlendMode::Additive,
+                                        "multiply" => BlendMode::Multiply,
+                                        "screen" => BlendMode::Screen,
+                                        "overlay" => BlendMode::Overlay,
+                                        "normal" => BlendMode::Normal,
+                                        _ => BlendMode::Additive,
+                                    });
+                                }
+                            }
+                            Arg::Named { name, value } if name == "opacity" => {
+                                if let Expr::Number(n) = value {
+                                    layer.blend_opacity = Some(*n);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    false // Remove blend() from the stage list
+                } else {
+                    true
+                }
+            });
+        }
+
         Ok(layer)
     }
 
@@ -419,30 +503,28 @@ impl Parser {
     fn parse_react(&mut self) -> Result<ReactBlock> {
         self.expect(&Token::React)?;
         self.expect(&Token::LBrace)?;
-        // For M0, skip contents
-        let mut depth = 1u32;
-        while depth > 0 {
-            match self.peek() {
-                Some(Token::LBrace) => {
-                    depth += 1;
-                    self.advance();
-                }
-                Some(Token::RBrace) => {
-                    depth -= 1;
-                    if depth > 0 {
-                        self.advance();
-                    }
-                }
-                Some(_) => {
-                    self.advance();
-                }
-                None => return Err(GameError::unexpected_eof("'}'")),
+
+        let mut reactions = Vec::new();
+
+        while !self.at(&Token::RBrace) {
+            if self.peek().is_none() {
+                return Err(GameError::unexpected_eof("'}'"));
             }
+
+            // Parse signal expression (left side of ->)
+            let signal = self.parse_expr(0)?;
+
+            // Expect '->'
+            self.expect(&Token::Arrow)?;
+
+            // Parse action expression (right side of ->)
+            let action = self.parse_expr(0)?;
+
+            reactions.push(Reaction { signal, action });
         }
+
         self.expect(&Token::RBrace)?;
-        Ok(ReactBlock {
-            reactions: Vec::new(),
-        })
+        Ok(ReactBlock { reactions })
     }
 
     // ── Resonate (stub for M0) ────────────────────────────────────────
@@ -450,30 +532,58 @@ impl Parser {
     fn parse_resonance(&mut self) -> Result<ResonanceBlock> {
         self.expect(&Token::Resonate)?;
         self.expect(&Token::LBrace)?;
-        let mut depth = 1u32;
-        while depth > 0 {
-            match self.peek() {
-                Some(Token::LBrace) => {
-                    depth += 1;
-                    self.advance();
+
+        let mut bindings = Vec::new();
+        let mut damping = None;
+
+        while !self.at(&Token::RBrace) {
+            if self.peek().is_none() {
+                return Err(GameError::unexpected_eof("'}'"));
+            }
+
+            if !self.at_ident() {
+                let s = self.peek_spanned().unwrap();
+                return Err(GameError::unexpected_token(
+                    "identifier",
+                    s.token.describe(),
+                    s.span.clone(),
+                ));
+            }
+
+            // Parse target: "param" or "layer.param"
+            let mut target = self.expect_ident()?;
+
+            // Handle dotted paths like "fire.freq"
+            while self.at(&Token::Dot) {
+                self.advance(); // consume '.'
+                let field = self.expect_ident()?;
+                target = format!("{target}.{field}");
+            }
+
+            // Check for "damping: value" property
+            if target == "damping" && self.at(&Token::Colon) {
+                self.advance(); // consume ':'
+                let expr = self.parse_expr(0)?;
+                if let Expr::Number(n) = &expr {
+                    damping = Some(*n);
                 }
-                Some(Token::RBrace) => {
-                    depth -= 1;
-                    if depth > 0 {
-                        self.advance();
-                    }
-                }
-                Some(_) => {
-                    self.advance();
-                }
-                None => return Err(GameError::unexpected_eof("'}'")),
+                continue;
+            }
+
+            // Expect '~' for binding
+            if self.at(&Token::Tilde) {
+                self.advance(); // consume '~'
+                let source = self.parse_expr(0)?;
+                bindings.push(ResonanceBinding { target, source });
+            } else if self.at(&Token::Colon) {
+                // Also allow "param: value" syntax (treat as property, skip)
+                self.advance();
+                let _value = self.parse_expr(0)?;
             }
         }
+
         self.expect(&Token::RBrace)?;
-        Ok(ResonanceBlock {
-            bindings: Vec::new(),
-            damping: None,
-        })
+        Ok(ResonanceBlock { bindings, damping })
     }
 
     // ── Define (stub for M0) ──────────────────────────────────────────
@@ -657,8 +767,16 @@ impl Parser {
                     unreachable!()
                 }
             }
-            Some(Token::Ident(_)) => {
-                let name = self.expect_ident()?;
+            Some(Token::Ident(_))
+            | Some(Token::Arc)
+            | Some(Token::React)
+            | Some(Token::Resonate) => {
+                let name = match self.peek() {
+                    Some(Token::Arc) => { self.advance(); "arc".to_string() }
+                    Some(Token::React) => { self.advance(); "react".to_string() }
+                    Some(Token::Resonate) => { self.advance(); "resonate".to_string() }
+                    _ => self.expect_ident()?,
+                };
 
                 // Function call: ident(...)
                 if self.at(&Token::LParen) {
@@ -670,7 +788,12 @@ impl Parser {
                     let mut expr = Expr::Ident(name);
                     while self.at(&Token::Dot) {
                         self.advance();
-                        let field = self.expect_ident()?;
+                        // Field name can also be a keyword used as identifier
+                        let field = match self.peek() {
+                            Some(Token::Ident(_)) => self.expect_ident()?,
+                            Some(Token::Arc) => { self.advance(); "arc".to_string() }
+                            _ => self.expect_ident()?,
+                        };
                         expr = Expr::FieldAccess {
                             object: Box::new(expr),
                             field,

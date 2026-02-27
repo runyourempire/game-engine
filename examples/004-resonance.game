@@ -2,76 +2,60 @@
 # Fire and ice compete. Neither wins. Both transform.
 
 cinematic "Duality" {
-  audio: "duality.ogg"
-
   layer fire {
-    fn: fbm(p * freq + time * 0.3, octaves: 5)
+    fn: fbm(p * freq, octaves: 5)
       | threshold(0.4)
-      | emissive(color: mix(ember, white, intensity))
+      | glow(4.0)
+      | tint(ember)
     freq: 3.0
     intensity: 0.5 ~ audio.bass
   }
 
   layer ice {
-    fn: voronoi(p * density, jitter: 0.8)
-      | shade(albedo: frost, metallic: 0.95, roughness: 0.02)
+    fn: voronoi(p * density)
+      | glow(2.0)
+      | tint(frost)
       | iridescent(0.3)
     density: 3.0
     clarity: 0.8 ~ audio.treble
   }
 
   layer smoke {
-    fn: curl_noise(p * 2.0, frequency: 1.5)
-      | particles(count: 3000, size: 2.0, color: ash, trail: 0.5)
-    depth: top
+    fn: curl_noise(p * 2.0, frequency: 1.5, amplitude: 1.0)
+      | glow(1.5)
+      | tint(ash)
+      | blend(mode: additive, opacity: 0.5)
   }
 
-  # The revolution: layers modulate each other
   resonate {
-    fire.freq ~ ice.clarity * 2.0        # clear ice = turbulent fire
-    ice.density ~ fire.intensity * -1.5   # intense fire = sparse ice
-    smoke.opacity ~ fire.intensity * ice.clarity  # smoke rises from the conflict
+    freq ~ clarity * 2.0
+    density ~ intensity * -1.5
     damping: 0.96
   }
 
   lens {
-    mode: raymarch
+    mode: flat
     fields: [fire, ice]
     overlay: [smoke]
-    camera: orbit(radius: 3.0, height: 1.0, speed: 0.03)
-    lighting: emissive_pass + ambient(0.05)
-    post: [bloom(1.5), fog(0.02, color: charcoal), grain(0.015)]
+    post: [bloom(1.5), grain(0.015)]
   }
 
   arc {
     0:00 "still" {
-      fire.intensity: 0.1
-      ice.clarity: 0.1
+      intensity: 0.1
+      clarity: 0.1
     }
 
     0:15 "fire awakens" {
-      fire.intensity -> 0.8 ease(expo_out) over 10s
+      intensity -> 0.8 ease(expo_out) over 10s
     }
 
     0:35 "ice responds" {
-      ice.clarity -> 0.9 ease(cubic_in_out) over 8s
-    }
-
-    1:00 "conflict" {
-      # resonance takes over — no explicit values needed
-      # the feedback loop drives the visuals
-    }
-
-    1:40 "resolution" {
-      fire.intensity -> 0.3 ease(expo_out) over 15s
-      ice.clarity -> 0.3 ease(expo_out) over 15s
-      # the system finds equilibrium
+      clarity -> 0.9 ease(cubic_in_out) over 8s
     }
   }
 
   react {
-    mouse.x -> fire.intensity.bias(0.3)     # drag right = more fire
-    mouse.y -> ice.clarity.bias(0.3)        # drag down = more ice
     key("space") -> arc.pause_toggle
   }
 }

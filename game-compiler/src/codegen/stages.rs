@@ -81,7 +81,37 @@ impl WgslGen {
                     self.line("let lc = vec3f(0.0);");
                 }
             }
-            self.line("final_color = vec4f(final_color.rgb + lc, 1.0);");
+            // Composite using blend mode
+            let opacity = layer.blend_opacity.unwrap_or(1.0);
+            let blend_mode = layer.blend_mode.unwrap_or(crate::ast::BlendMode::Additive);
+            match blend_mode {
+                crate::ast::BlendMode::Additive => {
+                    self.line(&format!(
+                        "final_color = vec4f(final_color.rgb + lc * {opacity:.3}, 1.0);"
+                    ));
+                }
+                crate::ast::BlendMode::Multiply => {
+                    self.line(&format!(
+                        "final_color = vec4f(mix(final_color.rgb, final_color.rgb * lc, {opacity:.3}), 1.0);"
+                    ));
+                }
+                crate::ast::BlendMode::Screen => {
+                    self.line(&format!(
+                        "final_color = vec4f(mix(final_color.rgb, 1.0 - (1.0 - final_color.rgb) * (1.0 - lc), {opacity:.3}), 1.0);"
+                    ));
+                }
+                crate::ast::BlendMode::Overlay => {
+                    self.line("let ov_sel = select(1.0 - 2.0 * (1.0 - final_color.rgb) * (1.0 - lc), 2.0 * final_color.rgb * lc, final_color.rgb < vec3f(0.5));");
+                    self.line(&format!(
+                        "final_color = vec4f(mix(final_color.rgb, ov_sel, {opacity:.3}), 1.0);"
+                    ));
+                }
+                crate::ast::BlendMode::Normal => {
+                    self.line(&format!(
+                        "final_color = vec4f(mix(final_color.rgb, lc, {opacity:.3}), 1.0);"
+                    ));
+                }
+            }
 
             self.indent -= 1;
             self.line("}");
@@ -392,6 +422,58 @@ impl WgslGen {
                 self.line(&format!(
                     "var color_result = vec4f(mix({color_a}, {color_b}, {grad_t}), 1.0);"
                 ));
+            }
+
+            // ── Phase 1A: New primitives ─────────────────────────────
+            "curl_noise" => {
+                let pos = self.compile_arg(&stage.args, 0, "p")?;
+                let freq = self.compile_named_arg(&stage.args, "frequency", "3.0")?;
+                let amp = self.compile_named_arg(&stage.args, "amplitude", "0.5")?;
+                self.used_builtins.insert("curl2");
+                self.line(&format!("let curl_offset = curl2({pos}, {freq}, {amp});"));
+                self.line("var sdf_result = length(curl_offset) - 0.01;");
+            }
+            "concentric_waves" => {
+                let _origins = self.compile_arg(&stage.args, 0, "p")?;
+                let decay = self.compile_named_arg(&stage.args, "decay", "2.0")?;
+                let speed = self.compile_named_arg(&stage.args, "speed", "3.0")?;
+                self.line(&format!(
+                    "var sdf_result = sin(length(p) * 10.0 - time * {speed}) * exp(-length(p) * {decay});"
+                ));
+            }
+            "iridescent" => {
+                let strength = self.compile_arg(&stage.args, 0, "0.3")?;
+                // Thin-film interference approximation applied to color_result
+                self.line(&format!("{{ let iri_angle = atan2(p.y, p.x);"));
+                self.line(&format!("let iri_r = length(p);"));
+                self.line(&format!("let iri_phase = iri_angle * 3.0 + iri_r * 10.0 + time;"));
+                self.line(&format!("let iri_shift = vec3f("));
+                self.indent += 1;
+                self.line("sin(iri_phase) * 0.5 + 0.5,");
+                self.line("sin(iri_phase + 2.094) * 0.5 + 0.5,");
+                self.line("sin(iri_phase + 4.189) * 0.5 + 0.5");
+                self.indent -= 1;
+                self.line(");");
+                self.line(&format!(
+                    "color_result = vec4f(mix(color_result.rgb, color_result.rgb * iri_shift, {strength}), 1.0); }}"
+                ));
+            }
+            "particles" => {
+                let count = self.compile_named_arg(&stage.args, "count", "100.0")?;
+                let size = self.compile_named_arg(&stage.args, "size", "2.0")?;
+                let color = self.compile_named_arg(&stage.args, "color", "vec3f(0.7)")?;
+                let _trail = self.compile_named_arg(&stage.args, "trail", "0.5")?;
+                self.used_builtins.insert("particle_field");
+                self.line(&format!(
+                    "let pf_brightness = particle_field(p, {count}, {size});"
+                ));
+                self.line(&format!(
+                    "var color_result = vec4f({color} * pf_brightness, 1.0);"
+                ));
+            }
+            "threshold" => {
+                let value = self.compile_arg(&stage.args, 0, "0.5")?;
+                self.line(&format!("sdf_result = step({value}, sdf_result);"));
             }
 
             other => {

@@ -1,0 +1,31 @@
+# GAME Standard Library — Post-Processing Chains
+#
+# Usage: import "post" expose cinematic_grade, retro_crt, dream_glow
+
+cinematic "stdlib/post" {
+
+  # Cinematic color grading: bloom + vignette + tonemap
+  define cinematic_grade(bloom_str, vig_str) {
+    circle(0.01) | glow(1.0) | bloom(bloom_str, 1.5) | vignette(vig_str) | tonemap(1.2)
+  }
+
+  # Retro CRT monitor look
+  define retro_crt(scan_freq, grain_amount) {
+    circle(0.01) | glow(1.0) | scanlines(scan_freq, 0.3) | grain(grain_amount) | chromatic(0.005) | vignette(0.5)
+  }
+
+  # Dreamy glow effect
+  define dream_glow(bloom_str) {
+    circle(0.01) | glow(1.0) | bloom(bloom_str, 2.0) | saturate_color(0.7) | vignette(0.3)
+  }
+
+  # High contrast noir
+  define noir(vig_str) {
+    circle(0.01) | glow(1.0) | saturate_color(0.0) | tonemap(2.0) | vignette(vig_str)
+  }
+
+  # Glitch distortion effect
+  define glitch_fx(intensity) {
+    circle(0.01) | glow(1.0) | glitch(intensity) | chromatic(0.01)
+  }
+}

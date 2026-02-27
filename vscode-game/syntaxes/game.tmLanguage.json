@@ -1,0 +1,293 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "GAME",
+  "scopeName": "source.game",
+  "fileTypes": ["game"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#easing" },
+    { "include": "#define-declaration" },
+    { "include": "#import-declaration" },
+    { "include": "#block-keywords" },
+    { "include": "#all-keyword" },
+    { "include": "#over-duration" },
+    { "include": "#signals" },
+    { "include": "#properties" },
+    { "include": "#named-colors" },
+    { "include": "#builtin-functions" },
+    { "include": "#function-call" },
+    { "include": "#time-literals" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "name": "comment.line.number-sign.game",
+      "match": "#.*$"
+    },
+    "strings": {
+      "name": "string.quoted.double.game",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.game",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "easing": {
+      "match": "\\b(ease)\\s*\\(\\s*(expo_out|expo_in|cubic_in_out|cubic_out|cubic_in|smooth|linear|elastic|bounce)\\s*\\)",
+      "captures": {
+        "1": { "name": "support.function.easing.game" },
+        "2": { "name": "constant.language.easing-type.game" }
+      }
+    },
+    "define-declaration": {
+      "match": "\\b(define)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.control.define.game" },
+        "2": { "name": "entity.name.function.game" }
+      }
+    },
+    "import-declaration": {
+      "match": "\\b(import)\\s+(\"[^\"]*\")\\s+(expose)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.import.game" },
+        "2": { "name": "string.quoted.double.game" },
+        "3": { "name": "keyword.control.expose.game" }
+      }
+    },
+    "block-keywords": {
+      "match": "\\b(cinematic|layer|lens|arc|react|resonate|define|import|expose)\\b",
+      "name": "keyword.control.game"
+    },
+    "all-keyword": {
+      "match": "\\bALL\\b",
+      "name": "keyword.control.all.game"
+    },
+    "over-duration": {
+      "match": "\\b(over)\\s+(\\d+(?:\\.\\d+)?)(s)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.over.game" },
+        "2": { "name": "constant.numeric.duration.game" },
+        "3": { "name": "keyword.other.unit.game" }
+      }
+    },
+    "signals": {
+      "patterns": [
+        {
+          "match": "\\b(audio)\\.(bass|mid|treble|energy|beat|waveform|time)\\b",
+          "name": "variable.other.signal.audio.game"
+        },
+        {
+          "match": "\\b(mouse)\\.(x|y|click|velocity|world|move|drag)\\b",
+          "name": "variable.other.signal.mouse.game"
+        },
+        {
+          "match": "\\b(data)\\.(progress|value|health|[a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "name": "variable.other.signal.data.game"
+        },
+        {
+          "match": "\\b(mic)\\.(amplitude|[a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "name": "variable.other.signal.mic.game"
+        },
+        {
+          "match": "\\b(time|beat|random)\\b",
+          "name": "variable.other.signal.builtin.game"
+        },
+        {
+          "match": "\\b(key)\\s*\\(\\s*\"[^\"]*\"\\s*\\)",
+          "name": "variable.other.signal.key.game"
+        }
+      ]
+    },
+    "properties": {
+      "match": "^\\s*(fn|mode|fields|overlay|camera|lighting|post|damping|frequency|amplitude|octaves|persistence|lacunarity|decay|speed|albedo|emissive|opacity|depth|roughness|metallic|subsurface|region|colormap|resolution|audio|seed|trail|size|count|color|intensity|threshold|strength|density|radius|height|direction|exposure)\\s*:",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.game" }
+      }
+    },
+    "named-colors": {
+      "match": "\\b(gold|cyan|ember|frost|midnight|deep_blue|crimson|white|black|ash|charcoal|plasma|violet|magenta|red|blue|green|orange|ivory|obsidian|indigo|fire)\\b",
+      "name": "constant.language.color.game"
+    },
+    "builtin-functions": {
+      "patterns": [
+        {
+          "comment": "SDF primitives",
+          "match": "\\b(circle|sphere|box|ring|polygon|star|line|torus|plane|cylinder)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.sdf.game" }
+          }
+        },
+        {
+          "comment": "Noise functions",
+          "match": "\\b(fbm|simplex|voronoi|curl_noise|curl|concentric_waves|worley|value)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.noise.game" }
+          }
+        },
+        {
+          "comment": "Domain operations",
+          "match": "\\b(translate|rotate|scale|repeat|mirror|twist|displace|bend|elongate|extrude)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.domain.game" }
+          }
+        },
+        {
+          "comment": "Boolean operations",
+          "match": "\\b(union|intersect|subtract|smooth_union)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.boolean.game" }
+          }
+        },
+        {
+          "comment": "Visual / shading functions",
+          "match": "\\b(glow|tint|shade|gradient|spectrum|particles|threshold|iridescent|emissive|fresnel|colormap)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.visual.game" }
+          }
+        },
+        {
+          "comment": "Post-processing functions",
+          "match": "\\b(bloom|chromatic|vignette|grain|fog|scanlines|tonemap|invert|saturate_color|distort|glitch)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.post.game" }
+          }
+        },
+        {
+          "comment": "SDF modifier functions",
+          "match": "\\b(onion|round|mask_arc|blend)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.modifier.game" }
+          }
+        },
+        {
+          "comment": "Camera functions",
+          "match": "\\b(orbit|dolly|crane|handheld|track|closeup|pullback)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.camera.game" }
+          }
+        },
+        {
+          "comment": "Lighting functions",
+          "match": "\\b(sun|ambient|emissive_pass)\\b",
+          "captures": {
+            "1": { "name": "support.function.lighting.game" }
+          }
+        },
+        {
+          "comment": "Transition / stdlib functions",
+          "match": "\\b(fade|morph|shatter|dissolve|ripple|bloom_wipe|burst|stream|swarm|fireflies|rain|sparks)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.stdlib.game" }
+          }
+        },
+        {
+          "comment": "Math builtins",
+          "match": "\\b(sin|cos|tan|abs|floor|ceil|fract|mix|clamp|min|max|pow|sqrt|length|dot|atan2|mod|smoothstep|step|sign|exp|log|select)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.function.math.game" }
+          }
+        }
+      ]
+    },
+    "function-call": {
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+      "captures": {
+        "1": { "name": "entity.name.function.call.game" }
+      }
+    },
+    "time-literals": {
+      "patterns": [
+        {
+          "comment": "Timestamp format: 0:00, 1:30, etc.",
+          "match": "(?<=^\\s*)\\d+:\\d{2}\\b",
+          "name": "constant.numeric.timestamp.game"
+        },
+        {
+          "comment": "Duration suffix: 3s, 0.5s, etc.",
+          "match": "\\b(\\d+(?:\\.\\d+)?)(s)\\b",
+          "captures": {
+            "1": { "name": "constant.numeric.duration.game" },
+            "2": { "name": "keyword.other.unit.game" }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "comment": "Float numbers",
+          "match": "\\b\\d+\\.\\d+\\b",
+          "name": "constant.numeric.float.game"
+        },
+        {
+          "comment": "Integer numbers",
+          "match": "\\b\\d+\\b",
+          "name": "constant.numeric.integer.game"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "comment": "Pipe operator",
+          "match": "\\|",
+          "name": "keyword.operator.pipe.game"
+        },
+        {
+          "comment": "Modulation operator",
+          "match": "~",
+          "name": "keyword.operator.modulation.game"
+        },
+        {
+          "comment": "Transition arrow",
+          "match": "->",
+          "name": "keyword.operator.arrow.game"
+        },
+        {
+          "comment": "Arithmetic and comparison operators",
+          "match": "[+\\-*/]|>=|<=|==|!=|>|<",
+          "name": "keyword.operator.game"
+        },
+        {
+          "comment": "Ternary operator",
+          "match": "\\?",
+          "name": "keyword.operator.ternary.game"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "match": "[{}]",
+          "name": "punctuation.section.block.game"
+        },
+        {
+          "match": "[()]",
+          "name": "punctuation.section.parens.game"
+        },
+        {
+          "match": "[\\[\\]]",
+          "name": "punctuation.section.bracket.game"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.comma.game"
+        },
+        {
+          "match": ":",
+          "name": "punctuation.separator.colon.game"
+        },
+        {
+          "match": "\\.",
+          "name": "punctuation.accessor.dot.game"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+# GAME Standard Library — Noise Compositions
+#
+# Usage: import "noise" expose marble, turbulence, cloud
+
+cinematic "stdlib/noise" {
+
+  # Marble-like noise pattern
+  define marble(scale) {
+    fbm(scale, octaves: 4, persistence: 0.5) | glow(2.0)
+  }
+
+  # High-frequency turbulence
+  define turbulence(scale) {
+    fbm(scale, octaves: 6, persistence: 0.6) | glow(3.0)
+  }
+
+  # Soft cloud pattern
+  define cloud(scale) {
+    simplex(scale) | glow(1.5)
+  }
+
+  # Cellular noise for organic patterns
+  define cellular(scale) {
+    voronoi(scale) | glow(2.0)
+  }
+
+  # Flowing curl pattern
+  define flow(frequency, amplitude) {
+    curl_noise(frequency, amplitude) | glow(2.0)
+  }
+}

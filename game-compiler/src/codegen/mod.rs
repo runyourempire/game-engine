@@ -6,6 +6,9 @@ mod stages;
 mod raymarch;
 mod expr;
 mod analysis;
+pub mod glsl;
+pub mod resonance;
+pub mod react;
 
 #[cfg(test)]
 mod tests;
@@ -34,6 +37,16 @@ pub struct CompileOutput {
     pub arc_moments: Vec<CompiledMoment>,
     /// Compiler warnings (non-fatal issues the user should know about).
     pub warnings: Vec<String>,
+    /// Resonance JS code (cross-layer param modulation). Empty if no resonate block.
+    pub resonance_js: String,
+    /// React JS code (event listeners for user interaction). Empty if no react block.
+    pub react_js: String,
+    /// Number of layers in the cinematic.
+    pub layer_count: usize,
+    /// GLSL ES 3.0 vertex shader for WebGL2 fallback.
+    pub glsl_vertex: String,
+    /// GLSL ES 3.0 fragment shader for WebGL2 fallback.
+    pub glsl_fragment: String,
 }
 
 /// A parameter with modulation metadata for the JS runtime.
@@ -161,13 +174,7 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     let mut cinematic = cinematic.clone();
     expand_defines(&mut cinematic);
 
-    // Warn about unimplemented features that will be silently ignored
-    if cinematic.resonance.is_some() {
-        warnings.push("resonance block is not yet implemented; contents will be ignored".into());
-    }
-    if cinematic.react.is_some() {
-        warnings.push("react block is not yet implemented; contents will be ignored".into());
-    }
+    // (resonance and react blocks are now compiled)
 
     // Validate pipe chain ordering for all layers (after define expansion)
     for layer in &cinematic.layers {
@@ -200,6 +207,27 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     // Compile arc timeline
     let arc_moments = compile_arc(&cinematic, &gen.params);
 
+    // Compile resonance block
+    let resonance_js = if let Some(res_block) = &cinematic.resonance {
+        let compiled = resonance::compile_resonance(res_block, &gen.params);
+        compiled.js_code
+    } else {
+        String::new()
+    };
+
+    // Compile react block
+    let react_js = if let Some(react_block) = &cinematic.react {
+        react::compile_react(react_block, &gen.params)
+    } else {
+        String::new()
+    };
+
+    // Generate GLSL fallback shaders
+    let param_fields: Vec<String> = gen.params.iter()
+        .map(|p| p.uniform_field.clone())
+        .collect();
+    let (glsl_vertex, glsl_fragment) = glsl::wgsl_to_glsl(&gen.output, &param_fields);
+
     Ok(CompileOutput {
         wgsl: gen.output,
         title,
@@ -213,6 +241,11 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
         uniform_float_count: SYSTEM_FLOAT_COUNT + param_count,
         arc_moments,
         warnings,
+        resonance_js,
+        react_js,
+        layer_count: cinematic.layers.len(),
+        glsl_vertex,
+        glsl_fragment,
     })
 }
 
@@ -328,12 +361,14 @@ fn classify_stage_kind(name: &str) -> StageKind {
         "circle" | "sphere" | "ring" | "box" | "torus" | "cylinder" | "plane"
         | "line" | "polygon" | "star" | "fbm" | "simplex" | "voronoi" | "noise"
         | "mask_arc" | "displace" | "round" | "onion"
+        | "curl_noise" | "concentric_waves" | "threshold"
             => StageKind::Sdf,
         "glow" => StageKind::Glow,
         "shade" | "emissive" | "colormap" | "spectrum" | "tint" | "gradient"
+        | "particles"
             => StageKind::Color,
         "bloom" | "chromatic" | "vignette" | "grain" | "fog" | "glitch"
-        | "scanlines" | "tonemap" | "invert" | "saturate_color"
+        | "scanlines" | "tonemap" | "invert" | "saturate_color" | "iridescent"
             => StageKind::PostProcess,
         _ => StageKind::Unknown,
     }
@@ -585,15 +620,16 @@ impl WgslGen {
             | "line" | "polygon" | "star" => Ok(ShaderState::Sdf),
             "glow" => Ok(ShaderState::Glow),
             "shade" | "emissive" | "colormap" | "spectrum" | "tint"
-            | "gradient" => Ok(ShaderState::Color),
-            "fbm" | "simplex" | "voronoi" | "noise" => Ok(ShaderState::Sdf),
-            "mask_arc" => Ok(ShaderState::Sdf),
+            | "gradient" | "particles" => Ok(ShaderState::Color),
+            "fbm" | "simplex" | "voronoi" | "noise"
+            | "curl_noise" | "concentric_waves" => Ok(ShaderState::Sdf),
+            "mask_arc" | "threshold" => Ok(ShaderState::Sdf),
             "translate" | "rotate" | "scale" | "repeat" | "mirror" | "twist"
             => Ok(ShaderState::Position),
             "displace" | "round" | "onion" => Ok(ShaderState::Sdf),
             "bloom" | "chromatic" | "vignette" | "grain"
             | "fog" | "glitch" | "scanlines" | "tonemap" | "invert"
-            | "saturate_color" => Ok(ShaderState::Color),
+            | "saturate_color" | "iridescent" => Ok(ShaderState::Color),
             _ => Err(crate::error::GameError::unknown_function(name)),
         }
     }

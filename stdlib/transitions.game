@@ -1,0 +1,31 @@
+# GAME Standard Library — Transition Effects
+#
+# Usage: import "transitions" expose fade_circle, dissolve_ring
+
+cinematic "stdlib/transitions" {
+
+  # A fading circle that grows and dims
+  define fade_circle(radius, intensity) {
+    circle(radius) | glow(intensity) | vignette(0.4)
+  }
+
+  # A dissolving ring effect
+  define dissolve_ring(radius, thickness) {
+    ring(radius, thickness) | glow(3.0) | grain(0.05)
+  }
+
+  # A bloom wipe — bright expanding circle
+  define bloom_wipe(radius) {
+    circle(radius) | glow(5.0) | bloom(1.5, 2.0)
+  }
+
+  # A shatter-like effect using voronoi
+  define shatter(scale) {
+    voronoi(scale) | glow(2.0) | chromatic(0.01)
+  }
+
+  # Ripple transition from center
+  define ripple(frequency) {
+    concentric_waves(1.0, 0.5, frequency) | glow(2.0)
+  }
+}

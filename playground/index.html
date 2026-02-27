@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAME Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-primary: #0A0A0A;
+  --bg-panel: #111111;
+  --border: #2A2A2A;
+  --text-primary: #FFFFFF;
+  --text-secondary: #A0A0A0;
+  --accent-gold: #D4AF37;
+  --accent-cyan: #00CED1;
+  --error-red: #EF4444;
+  --success-green: #22C55E;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+/* ── Top Bar ─────────────────────────────────────────────── */
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#topbar h1 {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+#topbar .separator {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+select, button {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+select:hover, button:hover {
+  border-color: var(--text-secondary);
+}
+
+select:focus, button:focus {
+  border-color: var(--accent-gold);
+}
+
+button.accent {
+  background: var(--accent-gold);
+  color: #000;
+  border-color: var(--accent-gold);
+  font-weight: 500;
+}
+
+button.accent:hover {
+  background: #e0c050;
+  border-color: #e0c050;
+}
+
+#topbar .spacer {
+  flex: 1;
+}
+
+#wasm-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+#wasm-status.loaded {
+  color: var(--success-green);
+}
+
+#wasm-status.error {
+  color: var(--error-red);
+}
+
+/* ── Main Layout ─────────────────────────────────────────── */
+
+#main {
+  display: flex;
+  height: calc(100% - 48px);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+
+.panel:last-child {
+  border-right: none;
+}
+
+#editor-panel {
+  width: 40%;
+  min-width: 200px;
+}
+
+#wgsl-panel {
+  width: 30%;
+  min-width: 150px;
+}
+
+#preview-panel {
+  width: 30%;
+  min-width: 150px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.panel-header span {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.panel-header .badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(212, 175, 55, 0.15);
+  color: var(--accent-gold);
+  font-family: var(--font-mono);
+}
+
+/* ── Editor ──────────────────────────────────────────────── */
+
+#editor-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+#editor {
+  width: 100%;
+  height: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  border: none;
+  outline: none;
+  resize: none;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+
+#editor::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+#editor::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+#editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#editor::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+#editor::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* ── Error Bar ───────────────────────────────────────────── */
+
+#error-bar {
+  display: none;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.12);
+  border-top: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--error-red);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+#error-bar.visible {
+  display: block;
+}
+
+/* ── WGSL Output ─────────────────────────────────────────── */
+
+#wgsl-output {
+  flex: 1;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+  user-select: text;
+}
+
+#wgsl-output::-webkit-scrollbar {
+  width: 8px;
+}
+
+#wgsl-output::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#wgsl-output::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+#wgsl-output .wgsl-placeholder {
+  color: #444;
+  font-style: italic;
+}
+
+/* ── Preview ─────────────────────────────────────────────── */
+
+#preview-wrap {
+  flex: 1;
+  position: relative;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+#preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #000;
+}
+
+#preview-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+#preview-message.hidden {
+  display: none;
+}
+
+/* ── Status Bar ──────────────────────────────────────────── */
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 28px;
+  padding: 0 12px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+#status-bar .status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#status-bar .status-label {
+  color: #555;
+}
+
+#status-bar .status-value {
+  color: var(--text-secondary);
+}
+
+#status-bar .status-value.active {
+  color: var(--accent-cyan);
+}
+
+#status-bar .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success-green);
+  flex-shrink: 0;
+}
+
+#status-bar .status-dot.error {
+  background: var(--error-red);
+}
+
+#status-bar .status-dot.idle {
+  background: #555;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  #main {
+    flex-direction: column;
+  }
+  .panel {
+    width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  #editor-panel { height: 40%; }
+  #wgsl-panel { height: 30%; }
+  #preview-panel { height: 30%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Top Bar ──────────────────────────────────────────── -->
+<div id="topbar">
+  <h1>GAME Playground</h1>
+  <div class="separator"></div>
+  <select id="examples-select">
+    <option value="" disabled selected>Examples...</option>
+    <option value="hello">Hello</option>
+    <option value="mouse-follow">Mouse Follow</option>
+    <option value="loading-ring">Loading Ring</option>
+    <option value="dashboard-gauge">Dashboard Gauge</option>
+    <option value="multi-layer">Multi-Layer</option>
+    <option value="interactive">Interactive</option>
+    <option value="resonance">Resonance</option>
+  </select>
+  <div class="spacer"></div>
+  <span id="wasm-status">Loading WASM...</span>
+  <div class="separator"></div>
+  <button id="share-btn" title="Copy shareable URL to clipboard">Share</button>
+  <select id="export-select">
+    <option value="" disabled selected>Export...</option>
+    <option value="html">HTML</option>
+    <option value="component">Component JS</option>
+    <option value="wgsl">WGSL</option>
+  </select>
+</div>
+
+<!-- ── Main Panels ─────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Editor Panel -->
+  <div class="panel" id="editor-panel">
+    <div class="panel-header">
+      <span>Source (.game)</span>
+    </div>
+    <div id="editor-wrap">
+      <textarea id="editor" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Write your .game shader here..."></textarea>
+    </div>
+    <div id="error-bar"></div>
+  </div>
+
+  <!-- WGSL Panel -->
+  <div class="panel" id="wgsl-panel">
+    <div class="panel-header">
+      <span>WGSL Output</span>
+      <span class="badge" id="wgsl-size"></span>
+    </div>
+    <div id="wgsl-output"><span class="wgsl-placeholder">Compiled WGSL will appear here...</span></div>
+  </div>
+
+  <!-- Preview Panel -->
+  <div class="panel" id="preview-panel">
+    <div class="panel-header">
+      <span>Live Preview</span>
+    </div>
+    <div id="preview-wrap">
+      <iframe id="preview-iframe" sandbox="allow-scripts"></iframe>
+      <div id="preview-message">Compile a .game file to see the preview</div>
+    </div>
+    <div id="status-bar">
+      <div class="status-item">
+        <div class="status-dot idle" id="compile-dot"></div>
+        <span class="status-label">Status:</span>
+        <span class="status-value" id="status-compile">idle</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Layers:</span>
+        <span class="status-value" id="status-layers">--</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Params:</span>
+        <span class="status-value" id="status-params">--</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Audio:</span>
+        <span class="status-value" id="status-audio">--</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Mouse:</span>
+        <span class="status-value" id="status-mouse">--</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+// ── Examples ──────────────────────────────────────────────
+
+const EXAMPLES = {
+  'hello': `cinematic "Hello" {
+  layer {
+    fn: circle(0.3 + sin(time) * 0.05) | glow(2.0)
+  }
+}`,
+  'mouse-follow': `cinematic "Follow" {
+  layer {
+    fn: translate(mx, my) | circle(0.15) | glow(4.0) | bloom(0.3, 2.0) | vignette(0.25)
+    mx: 0.0 ~ mouse.x * 2.0 - 1.0
+    my: 0.0 ~ mouse.y * 2.0 - 1.0
+  }
+}`,
+  'loading-ring': `cinematic "Loading Ring" {
+  layer {
+    fn: ring(0.3, 0.04) | mask_arc(angle) | glow(2.0) | tint(gold)
+    angle: 0.0 ~ data.progress * 6.283
+  }
+}`,
+  'dashboard-gauge': `cinematic "Dashboard Gauge" {
+  define track(r, t) {
+    ring(r, t) | glow(0.8) | tint(frost)
+  }
+
+  define indicator(r, t) {
+    ring(r, t) | mask_arc(fill) | glow(intensity) | tint(cyan)
+  }
+
+  layer background {
+    fn: track(0.35, 0.025)
+  }
+
+  layer fill_arc {
+    fn: indicator(0.35, 0.03)
+    fill: 0.0 ~ data.value * 6.283
+    intensity: 2.0 ~ data.value * 4.0
+  }
+
+  layer center_dot {
+    fn: circle(0.04) | glow(center_glow) | tint(white)
+    center_glow: 1.5 ~ data.value * 3.0
+  }
+}`,
+  'multi-layer': `cinematic "Layered Scene" {
+  layer bg {
+    fn: gradient(deep_blue, midnight, "radial")
+  }
+
+  layer ring {
+    fn: ring(0.35, 0.03) | glow(2.0) | tint(cyan)
+  }
+
+  layer orb {
+    fn: circle(0.08) | glow(4.0) | tint(gold)
+  }
+}`,
+  'interactive': `cinematic "Touch" {
+  layer fluid {
+    fn: curl_noise(p, frequency: freq, amplitude: amp)
+      | glow(3.0)
+      | tint(plasma)
+    freq: 3.0 ~ mouse.x * 4.0
+    amp: 0.5 ~ mouse.y
+  }
+
+  layer ripples {
+    fn: concentric_waves(p, decay: 2.0, speed: 3.0)
+      | glow(2.0)
+      | tint(cyan)
+      | blend(mode: additive, opacity: 0.6)
+  }
+
+  lens {
+    mode: flat
+    fields: [fluid, ripples]
+    post: [bloom(0.8), chromatic(0.002)]
+  }
+}`,
+  'resonance': `cinematic "Duality" {
+  layer fire {
+    fn: fbm(p * freq, octaves: 5)
+      | threshold(0.4)
+      | glow(4.0)
+      | tint(ember)
+    freq: 3.0
+    intensity: 0.5 ~ audio.bass
+  }
+
+  layer ice {
+    fn: voronoi(p * density)
+      | glow(2.0)
+      | tint(frost)
+      | iridescent(0.3)
+    density: 3.0
+    clarity: 0.8 ~ audio.treble
+  }
+
+  layer smoke {
+    fn: curl_noise(p * 2.0, frequency: 1.5, amplitude: 1.0)
+      | glow(1.5)
+      | tint(ash)
+      | blend(mode: additive, opacity: 0.5)
+  }
+
+  resonate {
+    freq ~ clarity * 2.0
+    density ~ intensity * -1.5
+    damping: 0.96
+  }
+
+  lens {
+    mode: flat
+    fields: [fire, ice]
+    overlay: [smoke]
+    post: [bloom(1.5), grain(0.015)]
+  }
+}`
+};
+
+// ── DOM Refs ──────────────────────────────────────────────
+
+const editor = document.getElementById('editor');
+const errorBar = document.getElementById('error-bar');
+const wgslOutput = document.getElementById('wgsl-output');
+const wgslSize = document.getElementById('wgsl-size');
+const previewIframe = document.getElementById('preview-iframe');
+const previewMessage = document.getElementById('preview-message');
+const examplesSelect = document.getElementById('examples-select');
+const exportSelect = document.getElementById('export-select');
+const shareBtn = document.getElementById('share-btn');
+const wasmStatus = document.getElementById('wasm-status');
+const compileDot = document.getElementById('compile-dot');
+const statusCompile = document.getElementById('status-compile');
+const statusLayers = document.getElementById('status-layers');
+const statusParams = document.getElementById('status-params');
+const statusAudio = document.getElementById('status-audio');
+const statusMouse = document.getElementById('status-mouse');
+
+// ── WASM Loading ──────────────────────────────────────────
+
+let wasmReady = false;
+let compile_to_wgsl, compile_to_html, compile_to_component, validate;
+
+async function loadWasm() {
+  try {
+    const mod = await import('./pkg/game_compiler.js');
+    await mod.default();
+    compile_to_wgsl = mod.compile_to_wgsl;
+    compile_to_html = mod.compile_to_html;
+    compile_to_component = mod.compile_to_component;
+    validate = mod.validate;
+    wasmReady = true;
+    wasmStatus.textContent = 'WASM ready';
+    wasmStatus.className = 'loaded';
+    // Trigger initial compilation if there's source
+    if (editor.value.trim()) {
+      scheduleCompile();
+    }
+  } catch (err) {
+    wasmStatus.textContent = 'WASM failed';
+    wasmStatus.className = 'error';
+    console.error('Failed to load WASM:', err);
+    showError(`Failed to load WASM compiler:\n${err.message || err}`);
+  }
+}
+
+// ── URL Hash Sharing ──────────────────────────────────────
+
+function encodeSource(source) {
+  try {
+    return btoa(unescape(encodeURIComponent(source)));
+  } catch {
+    return btoa(source);
+  }
+}
+
+function decodeSource(encoded) {
+  try {
+    return decodeURIComponent(escape(atob(encoded)));
+  } catch {
+    try {
+      return atob(encoded);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function loadFromHash() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#source=')) {
+    const encoded = hash.slice(8);
+    const source = decodeSource(encoded);
+    if (source) {
+      editor.value = source;
+      return true;
+    }
+  }
+  return false;
+}
+
+shareBtn.addEventListener('click', () => {
+  const source = editor.value;
+  if (!source.trim()) return;
+  const encoded = encodeSource(source);
+  const url = `${window.location.origin}${window.location.pathname}#source=${encoded}`;
+  window.location.hash = `source=${encoded}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = shareBtn.textContent;
+    shareBtn.textContent = 'Copied!';
+    setTimeout(() => { shareBtn.textContent = orig; }, 1500);
+  }).catch(() => {
+    // Fallback: select the URL bar
+    prompt('Copy this URL:', url);
+  });
+});
+
+// ── Examples ──────────────────────────────────────────────
+
+examplesSelect.addEventListener('change', () => {
+  const key = examplesSelect.value;
+  if (EXAMPLES[key]) {
+    editor.value = EXAMPLES[key];
+    examplesSelect.selectedIndex = 0;
+    scheduleCompile();
+  }
+});
+
+// ── Export ─────────────────────────────────────────────────
+
+function downloadFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+exportSelect.addEventListener('change', () => {
+  const format = exportSelect.value;
+  exportSelect.selectedIndex = 0;
+  if (!wasmReady) return;
+
+  const source = editor.value;
+  if (!source.trim()) return;
+
+  try {
+    switch (format) {
+      case 'html': {
+        const html = compile_to_html(source);
+        downloadFile('shader.html', html, 'text/html');
+        break;
+      }
+      case 'component': {
+        const js = compile_to_component(source, 'game-shader');
+        downloadFile('shader-component.js', js, 'application/javascript');
+        break;
+      }
+      case 'wgsl': {
+        const wgsl = compile_to_wgsl(source);
+        downloadFile('shader.wgsl', wgsl, 'text/plain');
+        break;
+      }
+    }
+  } catch (err) {
+    showError(`Export error: ${err.message || err}`);
+  }
+});
+
+// ── Compilation ───────────────────────────────────────────
+
+let compileTimer = null;
+
+function scheduleCompile() {
+  if (compileTimer) clearTimeout(compileTimer);
+  compileDot.className = 'status-dot idle';
+  statusCompile.textContent = 'typing...';
+  compileTimer = setTimeout(doCompile, 300);
+}
+
+function showError(msg) {
+  errorBar.textContent = msg;
+  errorBar.classList.add('visible');
+}
+
+function hideError() {
+  errorBar.textContent = '';
+  errorBar.classList.remove('visible');
+}
+
+function doCompile() {
+  if (!wasmReady) return;
+  const source = editor.value;
+
+  if (!source.trim()) {
+    hideError();
+    wgslOutput.innerHTML = '<span class="wgsl-placeholder">Compiled WGSL will appear here...</span>';
+    wgslSize.textContent = '';
+    previewMessage.textContent = 'Compile a .game file to see the preview';
+    previewMessage.classList.remove('hidden');
+    previewIframe.srcdoc = '';
+    resetStatus();
+    return;
+  }
+
+  // Validate first for status info
+  try {
+    const info = validate(source);
+    updateStatus(info);
+
+    if (!info.valid) {
+      showError(info.error || 'Validation failed');
+      compileDot.className = 'status-dot error';
+      statusCompile.textContent = 'error';
+      return;
+    }
+  } catch (err) {
+    // Validation itself threw — still try to compile
+  }
+
+  // Compile WGSL
+  let wgslText = '';
+  try {
+    wgslText = compile_to_wgsl(source);
+    wgslOutput.textContent = wgslText;
+    const bytes = new TextEncoder().encode(wgslText).length;
+    wgslSize.textContent = bytes > 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
+    hideError();
+  } catch (err) {
+    const msg = err.message || String(err);
+    showError(msg);
+    wgslOutput.innerHTML = '<span class="wgsl-placeholder">Compilation error — see error bar</span>';
+    wgslSize.textContent = '';
+    compileDot.className = 'status-dot error';
+    statusCompile.textContent = 'error';
+    return;
+  }
+
+  // Compile HTML for preview
+  try {
+    const html = compile_to_html(source);
+    previewMessage.classList.add('hidden');
+    previewIframe.srcdoc = html;
+    compileDot.className = 'status-dot';
+    statusCompile.textContent = 'ok';
+  } catch (err) {
+    // WGSL succeeded but HTML failed — show in preview message
+    previewMessage.textContent = `Preview error: ${err.message || err}`;
+    previewMessage.classList.remove('hidden');
+    previewIframe.srcdoc = '';
+    compileDot.className = 'status-dot error';
+    statusCompile.textContent = 'preview error';
+  }
+}
+
+function updateStatus(info) {
+  if (info.layers !== undefined && info.layers !== null) {
+    statusLayers.textContent = String(info.layers);
+  } else {
+    statusLayers.textContent = '--';
+  }
+
+  if (info.params && info.params.length > 0) {
+    statusParams.textContent = info.params.join(', ');
+  } else {
+    statusParams.textContent = 'none';
+  }
+
+  if (info.uses_audio !== undefined) {
+    statusAudio.textContent = info.uses_audio ? 'yes' : 'no';
+    statusAudio.className = info.uses_audio ? 'status-value active' : 'status-value';
+  } else {
+    statusAudio.textContent = '--';
+    statusAudio.className = 'status-value';
+  }
+
+  if (info.uses_mouse !== undefined) {
+    statusMouse.textContent = info.uses_mouse ? 'yes' : 'no';
+    statusMouse.className = info.uses_mouse ? 'status-value active' : 'status-value';
+  } else {
+    statusMouse.textContent = '--';
+    statusMouse.className = 'status-value';
+  }
+}
+
+function resetStatus() {
+  compileDot.className = 'status-dot idle';
+  statusCompile.textContent = 'idle';
+  statusLayers.textContent = '--';
+  statusParams.textContent = '--';
+  statusAudio.textContent = '--';
+  statusAudio.className = 'status-value';
+  statusMouse.textContent = '--';
+  statusMouse.className = 'status-value';
+}
+
+// ── Editor Events ─────────────────────────────────────────
+
+editor.addEventListener('input', scheduleCompile);
+
+// Tab key support in textarea
+editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+
+    if (e.shiftKey) {
+      // Dedent: remove leading 2 spaces from current line
+      const before = editor.value.substring(0, start);
+      const lineStart = before.lastIndexOf('\n') + 1;
+      const linePrefix = editor.value.substring(lineStart, start);
+      if (linePrefix.startsWith('  ')) {
+        editor.value = editor.value.substring(0, lineStart) + editor.value.substring(lineStart + 2);
+        editor.selectionStart = editor.selectionEnd = Math.max(start - 2, lineStart);
+      }
+    } else {
+      // Indent: insert 2 spaces
+      editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
+      editor.selectionStart = editor.selectionEnd = start + 2;
+    }
+    scheduleCompile();
+  }
+});
+
+// ── WebGPU Check ──────────────────────────────────────────
+
+function checkWebGPU() {
+  if (!navigator.gpu) {
+    previewMessage.textContent = 'WebGPU is not available in this browser.\nPlease use Chrome 113+, Edge 113+, or another WebGPU-capable browser.';
+    previewMessage.classList.remove('hidden');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────
+
+checkWebGPU();
+
+// Load from URL hash, or load the Hello example
+if (!loadFromHash()) {
+  editor.value = EXAMPLES['hello'];
+}
+
+// Load WASM and compile
+loadWasm().then(() => {
+  if (wasmReady && editor.value.trim()) {
+    doCompile();
+  }
+});
+</script>
+</body>
+</html>

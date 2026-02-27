@@ -11,26 +11,38 @@ keywords = ["shader", "webgpu", "wgsl", "web-components", "generative-art"]
 categories = ["compilers", "web-programming", "graphics"]
 exclude = ["target/", ".github/", "dist/"]
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [[bin]]
 name = "game"
 path = "src/main.rs"
 
 [dependencies]
 logos = "0.14"
-clap = { version = "4", features = ["derive"] }
-axum = { version = "0.8", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
-notify = "7"
-tower-livereload = "0.9"
-tower = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Optional: WASM compilation target
+wasm-bindgen = { version = "0.2", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+js-sys = { version = "0.3", optional = true }
 
 # Optional: snapshot testing (GPU headless rendering + image comparison)
 wgpu = { version = "23", optional = true }
 image = { version = "0.25", optional = true }
 pollster = { version = "0.4", optional = true }
 
+# Native-only deps: CLI, dev server, file watching
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+clap = { version = "4", features = ["derive"] }
+axum = { version = "0.8", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+notify = "7"
+tower-livereload = "0.9"
+tower = "0.5"
+
 [features]
 default = []
 snapshot = ["dep:wgpu", "dep:image", "dep:pollster"]
+wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:js-sys"]
