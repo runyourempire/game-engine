@@ -119,31 +119,17 @@ impl SnapshotRenderer {
                 cache: None,
             });
 
-        // Bind group — binding 0 is always uniforms
+        // Bind group — binding 0 is always uniforms.
+        // Audio data is embedded in the Uniforms struct (not a separate binding),
+        // so we only need a single bind group entry.
         let bind_group_layout = pipeline.get_bind_group_layout(0);
-        let mut entries: Vec<wgpu::BindGroupEntry> = vec![wgpu::BindGroupEntry {
-            binding: 0,
-            resource: uniform_buffer.as_entire_binding(),
-        }];
-
-        // If shader uses audio, add binding 1 with zeros
-        let audio_buffer;
-        if output.uses_audio {
-            audio_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("audio"),
-                contents: &[0u8; 16], // 4 f32 zeros
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-            entries.push(wgpu::BindGroupEntry {
-                binding: 1,
-                resource: audio_buffer.as_entire_binding(),
-            });
-        }
-
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("game-bind"),
             layout: &bind_group_layout,
-            entries: &entries,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         });
 
         // Readback buffer (aligned to 256 bytes per row)

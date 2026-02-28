@@ -706,6 +706,7 @@ dependencies = [
  "image",
  "js-sys",
  "logos",
+ "naga",
  "notify",
  "pollster",
  "serde",

@@ -218,12 +218,12 @@ impl WgslGen {
             }
             "fbm" => {
                 let pos = self.compile_arg(&stage.args, 0, "p")?;
-                let oct = self.compile_named_arg(&stage.args, "octaves", "6")?;
+                let oct = self.compile_int_arg(&stage.args, "octaves", "6")?;
                 let per = self.compile_named_arg(&stage.args, "persistence", "0.5")?;
                 let lac = self.compile_named_arg(&stage.args, "lacunarity", "2.0")?;
                 self.used_builtins.insert("fbm2");
                 self.line(&format!(
-                    "var sdf_result = fbm2({pos}, i32({oct}), {per}, {lac});"
+                    "var sdf_result = fbm2({pos}, {oct}, {per}, {lac});"
                 ));
             }
             "shade" => {

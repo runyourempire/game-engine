@@ -42,6 +42,9 @@ notify = "7"
 tower-livereload = "0.9"
 tower = "0.5"
 
+[dev-dependencies]
+naga = { version = "23", features = ["wgsl-in"] }
+
 [features]
 default = []
 snapshot = ["dep:wgpu", "dep:image", "dep:pollster"]

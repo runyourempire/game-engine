@@ -8,11 +8,16 @@ use crate::token::{Spanned, Token};
 pub struct Parser {
     tokens: Vec<Spanned>,
     pos: usize,
+    errors: Vec<GameError>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Spanned>) -> Self {
-        Self { tokens, pos: 0 }
+        Self {
+            tokens,
+            pos: 0,
+            errors: Vec::new(),
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -90,6 +95,216 @@ impl Parser {
         let mut cinematic = self.parse_cinematic()?;
         cinematic.imports = imports;
         Ok(cinematic)
+    }
+
+    // ── Error Recovery ─────────────────────────────────────────────────
+
+    /// Parse with error recovery — returns partial AST + all errors.
+    ///
+    /// Unlike `parse()`, this method does not bail on the first error.
+    /// Instead it records the error, skips to the next synchronization
+    /// point, and continues parsing the rest of the file.
+    pub fn parse_with_recovery(&mut self) -> (Cinematic, Vec<GameError>) {
+        self.errors.clear();
+
+        // Parse top-level imports before the cinematic block
+        let mut imports = Vec::new();
+        while self.at(&Token::Import) {
+            match self.parse_import() {
+                Ok(imp) => imports.push(imp),
+                Err(e) => {
+                    self.errors.push(e);
+                    self.skip_to_sync_point();
+                }
+            }
+        }
+
+        match self.parse_cinematic_recovery() {
+            Ok(mut cin) => {
+                cin.imports = imports;
+                (cin, std::mem::take(&mut self.errors))
+            }
+            Err(e) => {
+                self.errors.push(e);
+                (
+                    Cinematic {
+                        name: None,
+                        imports: vec![],
+                        properties: vec![],
+                        layers: vec![],
+                        lenses: vec![],
+                        arc: None,
+                        react: None,
+                        resonance: None,
+                        defines: vec![],
+                    },
+                    std::mem::take(&mut self.errors),
+                )
+            }
+        }
+    }
+
+    /// Parse a cinematic block with per-block error recovery.
+    fn parse_cinematic_recovery(&mut self) -> Result<Cinematic> {
+        self.expect(&Token::Cinematic)?;
+
+        let name = if let Some(Token::String(_)) = self.peek() {
+            let s = self.advance().unwrap();
+            if let Token::String(n) = &s.token {
+                Some(n.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        self.expect(&Token::LBrace)?;
+
+        let mut cinematic = Cinematic {
+            name,
+            imports: Vec::new(),
+            properties: Vec::new(),
+            layers: Vec::new(),
+            lenses: Vec::new(),
+            arc: None,
+            react: None,
+            resonance: None,
+            defines: Vec::new(),
+        };
+
+        while !self.at(&Token::RBrace) {
+            if self.peek().is_none() {
+                self.errors
+                    .push(GameError::unexpected_eof("'}'"));
+                break;
+            }
+            match self.peek() {
+                Some(Token::Layer) => {
+                    self.try_parse_block(|p| p.parse_layer(), |cin, layer| {
+                        cin.layers.push(layer);
+                    }, &mut cinematic);
+                }
+                Some(Token::Lens) => {
+                    self.try_parse_block(|p| p.parse_lens(), |cin, lens| {
+                        cin.lenses.push(lens);
+                    }, &mut cinematic);
+                }
+                Some(Token::Arc) => {
+                    self.try_parse_block(|p| p.parse_arc(), |cin, arc| {
+                        cin.arc = Some(arc);
+                    }, &mut cinematic);
+                }
+                Some(Token::React) => {
+                    self.try_parse_block(|p| p.parse_react(), |cin, react| {
+                        cin.react = Some(react);
+                    }, &mut cinematic);
+                }
+                Some(Token::Resonate) => {
+                    self.try_parse_block(|p| p.parse_resonance(), |cin, res| {
+                        cin.resonance = Some(res);
+                    }, &mut cinematic);
+                }
+                Some(Token::Define) => {
+                    self.try_parse_block(|p| p.parse_define(), |cin, def| {
+                        cin.defines.push(def);
+                    }, &mut cinematic);
+                }
+                Some(Token::Ident(_)) => {
+                    self.try_parse_block(|p| p.parse_property(), |cin, prop| {
+                        cin.properties.push(prop);
+                    }, &mut cinematic);
+                }
+                _ => {
+                    let s = self.peek_spanned().unwrap();
+                    self.errors.push(GameError::unexpected_token(
+                        "layer, lens, arc, react, resonate, define, or property",
+                        s.token.describe(),
+                        s.span.clone(),
+                    ));
+                    self.skip_to_sync_point();
+                }
+            }
+        }
+
+        // Consume closing brace if present
+        if self.at(&Token::RBrace) {
+            self.advance();
+        }
+
+        Ok(cinematic)
+    }
+
+    /// Try to parse a block; on failure record the error and skip ahead.
+    fn try_parse_block<T, F, A>(&mut self, parse_fn: F, apply: A, cinematic: &mut Cinematic)
+    where
+        F: FnOnce(&mut Self) -> Result<T>,
+        A: FnOnce(&mut Cinematic, T),
+    {
+        let start_pos = self.pos;
+        match parse_fn(self) {
+            Ok(result) => apply(cinematic, result),
+            Err(e) => {
+                self.errors.push(e);
+                // Check if the failed parse consumed an opening brace.
+                // If so, the `}` found by skip_to_sync_point is the
+                // matching close-brace and should be consumed.
+                let consumed_lbrace = self.tokens[start_pos..self.pos]
+                    .iter()
+                    .any(|t| t.token == Token::LBrace);
+
+                // If the parser didn't advance past where it started,
+                // consume at least one token to avoid infinite loops.
+                if self.pos <= start_pos {
+                    self.pos = start_pos + 1;
+                }
+                self.skip_to_sync_point();
+
+                // Consume the closing `}` of the failed block if the
+                // parse function had already consumed the matching `{`.
+                if consumed_lbrace && self.at(&Token::RBrace) {
+                    self.advance();
+                }
+            }
+        }
+    }
+
+    /// Skip tokens until we find a synchronization point.
+    ///
+    /// Sync points: closing `}` at depth 0, or block keywords
+    /// (`layer`, `arc`, `react`, etc.) at depth 0.
+    fn skip_to_sync_point(&mut self) {
+        let mut depth = 0i32;
+        while self.pos < self.tokens.len() {
+            match &self.tokens[self.pos].token {
+                Token::LBrace => {
+                    depth += 1;
+                    self.pos += 1;
+                }
+                Token::RBrace => {
+                    if depth <= 0 {
+                        // Don't consume — the caller handles it
+                        return;
+                    }
+                    depth -= 1;
+                    self.pos += 1;
+                }
+                Token::Layer
+                | Token::Arc
+                | Token::React
+                | Token::Resonate
+                | Token::Define
+                | Token::Lens
+                | Token::Import
+                    if depth <= 0 =>
+                {
+                    return;
+                }
+                _ => {
+                    self.pos += 1;
+                }
+            }
+        }
     }
 
     /// Parse: `import "path" expose name1, name2`
@@ -1006,5 +1221,84 @@ mod tests {
         } else {
             panic!("expected binary op");
         }
+    }
+
+    // ── Error Recovery Tests ──────────────────────────────────────────
+
+    fn parse_with_recovery(src: &str) -> (Cinematic, Vec<GameError>) {
+        let tokens = lexer::lex(src).expect("lex failed");
+        let mut parser = Parser::new(tokens);
+        parser.parse_with_recovery()
+    }
+
+    #[test]
+    fn recovery_skips_bad_layer_keeps_good() {
+        let (cin, errors) = parse_with_recovery(
+            r#"cinematic {
+                layer a { fn: circle(0.3) | glow(2.0) }
+                layer b { ??? }
+                layer c { fn: box(0.2, 0.2) | glow(1.0) }
+            }"#,
+        );
+        assert!(!errors.is_empty(), "should report errors for layer b");
+        assert_eq!(cin.layers.len(), 2, "should keep layers a and c");
+        assert_eq!(cin.layers[0].name.as_deref(), Some("a"));
+        assert_eq!(cin.layers[1].name.as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn recovery_valid_source_no_errors() {
+        let (cin, errors) = parse_with_recovery(
+            r#"cinematic "Test" {
+                layer { fn: circle(0.5) | glow(2.0) }
+            }"#,
+        );
+        assert!(errors.is_empty(), "valid source should have no errors");
+        assert_eq!(cin.layers.len(), 1);
+        assert_eq!(cin.name.as_deref(), Some("Test"));
+    }
+
+    #[test]
+    fn recovery_multiple_bad_blocks() {
+        let (cin, errors) = parse_with_recovery(
+            r#"cinematic {
+                layer ok { fn: circle(0.3) }
+                layer bad1 { not valid }
+                layer bad2 { also broken }
+                layer ok2 { fn: box(0.2, 0.2) }
+            }"#,
+        );
+        assert!(errors.len() >= 2, "should report at least 2 errors, got {}", errors.len());
+        assert_eq!(cin.layers.len(), 2, "should keep only the valid layers");
+    }
+
+    #[test]
+    fn recovery_empty_cinematic() {
+        let (cin, errors) = parse_with_recovery("cinematic {}");
+        assert!(errors.is_empty());
+        assert!(cin.layers.is_empty());
+    }
+
+    #[test]
+    fn recovery_original_parse_still_works() {
+        // Verify that the original parse() method is unaffected
+        let tokens = lexer::lex(
+            r#"cinematic { layer { fn: circle(0.5) } }"#,
+        )
+        .expect("lex failed");
+        let mut parser = Parser::new(tokens);
+        let cin = parser.parse().expect("parse should succeed");
+        assert_eq!(cin.layers.len(), 1);
+    }
+
+    #[test]
+    fn recovery_original_parse_still_fails_fast() {
+        // Verify that parse() still fails on first error (backward compat)
+        let tokens = lexer::lex(
+            r#"cinematic { layer a { ??? } layer b { fn: circle(0.5) } }"#,
+        )
+        .expect("lex failed");
+        let mut parser = Parser::new(tokens);
+        assert!(parser.parse().is_err(), "parse() should fail fast");
     }
 }

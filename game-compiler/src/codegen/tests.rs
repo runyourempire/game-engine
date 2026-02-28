@@ -113,7 +113,7 @@ fn codegen_fbm_with_persistence() {
             layer { fn: fbm(p, octaves: 4, persistence: 0.6) }
         }"#,
     );
-    assert!(wgsl.contains("fbm2(p, i32(4.0), 0.6, 2.0)"));
+    assert!(wgsl.contains("fbm2(p, 4, 0.6, 2.0)"));
 }
 
 #[test]

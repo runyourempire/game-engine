@@ -35,11 +35,11 @@ impl WgslGen {
             match stage.name.as_str() {
                 "fbm" => {
                     let pos = self.compile_arg(&stage.args, 0, "p")?;
-                    let oct = self.compile_named_arg(&stage.args, "octaves", "6")?;
+                    let oct = self.compile_int_arg(&stage.args, "octaves", "6")?;
                     let per = self.compile_named_arg(&stage.args, "persistence", "0.5")?;
                     let lac = self.compile_named_arg(&stage.args, "lacunarity", "2.0")?;
                     self.used_builtins.insert("fbm2");
-                    self.line(&format!("return fbm2({pos}, i32({oct}), {per}, {lac});"));
+                    self.line(&format!("return fbm2({pos}, {oct}, {per}, {lac});"));
                 }
                 "circle" => {
                     let r = self.compile_arg(&stage.args, 0, "0.5")?;
@@ -147,8 +147,8 @@ impl WgslGen {
             r = cam_radius,
             h = cam_height,
         ));
-        self.line("let target = vec3f(0.0);");
-        self.line("let forward = normalize(target - cam_pos);");
+        self.line("let cam_target = vec3f(0.0);");
+        self.line("let forward = normalize(cam_target - cam_pos);");
         self.line("let right = normalize(cross(vec3f(0.0, 1.0, 0.0), forward));");
         self.line("let up = cross(forward, right);");
         self.line("let rd = normalize(forward + right * uv.x * aspect + up * uv.y);");

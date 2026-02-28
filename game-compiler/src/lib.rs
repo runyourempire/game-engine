@@ -125,6 +125,37 @@ pub fn compile_xray_variants(source: &str) -> Result<Vec<codegen::XrayVariant>> 
     codegen::generate_xray_variants(&cinematic)
 }
 
+/// Compile with error recovery — returns partial output + all diagnostics.
+///
+/// Unlike `compile_full`, this function does not bail on the first error.
+/// It collects as many errors as possible and returns whatever partial AST
+/// the parser managed to build, giving editors/LSPs diagnostics for the
+/// entire file rather than just the first problem.
+pub fn compile_with_diagnostics(
+    source: &str,
+) -> (Option<codegen::CompileOutput>, Vec<error::GameError>) {
+    let tokens = match lexer::lex(source) {
+        Ok(t) => t,
+        Err(e) => return (None, vec![e]),
+    };
+
+    let mut parser = parser::Parser::new(tokens);
+    let (cinematic, parse_errors) = parser.parse_with_recovery();
+
+    if cinematic.layers.is_empty() && cinematic.defines.is_empty() {
+        return (None, parse_errors);
+    }
+
+    match codegen::generate_full(&cinematic) {
+        Ok(output) => (Some(output), parse_errors),
+        Err(e) => {
+            let mut errors = parse_errors;
+            errors.push(e);
+            (None, errors)
+        }
+    }
+}
+
 #[cfg(test)]
 mod integration_tests {
     use super::*;
@@ -2464,5 +2495,68 @@ mod integration_tests {
         assert!(output.wgsl.contains("50.0"), "should have distance limit for early termination");
         assert!(output.wgsl.contains("0.8"), "should have relaxation factor");
         assert!(output.wgsl.contains("128"), "should have reasonable max iterations");
+    }
+
+    // ── Error Recovery Tests ──────────────────────────────────────────
+
+    #[test]
+    fn error_recovery_multiple_errors() {
+        let source = r#"
+            cinematic {
+              layer good { fn: circle(0.3) | glow(2.0) }
+              layer bad { fn: totally_fake(0.5) | glow(2.0) }
+              layer also_good { fn: box(0.2, 0.2) | glow(1.0) }
+            }
+        "#;
+        let (output, errors) = compile_with_diagnostics(source);
+        // Should produce partial output with the good layers
+        // And collect errors for the bad layer
+        assert!(
+            output.is_some() || !errors.is_empty(),
+            "should produce either output or errors"
+        );
+    }
+
+    #[test]
+    fn error_recovery_bad_syntax_in_layer() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { this is not valid syntax at all }
+              layer c { fn: box(0.2, 0.2) | glow(1.0) }
+            }
+        "#;
+        let (output, errors) = compile_with_diagnostics(source);
+        assert!(!errors.is_empty(), "should have errors");
+        // The parser should still parse layer a and c
+        // (output may or may not be Some depending on codegen tolerance)
+        assert!(
+            output.is_some(),
+            "should produce partial output from layers a and c"
+        );
+    }
+
+    #[test]
+    fn error_recovery_unclosed_brace() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0)
+              layer b { fn: box(0.2, 0.2) | glow(1.0) }
+            }
+        "#;
+        let (_output, errors) = compile_with_diagnostics(source);
+        assert!(!errors.is_empty(), "should report unclosed brace error");
+    }
+
+    #[test]
+    fn error_recovery_preserves_good_layers() {
+        let source = r#"
+            cinematic {
+              layer good { fn: circle(0.3) | glow(2.0) }
+            }
+        "#;
+        let (output, errors) = compile_with_diagnostics(source);
+        assert!(errors.is_empty(), "valid source should have no errors");
+        assert!(output.is_some(), "valid source should produce output");
     }
 }

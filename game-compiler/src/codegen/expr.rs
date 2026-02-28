@@ -24,6 +24,14 @@ impl WgslGen {
         Ok(default.to_string())
     }
 
+    /// Compile an expression intended for an integer context.
+    /// Wraps with `i32(...)` only if needed, and ensures float literals
+    /// are emitted as integer literals to satisfy WGSL type rules.
+    pub(super) fn compile_int_arg(&self, args: &[Arg], name: &str, default: &str) -> Result<String> {
+        let raw = self.compile_named_arg(args, name, default)?;
+        Ok(float_str_to_int(&raw))
+    }
+
     /// Resolve tint color from args. Supports named colors (gold, red, etc.) or vec3f.
     pub(super) fn compile_tint_color(&self, args: &[Arg]) -> Result<String> {
         if let Some(arg) = args.first() {
@@ -148,6 +156,23 @@ fn compile_ident(name: &str) -> String {
         "magenta" => "vec3f(1.0, 0.0, 1.0)".to_string(),
         _ => name.to_string(),
     }
+}
+
+/// Convert a WGSL expression string to an integer form.
+/// If it's a float literal like "6.0", strip the decimal to get "6".
+/// If it's already an integer literal like "6", return as-is.
+/// For complex expressions (variables, arithmetic), wrap in `i32(...)`.
+fn float_str_to_int(s: &str) -> String {
+    // Try to parse as a float literal and convert to integer
+    if let Ok(val) = s.parse::<f64>() {
+        if val.fract() == 0.0 {
+            return format!("{}", val as i64);
+        }
+        // Non-integer float — must truncate at runtime
+        return format!("i32({s})");
+    }
+    // Complex expression — wrap in i32()
+    format!("i32({s})")
 }
 
 /// Compile an AST expression to JavaScript (for runtime modulation).
