@@ -7,6 +7,8 @@ pub mod parser;
 pub mod resolver;
 pub mod runtime;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod lsp;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod server;
 #[cfg(feature = "snapshot")]
 pub mod snapshot;
@@ -1960,14 +1962,14 @@ mod integration_tests {
     }
 
     #[test]
-    fn raymarch_multi_layer_warns() {
+    fn raymarch_multi_layer_composites() {
         let source = r#"
             cinematic {
               layer terrain {
                 fn: fbm(p * 2.0, octaves: 6, persistence: 0.5)
               }
               layer overlay {
-                fn: circle(0.3) | glow(2.0)
+                fn: circle(0.3)
               }
               lens {
                 mode: raymarch
@@ -1976,8 +1978,124 @@ mod integration_tests {
             }
         "#;
         let output = compile_full(source).expect("raymarch multi-layer should compile");
-        assert!(output.warnings.iter().any(|w| w.contains("raymarch")),
-            "should warn about multi-layer in raymarch mode: {:?}", output.warnings);
+        // Multi-layer raymarch should NOT produce a warning anymore
+        assert!(!output.warnings.iter().any(|w| w.contains("raymarch")),
+            "multi-layer raymarch should not warn: {:?}", output.warnings);
+        // Should contain both field_at_0 and field_at_1
+        assert!(output.wgsl.contains("fn field_at_0"), "should have field_at_0");
+        assert!(output.wgsl.contains("fn field_at_1"), "should have field_at_1");
+        // Should combine via sdf_smooth_union in map_scene
+        assert!(output.wgsl.contains("sdf_smooth_union"), "should use sdf_smooth_union");
+        assert!(output.wgsl.contains("fn map_scene"), "should have map_scene");
+    }
+
+    #[test]
+    fn raymarch_three_layer_composites() {
+        let source = r#"
+            cinematic {
+              layer terrain {
+                fn: fbm(p * 2.0, octaves: 6, persistence: 0.5)
+              }
+              layer hills {
+                fn: fbm(p * 4.0, octaves: 3, persistence: 0.3)
+              }
+              layer crater {
+                fn: circle(0.5)
+              }
+              lens {
+                mode: raymarch
+                camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("three-layer raymarch should compile");
+        assert!(output.wgsl.contains("fn field_at_0"), "should have field_at_0");
+        assert!(output.wgsl.contains("fn field_at_1"), "should have field_at_1");
+        assert!(output.wgsl.contains("fn field_at_2"), "should have field_at_2");
+        // map_scene should combine all three layers
+        assert!(output.wgsl.contains("d_0"), "map_scene should reference d_0");
+        assert!(output.wgsl.contains("d_1"), "map_scene should reference d_1");
+        assert!(output.wgsl.contains("d_2"), "map_scene should reference d_2");
+    }
+
+    #[test]
+    fn raymarch_single_layer_regression() {
+        // Ensure single-layer raymarch still works exactly as before
+        let source = r#"
+            cinematic {
+              layer terrain {
+                fn: fbm(p * 2.0, octaves: 6, persistence: 0.5)
+              }
+              lens {
+                mode: raymarch
+                camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("single-layer raymarch should compile");
+        assert!(output.wgsl.contains("fn field_at_0"), "should have field_at_0");
+        // Should have the backward-compat field_at alias
+        assert!(output.wgsl.contains("fn field_at("), "should have field_at alias");
+        assert!(output.wgsl.contains("fn map_scene"), "should have map_scene");
+        assert!(output.wgsl.contains("fn calc_normal"), "should have calc_normal");
+        assert!(output.wgsl.contains("cam_pos"), "should have camera setup");
+        // Should NOT have multi-layer weight blending
+        assert!(!output.wgsl.contains("w_total"), "single layer should not blend materials");
+    }
+
+    #[test]
+    fn raymarch_multi_layer_shade_blends() {
+        let source = r#"
+            cinematic {
+              layer terrain {
+                fn: fbm(p * 2.0, octaves: 6, persistence: 0.5) | shade(albedo: gold)
+              }
+              layer overlay {
+                fn: circle(0.3) | shade(albedo: red, emissive: blue)
+              }
+              lens {
+                mode: raymarch
+                camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("multi-layer shade should compile");
+        // Should have per-layer albedos and emissives
+        assert!(output.wgsl.contains("albedo_0"), "should have albedo_0");
+        assert!(output.wgsl.contains("albedo_1"), "should have albedo_1");
+        assert!(output.wgsl.contains("emissive_0"), "should have emissive_0");
+        assert!(output.wgsl.contains("emissive_1"), "should have emissive_1");
+        // Should have proximity weights for material blending
+        assert!(output.wgsl.contains("w_0"), "should have weight w_0");
+        assert!(output.wgsl.contains("w_1"), "should have weight w_1");
+        assert!(output.wgsl.contains("w_total"), "should have w_total");
+        // Gold and red colors should appear
+        assert!(output.wgsl.contains("0.831"), "should contain gold color component");
+        assert!(output.wgsl.contains("vec3f(1.0, 0.0, 0.0)"), "should contain red");
+    }
+
+    #[test]
+    fn raymarch_multi_layer_different_sdfs() {
+        // Test that each layer can have a different SDF primitive (fbm + circle)
+        let source = r#"
+            cinematic {
+              layer terrain {
+                fn: fbm(p * 2.0, octaves: 6, persistence: 0.5)
+              }
+              layer feature {
+                fn: circle(0.3)
+              }
+              lens {
+                mode: raymarch
+                camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("different SDFs should compile");
+        // field_at_0 should use fbm2
+        assert!(output.wgsl.contains("fbm2"), "should have fbm2 builtin");
+        // field_at_1 should use sdf_circle
+        assert!(output.wgsl.contains("sdf_circle"), "should have sdf_circle builtin");
     }
 
     #[test]

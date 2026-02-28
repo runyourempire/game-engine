@@ -18,6 +18,10 @@ crate-type = ["cdylib", "rlib"]
 name = "game"
 path = "src/main.rs"
 
+[[bin]]
+name = "game-lsp"
+path = "src/lsp/main.rs"
+
 [dependencies]
 logos = "0.14"
 serde = { version = "1", features = ["derive"] }
@@ -33,7 +37,7 @@ wgpu = { version = "23", optional = true }
 image = { version = "0.25", optional = true }
 pollster = { version = "0.4", optional = true }
 
-# Native-only deps: CLI, dev server, file watching
+# Native-only deps: CLI, dev server, file watching, LSP
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { version = "4", features = ["derive"] }
 axum = { version = "0.8", features = ["json"] }
@@ -41,6 +45,7 @@ tokio = { version = "1", features = ["full"] }
 notify = "7"
 tower-livereload = "0.9"
 tower = "0.5"
+tower-lsp = "0.20"
 
 [dev-dependencies]
 naga = { version = "23", features = ["wgsl-in"] }

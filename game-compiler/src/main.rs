@@ -96,6 +96,9 @@ enum Commands {
         lib_dirs: Vec<PathBuf>,
     },
 
+    /// Start the LSP language server (for editor integration)
+    Lsp,
+
     /// Run visual snapshot tests against .game files
     #[cfg(feature = "snapshot")]
     Test {
@@ -503,6 +506,22 @@ fn main() {
 
             let doc = game_compiler::docs::generate_docs(&cinematic, &output);
             print!("{doc}");
+        }
+
+        Commands::Lsp => {
+            let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            rt.block_on(async {
+                let stdin = tokio::io::stdin();
+                let stdout = tokio::io::stdout();
+
+                let (service, socket) = tower_lsp::LspService::new(|client| {
+                    game_compiler::lsp::backend::GameBackend::new(client)
+                });
+
+                tower_lsp::Server::new(stdin, stdout, socket)
+                    .serve(service)
+                    .await;
+            });
         }
     }
 }

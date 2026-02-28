@@ -193,13 +193,7 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     // Determine rendering mode from lens block
     gen.render_mode = determine_render_mode(&cinematic);
 
-    // Raymarch mode still only uses first layer
-    if matches!(gen.render_mode, RenderMode::Raymarch { .. }) && cinematic.layers.len() > 1 {
-        warnings.push(format!(
-            "raymarch mode only uses the first layer; {} additional layer(s) will be ignored",
-            cinematic.layers.len() - 1
-        ));
-    }
+    // (Raymarch mode now supports multi-layer SDF compositing)
 
     // Generate WGSL
     gen.generate(&cinematic)?;
@@ -529,11 +523,19 @@ impl WgslGen {
                 let cr = *cam_radius;
                 let ch = *cam_height;
                 let cs = *cam_speed;
-                if let Some(layer) = cinematic.layers.first() {
-                    self.emit_raymarch_helpers(layer)?;
-                    self.emit_raymarch_fragment(layer, cr, ch, cs)?;
-                } else {
+                // Extract post-processing stages from the lens block
+                let post_stages: Vec<crate::ast::FnCall> = cinematic.lenses.first()
+                    .map(|lens| lens.post.clone())
+                    .unwrap_or_default();
+                // Collect all layers with fn chains for multi-layer SDF compositing
+                let raymarch_layers: Vec<&Layer> = cinematic.layers.iter()
+                    .filter(|l| l.fn_chain.is_some())
+                    .collect();
+                if raymarch_layers.is_empty() {
                     self.emit_empty_fragment();
+                } else {
+                    self.emit_raymarch_helpers(&raymarch_layers)?;
+                    self.emit_raymarch_fragment(&raymarch_layers, cr, ch, cs, &post_stages)?;
                 }
             }
         }
