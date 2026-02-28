@@ -252,7 +252,9 @@ impl WgslGen {
                 let thresh = self.compile_arg(&stage.args, 0, "0.6")?;
                 let intensity = self.compile_arg(&stage.args, 1, "1.5")?;
                 self.line("let pp_lum = dot(color_result.rgb, vec3f(0.299, 0.587, 0.114));");
-                self.line(&format!("color_result = vec4f(color_result.rgb + max(pp_lum - {thresh}, 0.0) * {intensity}, 1.0);"));
+                self.line(&format!("let pp_bloom = max(pp_lum - {thresh}, 0.0);"));
+                self.line("let pp_bloom_color = color_result.rgb * pp_bloom;");
+                self.line(&format!("color_result = vec4f(color_result.rgb + pp_bloom_color * {intensity}, 1.0);"));
             }
             "vignette" => {
                 let strength = self.compile_arg(&stage.args, 0, "0.3")?;
@@ -474,6 +476,32 @@ impl WgslGen {
             "threshold" => {
                 let value = self.compile_arg(&stage.args, 0, "0.5")?;
                 self.line(&format!("sdf_result = step({value}, sdf_result);"));
+            }
+
+            // ── Smooth SDF boolean operations ─────────────────────────
+            "smooth_union" => {
+                let k = self.compile_arg(&stage.args, 0, "0.1")?;
+                self.used_builtins.insert("sdf_smooth_union");
+                self.line(&format!("sdf_result = sdf_smooth_union(sdf_result, sdf_result, {k});"));
+            }
+            "smooth_subtract" => {
+                let k = self.compile_arg(&stage.args, 0, "0.1")?;
+                self.used_builtins.insert("sdf_smooth_subtract");
+                self.line(&format!("sdf_result = sdf_smooth_subtract(sdf_result, sdf_result, {k});"));
+            }
+            "smooth_intersect" => {
+                let k = self.compile_arg(&stage.args, 0, "0.1")?;
+                self.used_builtins.insert("sdf_smooth_intersect");
+                self.line(&format!("sdf_result = sdf_smooth_intersect(sdf_result, sdf_result, {k});"));
+            }
+
+            // ── Color grading ─────────────────────────────────────────
+            "color_grade" => {
+                let contrast = self.compile_arg(&stage.args, 0, "1.0")?;
+                let brightness = self.compile_arg(&stage.args, 1, "0.0")?;
+                let gamma = self.compile_arg(&stage.args, 2, "1.0")?;
+                self.line(&format!("color_result = vec4f((color_result.rgb - 0.5) * {contrast} + 0.5 + {brightness}, 1.0);"));
+                self.line(&format!("color_result = vec4f(pow(max(color_result.rgb, vec3f(0.0)), vec3f(1.0 / {gamma})), 1.0);"));
             }
 
             other => {

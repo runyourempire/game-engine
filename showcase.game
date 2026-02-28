@@ -1,0 +1,54 @@
+cinematic "Showcase" {
+
+  # Define reusable components
+  define glowing_orb(r) {
+    circle(r) | glow(3.0) | tint(gold)
+  }
+
+  define pulse_ring(r, thickness) {
+    ring(r, thickness) | glow(2.0) | tint(cyan)
+  }
+
+  # Background layer
+  layer background {
+    fn: gradient(deep_blue, midnight, "y")
+  }
+
+  # Main orb (uses define)
+  layer orb {
+    fn: glowing_orb(radius)
+    radius: 0.25 ~ audio.bass * 0.15
+  }
+
+  # Orbiting ring
+  layer ring_layer {
+    fn: pulse_ring(0.4, 0.02) | bloom(0.3, 1.2) | vignette(0.3)
+  }
+
+  # Arc timeline
+  arc {
+    0:00 "intro" {
+      radius: 0.1
+    }
+    0:03 "expand" {
+      radius -> 0.3 ease(expo_out) over 2s
+    }
+    0:08 "pulse" {
+      radius -> 0.15 ease(smooth) over 1s
+    }
+  }
+
+  # Resonance (cross-layer coupling)
+  resonate {
+    radius ~ radius * 0.1
+    damping: 0.92
+  }
+
+  # React (interaction handlers)
+  react {
+    mouse.click -> ripple
+    key("space") -> arc.pause_toggle
+    key("r") -> reset
+    mouse.x -> orb.radius
+  }
+}

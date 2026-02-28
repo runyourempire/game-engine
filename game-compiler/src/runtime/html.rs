@@ -590,3 +590,53 @@ init().catch((err) => {{
         overlay_display = overlay_display,
     )
 }
+
+/// Generate an iframe-embeddable HTML page with a `postMessage` API for
+/// external parameter control.
+///
+/// The embed format is identical to `wrap_html_full` but adds a
+/// `window.addEventListener('message', ...)` handler that accepts messages
+/// of the form:
+///
+/// ```json
+/// { "type": "setParam", "name": "radius", "value": 0.5 }
+/// ```
+///
+/// This allows a parent page to drive parameters via `iframe.contentWindow.postMessage(...)`.
+pub fn wrap_html_embed(output: &CompileOutput) -> String {
+    let base = wrap_html_full(output);
+
+    // Inject the postMessage listener just before the closing </script> tag.
+    let post_message_js = r#"
+
+// ── Embed API (postMessage) ─────────────────────────────────────
+window.addEventListener('message', (event) => {
+  const msg = event.data;
+  if (!msg || typeof msg !== 'object') return;
+
+  if (msg.type === 'setParam') {
+    const name = msg.name;
+    const value = Number(msg.value);
+    if (typeof name !== 'string' || isNaN(value)) return;
+    for (let i = 0; i < params.length; i++) {
+      if (params[i].name === name) {
+        params[i].base = value;
+        break;
+      }
+    }
+  }
+});
+"#;
+
+    // Insert before the closing </script> tag
+    if let Some(pos) = base.rfind("</script>") {
+        let mut result = String::with_capacity(base.len() + post_message_js.len());
+        result.push_str(&base[..pos]);
+        result.push_str(post_message_js);
+        result.push_str(&base[pos..]);
+        result
+    } else {
+        // Fallback: just append (shouldn't happen with well-formed output)
+        base
+    }
+}

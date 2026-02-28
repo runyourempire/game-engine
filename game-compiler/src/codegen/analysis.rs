@@ -9,6 +9,10 @@ use super::RenderMode;
 /// Expand all define calls in pipe chains (macro-style inlining).
 /// Mutates the cinematic in place, replacing define calls with their
 /// expanded bodies after parameter substitution.
+///
+/// Uses multi-pass expansion to handle nested defines (define A calls
+/// define B). Runs up to 10 passes or until no more expansions occur
+/// (fixpoint).
 pub(super) fn expand_defines(cinematic: &mut Cinematic) {
     if cinematic.defines.is_empty() {
         return;
@@ -18,18 +22,31 @@ pub(super) fn expand_defines(cinematic: &mut Cinematic) {
         .map(|d| (d.name.clone(), d.clone()))
         .collect();
 
-    for layer in &mut cinematic.layers {
-        if let Some(chain) = &mut layer.fn_chain {
-            expand_chain(chain, &defines);
+    // Multi-pass expansion for nested defines (max 10 iterations)
+    for _pass in 0..10 {
+        let mut any_expanded = false;
+        for layer in &mut cinematic.layers {
+            if let Some(chain) = &mut layer.fn_chain {
+                if expand_chain(chain, &defines) {
+                    any_expanded = true;
+                }
+            }
+        }
+        if !any_expanded {
+            break;
         }
     }
 }
 
-fn expand_chain(chain: &mut PipeChain, defines: &HashMap<String, DefineBlock>) {
+/// Expand define calls in a pipe chain. Returns `true` if any expansion
+/// was performed (indicating another pass may be needed for nested defines).
+fn expand_chain(chain: &mut PipeChain, defines: &HashMap<String, DefineBlock>) -> bool {
     let mut new_stages = Vec::new();
+    let mut any_expanded = false;
 
     for stage in &chain.stages {
         if let Some(define) = defines.get(&stage.name) {
+            any_expanded = true;
             // Build substitution map: formal param → actual argument expr
             let subs: HashMap<&str, Expr> = define.params.iter()
                 .zip(stage.args.iter())
@@ -59,6 +76,7 @@ fn expand_chain(chain: &mut PipeChain, defines: &HashMap<String, DefineBlock>) {
     }
 
     chain.stages = new_stages;
+    any_expanded
 }
 
 fn substitute_expr(expr: &mut Expr, subs: &HashMap<&str, Expr>) {

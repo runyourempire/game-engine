@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
 #[command(name = "game", version = "0.2.0")]
@@ -35,6 +35,28 @@ enum Commands {
         #[arg(short)]
         o: Option<PathBuf>,
 
+        /// Strict mode: treat warnings as errors
+        #[arg(long)]
+        strict: bool,
+
+        /// Output format (overrides --html and --component flags)
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+
+        /// Additional library search paths for imports (e.g., stdlib directory)
+        #[arg(long = "lib")]
+        lib_dirs: Vec<PathBuf>,
+    },
+
+    /// Validate a .game file without producing output
+    Check {
+        /// Input .game file
+        file: PathBuf,
+
+        /// Treat warnings as errors
+        #[arg(long)]
+        strict: bool,
+
         /// Additional library search paths for imports (e.g., stdlib directory)
         #[arg(long = "lib")]
         lib_dirs: Vec<PathBuf>,
@@ -58,6 +80,16 @@ enum Commands {
         /// Output directory for compiled files
         #[arg(long, default_value = "dist")]
         outdir: PathBuf,
+
+        /// Additional library search paths for imports (e.g., stdlib directory)
+        #[arg(long = "lib")]
+        lib_dirs: Vec<PathBuf>,
+    },
+
+    /// Generate documentation for a .game file
+    Doc {
+        /// Input .game file
+        file: PathBuf,
 
         /// Additional library search paths for imports (e.g., stdlib directory)
         #[arg(long = "lib")]
@@ -88,6 +120,19 @@ enum Commands {
     },
 }
 
+/// Output format for the compile command.
+#[derive(Clone, Copy, ValueEnum)]
+enum OutputFormat {
+    /// Raw WGSL shader (default)
+    Wgsl,
+    /// Self-contained HTML file
+    Html,
+    /// ES module Web Component
+    Component,
+    /// Iframe-embeddable HTML with postMessage API
+    Embed,
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -98,6 +143,8 @@ fn main() {
             html,
             tag,
             o,
+            strict,
+            format,
             lib_dirs,
         } => {
             let source = match fs::read_to_string(&file) {
@@ -108,12 +155,22 @@ fn main() {
                 }
             };
 
-            // Use compile_file for import resolution, falling back to compile_full
-            let full_output = match game_compiler::compile_file(&file, &lib_dirs) {
-                Ok(o) => o,
-                Err(e) => {
-                    print_error(&e, &source);
-                    process::exit(1);
+            // Use strict or normal compilation
+            let full_output = if strict {
+                match game_compiler::compile_file_strict(&file, &lib_dirs) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        print_error(&e, &source);
+                        process::exit(1);
+                    }
+                }
+            } else {
+                match game_compiler::compile_file(&file, &lib_dirs) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        print_error(&e, &source);
+                        process::exit(1);
+                    }
                 }
             };
 
@@ -122,13 +179,28 @@ fn main() {
                 eprintln!("warning: {w}");
             }
 
-            let (output_str, kind) = if component {
-                let tag_name = tag.unwrap_or_else(|| game_compiler::derive_tag_name(&file));
-                (game_compiler::runtime::wrap_web_component(&full_output, &tag_name), "component")
-            } else if html {
-                (game_compiler::runtime::wrap_html_full(&full_output), "HTML")
-            } else {
-                (full_output.wgsl.clone(), "WGSL")
+            // Resolve effective format: --format flag takes priority over --html/--component
+            let effective_format = match format {
+                Some(f) => f,
+                None if component => OutputFormat::Component,
+                None if html => OutputFormat::Html,
+                None => OutputFormat::Wgsl,
+            };
+
+            let (output_str, kind) = match effective_format {
+                OutputFormat::Component => {
+                    let tag_name = tag.unwrap_or_else(|| game_compiler::derive_tag_name(&file));
+                    (game_compiler::runtime::wrap_web_component(&full_output, &tag_name), "component")
+                }
+                OutputFormat::Html => {
+                    (game_compiler::runtime::wrap_html_full(&full_output), "HTML")
+                }
+                OutputFormat::Embed => {
+                    (game_compiler::runtime::wrap_html_embed(&full_output), "embed HTML")
+                }
+                OutputFormat::Wgsl => {
+                    (full_output.wgsl.clone(), "WGSL")
+                }
             };
 
             if let Some(out_path) = o {
@@ -301,6 +373,40 @@ fn main() {
             }
         }
 
+        Commands::Check { file, strict, lib_dirs } => {
+            let source = match fs::read_to_string(&file) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("error: cannot read '{}': {e}", file.display());
+                    process::exit(1);
+                }
+            };
+
+            let result = if strict {
+                game_compiler::compile_file_strict(&file, &lib_dirs)
+            } else {
+                game_compiler::compile_file(&file, &lib_dirs)
+            };
+
+            match result {
+                Ok(output) => {
+                    for w in &output.warnings {
+                        eprintln!("warning: {w}");
+                    }
+                    let warning_count = output.warnings.len();
+                    if warning_count > 0 {
+                        eprintln!("{}: {} warning(s)", file.display(), warning_count);
+                    } else {
+                        eprintln!("{}: ok", file.display());
+                    }
+                }
+                Err(e) => {
+                    print_error(&e, &source);
+                    process::exit(1);
+                }
+            }
+        }
+
         Commands::Build { dir, outdir, lib_dirs } => {
             if !dir.is_dir() {
                 eprintln!("error: '{}' is not a directory", dir.display());
@@ -359,6 +465,44 @@ fn main() {
             if errors > 0 {
                 process::exit(1);
             }
+        }
+
+        Commands::Doc { file, lib_dirs } => {
+            let source = match fs::read_to_string(&file) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("error: cannot read '{}': {e}", file.display());
+                    process::exit(1);
+                }
+            };
+
+            let output = match game_compiler::compile_file(&file, &lib_dirs) {
+                Ok(o) => o,
+                Err(e) => {
+                    print_error(&e, &source);
+                    process::exit(1);
+                }
+            };
+
+            // Re-parse to get the AST for doc generation
+            let tokens = match game_compiler::lexer::lex(&source) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    process::exit(1);
+                }
+            };
+            let mut parser = game_compiler::parser::Parser::new(tokens);
+            let cinematic = match parser.parse() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    process::exit(1);
+                }
+            };
+
+            let doc = game_compiler::docs::generate_docs(&cinematic, &output);
+            print!("{doc}");
         }
     }
 }

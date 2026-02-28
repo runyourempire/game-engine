@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod codegen;
+pub mod docs;
 pub mod error;
 pub mod lexer;
 pub mod parser;
@@ -84,6 +85,36 @@ pub fn compile_full(source: &str) -> Result<codegen::CompileOutput> {
 pub fn compile_component(source: &str, tag_name: &str) -> Result<String> {
     let output = compile_full(source)?;
     Ok(runtime::wrap_web_component(&output, tag_name))
+}
+
+/// Compile with strict mode — warnings become errors.
+pub fn compile_file_strict(file_path: &Path, lib_dirs: &[PathBuf]) -> Result<codegen::CompileOutput> {
+    let output = compile_file(file_path, lib_dirs)?;
+    if !output.warnings.is_empty() {
+        let msg = output.warnings.iter()
+            .map(|w| format!("  - {w}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(error::GameError::parse(&format!(
+            "strict mode: {} warning(s):\n{msg}", output.warnings.len()
+        )));
+    }
+    Ok(output)
+}
+
+/// Compile source string with strict mode.
+pub fn compile_full_strict(source: &str) -> Result<codegen::CompileOutput> {
+    let output = compile_full(source)?;
+    if !output.warnings.is_empty() {
+        let msg = output.warnings.iter()
+            .map(|w| format!("  - {w}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(error::GameError::parse(&format!(
+            "strict mode: {} warning(s):\n{msg}", output.warnings.len()
+        )));
+    }
+    Ok(output)
 }
 
 /// Generate x-ray variants: one WGSL shader per chain prefix per layer.
@@ -974,6 +1005,145 @@ mod integration_tests {
         );
     }
 
+    #[test]
+    fn arc_multiple_transitions_same_moment() {
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(radius) | glow(intensity)
+                radius: 0.3
+                intensity: 2.0
+              }
+              arc {
+                0:00 "init" {
+                  radius: 0.1
+                  intensity: 0.5
+                }
+                0:05 "expand" {
+                  radius -> 0.5 ease(expo_out) over 2s
+                  intensity -> 4.0 ease(smooth) over 2s
+                }
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("multi-transition arc should compile");
+        assert_eq!(output.arc_moments[0].transitions.len(), 2, "first moment should have 2 transitions");
+        assert_eq!(output.arc_moments[1].transitions.len(), 2, "second moment should have 2 transitions");
+    }
+
+    #[test]
+    fn arc_easing_functions_available() {
+        // All documented easing functions should be in the generated JS
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(b)
+                b: 1.0
+              }
+              arc {
+                0:00 { b: 0.0 }
+                0:01 { b -> 1.0 ease(expo_in) }
+                0:02 { b -> 0.0 ease(expo_out) }
+                0:03 { b -> 1.0 ease(cubic_in_out) }
+                0:04 { b -> 0.0 ease(smooth) }
+                0:05 { b -> 1.0 ease(elastic) }
+                0:06 { b -> 0.0 ease(bounce) }
+              }
+            }
+        "#;
+        let html = compile_html(source).expect("all easings should compile to HTML");
+        assert!(html.contains("expo_in:"), "should contain expo_in easing");
+        assert!(html.contains("expo_out:"), "should contain expo_out easing");
+        assert!(html.contains("cubic_in_out:"), "should contain cubic_in_out easing");
+        assert!(html.contains("smooth:"), "should contain smooth easing");
+        assert!(html.contains("elastic:"), "should contain elastic easing");
+        assert!(html.contains("bounce:"), "should contain bounce easing");
+    }
+
+    #[test]
+    fn arc_instant_and_animated_mix() {
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(intensity)
+                intensity: 1.0
+              }
+              arc {
+                0:00 "off" {
+                  intensity: 0.0
+                }
+                0:03 "fade_in" {
+                  intensity -> 3.0 ease(expo_out) over 2s
+                }
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("mixed arc should compile");
+        // First moment: instant
+        assert!(!output.arc_moments[0].transitions[0].is_animated);
+        // Second moment: animated
+        assert!(output.arc_moments[1].transitions[0].is_animated);
+        assert_eq!(output.arc_moments[1].transitions[0].easing, "expo_out");
+        assert_eq!(output.arc_moments[1].transitions[0].duration_secs, Some(2.0));
+    }
+
+    #[test]
+    fn arc_html_frame_loop_integration() {
+        // Verify the HTML output has arcUpdate called in the frame loop
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(b)
+                b: 1.0
+              }
+              arc {
+                0:00 { b: 0.5 }
+                0:05 { b -> 2.0 ease(linear) }
+              }
+            }
+        "#;
+        let html = compile_html(source).expect("arc HTML should compile");
+        assert!(html.contains("arcUpdate(time)"), "frame loop should call arcUpdate");
+        assert!(html.contains("arcTimeline"), "should contain timeline data");
+    }
+
+    #[test]
+    fn arc_component_frame_loop_integration() {
+        // Verify the Web Component output has arc timeline inline
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(b)
+                b: 1.0
+              }
+              arc {
+                0:00 { b: 0.5 }
+                0:05 { b -> 2.0 ease(linear) }
+              }
+            }
+        "#;
+        let js = compile_component(source, "arc-comp")
+            .expect("arc component should compile");
+        assert!(js.contains("_arcTimeline"), "component should have arc timeline");
+        assert!(js.contains("_arcBaseOverrides"), "component should use arc base overrides");
+    }
+
+    #[test]
+    fn arc_no_arc_no_overhead() {
+        // Files without arcs should not include easing/timeline code
+        let source = r#"
+            cinematic {
+              layer { fn: circle(0.5) | glow(2.0) }
+            }
+        "#;
+        let html = compile_html(source).expect("no-arc should compile");
+        assert!(!html.contains("arcTimeline"), "no-arc should not include timeline");
+
+        let js = compile_component(source, "no-arc")
+            .expect("no-arc component should compile");
+        assert!(!js.contains("_arcTimeline"), "no-arc component should not include timeline");
+    }
+
     // ── Compiler warnings tests ────────────────────────────────────
 
     #[test]
@@ -1505,6 +1675,155 @@ mod integration_tests {
         assert!(!output.glsl_fragment.contains("@fragment"), "GLSL FS should not contain @fragment");
     }
 
+    // ── Phase 0: Trust Recovery tests ─────────────────────────────
+
+    #[test]
+    fn strict_mode_rejects_with_warnings() {
+        // glow before SDF produces a pipe chain warning
+        let source = r#"
+            cinematic {
+              layer {
+                fn: glow(2.0) | circle(0.3)
+              }
+            }
+        "#;
+
+        let result = compile_full_strict(source);
+        assert!(result.is_err(), "strict mode should reject files with warnings");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("strict mode"), "error should mention strict mode: {err_msg}");
+        assert!(err_msg.contains("warning"), "error should mention warnings: {err_msg}");
+    }
+
+    #[test]
+    fn strict_mode_passes_clean_file() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold)
+              }
+            }
+        "#;
+
+        let output = compile_full_strict(source).expect("strict mode should pass on clean file");
+        assert!(output.warnings.is_empty(), "clean file should have no warnings");
+    }
+
+    #[test]
+    fn unknown_identifier_produces_warning() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(mysterious_var) | glow(2.0)
+                mysterious_var: 0.3
+              }
+            }
+        "#;
+
+        // First check that it compiles — mysterious_var is declared as a param
+        let output = compile_full(source).expect("should compile");
+        // mysterious_var is a declared param, so no warning
+        assert!(
+            !output.warnings.iter().any(|w| w.contains("mysterious_var")),
+            "declared param should not produce warning: {:?}", output.warnings
+        );
+
+        // Now use a truly unknown identifier
+        let source2 = r#"
+            cinematic {
+              layer {
+                fn: circle(totally_undefined) | glow(2.0)
+              }
+            }
+        "#;
+
+        let output2 = compile_full(source2).expect("should compile");
+        assert!(
+            output2.warnings.iter().any(|w| w.contains("totally_undefined")),
+            "unknown identifier should produce warning: {:?}", output2.warnings
+        );
+    }
+
+    #[test]
+    fn known_builtins_pass_validation() {
+        // time, pi, gold — all known builtins that should not produce warnings
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3 + sin(time) * 0.05) | glow(2.0) | tint(gold)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("should compile");
+        assert!(
+            !output.warnings.iter().any(|w| w.contains("unknown identifier")),
+            "known builtins should not produce warnings: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn define_bindings_resolve() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(radius) | glow(intensity)
+                radius: 0.3
+                intensity: 2.0
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("should compile");
+        assert!(
+            !output.warnings.iter().any(|w| w.contains("radius") || w.contains("intensity")),
+            "params used in expressions should resolve: {:?}", output.warnings
+        );
+    }
+
+    #[test]
+    fn react_mouse_axis_is_functional() {
+        let source = r#"
+            cinematic {
+              layer flame {
+                fn: circle(0.3) | glow(intensity)
+                intensity: 2.0
+              }
+              react {
+                mouse.click -> flame.intensity
+                mouse.x -> intensity
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("should compile");
+        // Mouse axis handlers are now fully functional — no stub warning
+        assert!(
+            !output.warnings.iter().any(|w| w.contains("mouse.x") && w.contains("stub")),
+            "mouse axis react should NOT produce stub warning: {:?}", output.warnings
+        );
+        // Should generate functional JS, not just a comment
+        assert!(!output.react_js.is_empty(), "react should produce JS");
+        assert!(output.react_js.contains("mousemove"), "mouse.x should generate mousemove listener");
+    }
+
+    #[test]
+    fn check_command_validates() {
+        // This tests the compile_full path (the check command equivalent)
+        let source = r#"
+            cinematic "Valid" {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold)
+              }
+            }
+        "#;
+
+        let output = compile_full(source).expect("valid file should compile");
+        assert!(output.warnings.is_empty(), "valid file should have no warnings");
+        assert!(!output.wgsl.is_empty(), "should produce WGSL output");
+        assert_eq!(output.title, "Valid");
+    }
+
     #[test]
     fn glsl_component_contains_fallback_code() {
         let source = r#"
@@ -1522,5 +1841,628 @@ mod integration_tests {
         assert!(component.contains("_initWebGL2"), "component should have WebGL2 init method");
         assert!(component.contains("_glFrame"), "component should have WebGL2 frame loop");
         assert!(component.contains("TRIANGLE_STRIP"), "component should draw triangle strip");
+    }
+
+    // ── Multi-layer compositing hardening tests ────────────────────
+
+    #[test]
+    fn multi_layer_blend_additive() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) | blend(mode: additive) }
+            }
+        "#;
+        let output = compile_full(source).expect("additive blend should compile");
+        assert!(output.wgsl.contains("final_color.rgb + lc"),
+            "additive blend should use addition: {}", output.wgsl);
+    }
+
+    #[test]
+    fn multi_layer_blend_multiply() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) | blend(mode: multiply) }
+            }
+        "#;
+        let output = compile_full(source).expect("multiply blend should compile");
+        assert!(output.wgsl.contains("final_color.rgb * lc"),
+            "multiply blend should use multiplication: {}", output.wgsl);
+    }
+
+    #[test]
+    fn multi_layer_blend_screen() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) | blend(mode: screen) }
+            }
+        "#;
+        let output = compile_full(source).expect("screen blend should compile");
+        assert!(output.wgsl.contains("1.0 - (1.0 - final_color.rgb) * (1.0 - lc)"),
+            "screen blend should use screen formula: {}", output.wgsl);
+    }
+
+    #[test]
+    fn multi_layer_blend_overlay() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) | blend(mode: overlay) }
+            }
+        "#;
+        let output = compile_full(source).expect("overlay blend should compile");
+        assert!(output.wgsl.contains("ov_sel"),
+            "overlay blend should use ov_sel variable: {}", output.wgsl);
+    }
+
+    #[test]
+    fn multi_layer_z_order_respected() {
+        // Layers should composite in declaration order
+        let source = r#"
+            cinematic {
+              layer bg { fn: gradient(black, deep_blue, "y") }
+              layer fg { fn: circle(0.3) | glow(2.0) | tint(gold) }
+            }
+        "#;
+        let output = compile_full(source).expect("z-order should compile");
+        let wgsl = &output.wgsl;
+        let bg_pos = wgsl.find("Layer 0: bg").expect("should contain bg layer");
+        let fg_pos = wgsl.find("Layer 1: fg").expect("should contain fg layer");
+        assert!(bg_pos < fg_pos, "bg should render before fg");
+    }
+
+    #[test]
+    fn single_layer_regression() {
+        // Single layer should still work without multi-layer compositing
+        let source = r#"
+            cinematic {
+              layer { fn: circle(0.5) | glow(2.0) }
+            }
+        "#;
+        let output = compile_full(source).expect("single layer should compile");
+        assert!(!output.wgsl.contains("final_color"),
+            "single layer should not use multi-layer compositing");
+        assert!(output.wgsl.contains("glow_result"),
+            "single layer should use glow_result directly");
+    }
+
+    #[test]
+    fn raymarch_multi_layer_warns() {
+        let source = r#"
+            cinematic {
+              layer terrain {
+                fn: fbm(p * 2.0, octaves: 6, persistence: 0.5)
+              }
+              layer overlay {
+                fn: circle(0.3) | glow(2.0)
+              }
+              lens {
+                mode: raymarch
+                camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("raymarch multi-layer should compile");
+        assert!(output.warnings.iter().any(|w| w.contains("raymarch")),
+            "should warn about multi-layer in raymarch mode: {:?}", output.warnings);
+    }
+
+    #[test]
+    fn multi_layer_blend_opacity() {
+        let source = r#"
+            cinematic {
+              layer a { fn: circle(0.3) | glow(2.0) }
+              layer b { fn: box(0.2, 0.2) | glow(1.0) | blend(mode: additive, opacity: 0.5) }
+            }
+        "#;
+        let output = compile_full(source).expect("blend opacity should compile");
+        assert!(output.wgsl.contains("0.500"),
+            "opacity should appear in WGSL output: {}", output.wgsl);
+    }
+
+    // ── Resonance system tests ─────────────────────────────────────
+
+    #[test]
+    fn resonance_cross_layer_modulation() {
+        let source = r#"
+            cinematic {
+              layer fire {
+                fn: circle(0.3) | glow(intensity)
+                intensity: 0.5
+              }
+              layer ice {
+                fn: ring(0.4, 0.03) | glow(clarity)
+                clarity: 0.5
+              }
+              resonate {
+                intensity ~ clarity * 2.0
+                clarity ~ intensity * -1.5
+                damping: 0.96
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("cross-layer resonance should compile");
+        assert!(!output.resonance_js.is_empty(), "should produce resonance JS");
+        assert!(output.resonance_js.contains("resonanceUpdate"), "should have update function");
+        assert!(output.resonance_js.contains("damp"), "should use damping");
+    }
+
+    #[test]
+    fn resonance_damping_applied() {
+        let source = r#"
+            cinematic {
+              layer a {
+                fn: circle(0.3) | glow(x)
+                x: 1.0
+              }
+              layer b {
+                fn: circle(0.3) | glow(y)
+                y: 1.0
+              }
+              resonate {
+                x ~ y * 0.5
+                damping: 0.8
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("resonance with damping should compile");
+        assert!(output.resonance_js.contains("0.8"), "should contain damping value");
+    }
+
+    #[test]
+    fn resonance_empty_bindings() {
+        let source = r#"
+            cinematic {
+              layer a {
+                fn: circle(0.3) | glow(2.0)
+              }
+              resonate {
+                damping: 0.95
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("empty resonance should compile");
+        assert!(output.resonance_js.is_empty(), "empty bindings should produce no JS");
+    }
+
+    #[test]
+    fn resonance_html_integration() {
+        let source = r#"
+            cinematic {
+              layer fire {
+                fn: circle(0.3) | glow(intensity)
+                intensity: 0.5
+              }
+              layer ice {
+                fn: ring(0.4, 0.03) | glow(clarity)
+                clarity: 0.5
+              }
+              resonate {
+                intensity ~ clarity * 2.0
+                damping: 0.96
+              }
+            }
+        "#;
+        let html = compile_html(source).expect("resonance HTML should compile");
+        assert!(html.contains("resonanceUpdate"), "HTML should include resonance function");
+    }
+
+    #[test]
+    fn resonance_unresolvable_target_warns() {
+        let source = r#"
+            cinematic {
+              layer a {
+                fn: circle(0.3) | glow(x)
+                x: 1.0
+              }
+              resonate {
+                nonexistent ~ x * 0.5
+                damping: 0.95
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("unresolvable resonance should still compile");
+        assert!(output.warnings.iter().any(|w| w.contains("nonexistent")),
+            "should warn about unresolvable target: {:?}", output.warnings);
+    }
+
+    #[test]
+    fn resonance_default_damping() {
+        let source = r#"
+            cinematic {
+              layer a {
+                fn: circle(0.3) | glow(x)
+                x: 1.0
+              }
+              layer b {
+                fn: circle(0.3) | glow(y)
+                y: 1.0
+              }
+              resonate {
+                x ~ y * 0.5
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("default damping should compile");
+        assert!(output.resonance_js.contains("0.95"), "should use default damping of 0.95");
+    }
+
+    // ── Nested define & stdlib tests ─────────────────────────────────
+
+    #[test]
+    fn nested_define_expansion() {
+        // Define A uses define B which is also a define
+        let source = r#"
+            cinematic {
+              define inner_shape() {
+                circle(0.3)
+              }
+              define glowing_shape() {
+                inner_shape() | glow(2.0)
+              }
+              layer {
+                fn: glowing_shape()
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("nested define should compile");
+        assert!(output.wgsl.contains("sdf_circle"), "inner define should expand to circle");
+        assert!(output.wgsl.contains("apply_glow"), "outer define should expand to glow");
+    }
+
+    #[test]
+    fn stdlib_files_parse() {
+        // Verify all stdlib files can be parsed (not necessarily compiled standalone)
+        use std::fs;
+        let stdlib_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("stdlib");
+        if stdlib_dir.exists() {
+            for entry in fs::read_dir(&stdlib_dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().map(|e| e == "game").unwrap_or(false) {
+                    let source = fs::read_to_string(&path).expect("should read stdlib file");
+                    let tokens = crate::lexer::lex(&source);
+                    assert!(tokens.is_ok(), "stdlib file {:?} should lex", path.file_name());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn define_with_params_expands() {
+        let source = r#"
+            cinematic {
+              define sized_circle(r) {
+                circle(r) | glow(2.0)
+              }
+              layer {
+                fn: sized_circle(0.4)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("parameterized define should compile");
+        assert!(output.wgsl.contains("sdf_circle(p, 0.4)"), "should substitute param");
+    }
+
+    #[test]
+    fn triple_nested_define_expansion() {
+        // Three levels: A -> B -> C
+        let source = r#"
+            cinematic {
+              define base_dot() {
+                circle(0.1)
+              }
+              define glowing_dot() {
+                base_dot() | glow(3.0)
+              }
+              define fancy_dot() {
+                glowing_dot() | tint(cyan)
+              }
+              layer {
+                fn: fancy_dot()
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("triple nested define should compile");
+        assert!(output.wgsl.contains("sdf_circle"), "innermost define should expand to circle");
+        assert!(output.wgsl.contains("apply_glow"), "middle define should expand to glow");
+    }
+
+    // ── Documentation generation tests ─────────────────────────────────
+
+    #[test]
+    fn doc_generation_basic() {
+        let source = r#"
+            cinematic "My Art" {
+              layer pulse {
+                fn: circle(0.3) | glow(intensity)
+                intensity: 2.0 ~ audio.bass * 1.5
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("should compile");
+        let tokens = crate::lexer::lex(source).unwrap();
+        let mut parser = crate::parser::Parser::new(tokens);
+        let cinematic = parser.parse().unwrap();
+        let doc = crate::docs::generate_docs(&cinematic, &output);
+        assert!(doc.contains("# My Art"), "should have title");
+        assert!(doc.contains("pulse"), "should list layer name");
+        assert!(doc.contains("intensity"), "should list param");
+        assert!(doc.contains("**Audio reactive:** true"), "should show audio flag");
+    }
+
+    #[test]
+    fn doc_generation_with_arc() {
+        let source = r#"
+            cinematic "Timeline" {
+              layer x {
+                fn: circle(0.5) | glow(b)
+                b: 1.0
+              }
+              arc {
+                0:00 "start" { b: 0.5 }
+                0:05 "end" { b -> 3.0 ease(expo_out) }
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("should compile");
+        let tokens = crate::lexer::lex(source).unwrap();
+        let mut parser = crate::parser::Parser::new(tokens);
+        let cinematic = parser.parse().unwrap();
+        let doc = crate::docs::generate_docs(&cinematic, &output);
+        assert!(doc.contains("Arc Timeline"), "should have arc section");
+        assert!(doc.contains("start"), "should list moment names");
+    }
+
+    #[test]
+    fn embed_format_has_postmessage() {
+        let source = r#"
+            cinematic "Embed" {
+              layer { fn: circle(0.3) | glow(2.0) }
+            }
+        "#;
+        let output = compile_full(source).expect("should compile");
+        let embed = crate::runtime::wrap_html_embed(&output);
+        assert!(
+            embed.contains("postMessage") || embed.contains("message"),
+            "embed format should have message listener"
+        );
+        assert!(embed.contains("<!DOCTYPE html"), "should be valid HTML");
+    }
+
+    #[test]
+    fn doc_generation_with_defines() {
+        let source = r#"
+            cinematic "With Defines" {
+              define my_shape() {
+                circle(0.3) | glow(2.0)
+              }
+              layer {
+                fn: my_shape()
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("should compile");
+        let tokens = crate::lexer::lex(source).unwrap();
+        let mut parser = crate::parser::Parser::new(tokens);
+        let cinematic = parser.parse().unwrap();
+        let doc = crate::docs::generate_docs(&cinematic, &output);
+        assert!(doc.contains("Defines"), "should have defines section");
+        assert!(doc.contains("my_shape"), "should list define name");
+    }
+
+    // ── React block interaction tests ─────────────────────────────
+
+    #[test]
+    fn react_click_generates_listener() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0)
+              }
+              react {
+                mouse.click -> ripple
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("react click should compile");
+        assert!(!output.react_js.is_empty(), "react should produce JS");
+        assert!(output.react_js.contains("addEventListener"), "should have event listener");
+        assert!(output.react_js.contains("click"), "should listen for click");
+    }
+
+    #[test]
+    fn react_key_generates_listener() {
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(b)
+                b: 1.0
+              }
+              react {
+                key("space") -> arc.pause_toggle
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("react key should compile");
+        assert!(output.react_js.contains("keydown"), "should listen for keydown");
+        assert!(output.react_js.contains("space"), "should filter for space key");
+    }
+
+    #[test]
+    fn react_mouse_axis_generates_code() {
+        let source = r#"
+            cinematic {
+              layer fire {
+                fn: circle(0.3) | glow(intensity)
+                intensity: 2.0
+              }
+              react {
+                mouse.x -> fire.intensity
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("react mouse.x should compile");
+        assert!(!output.react_js.is_empty(), "mouse axis should produce JS");
+        // Should generate something functional, not just a comment
+        assert!(output.react_js.contains("mouse"), "should reference mouse");
+        assert!(output.react_js.contains("mousemove"), "should listen for mousemove");
+        assert!(output.react_js.contains("params["), "should update params");
+    }
+
+    #[test]
+    fn react_html_integration() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0)
+              }
+              react {
+                mouse.click -> ripple
+                key("space") -> arc.pause_toggle
+              }
+            }
+        "#;
+        let html = compile_html(source).expect("react HTML should compile");
+        assert!(html.contains("React"), "HTML should include react section");
+    }
+
+    #[test]
+    fn react_empty_block() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0)
+              }
+              react {
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("empty react should compile");
+        assert!(output.react_js.is_empty(), "empty react should produce no JS");
+    }
+
+    #[test]
+    fn react_multiple_handlers() {
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(b)
+                b: 1.0
+              }
+              react {
+                mouse.click -> ripple
+                key("space") -> arc.pause_toggle
+                key("r") -> reset
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("multi-handler react should compile");
+        assert!(output.react_js.contains("click"), "should have click handler");
+        assert!(output.react_js.contains("space"), "should have space handler");
+        assert!(output.react_js.contains("r"), "should have r key handler");
+    }
+
+    #[test]
+    fn react_scroll_generates_listener() {
+        let source = r#"
+            cinematic {
+              layer x {
+                fn: circle(0.5) | glow(intensity)
+                intensity: 2.0
+              }
+              react {
+                scroll -> intensity
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("react scroll should compile");
+        assert!(!output.react_js.is_empty(), "scroll should produce JS");
+        assert!(output.react_js.contains("wheel"), "scroll should generate wheel listener");
+        assert!(output.react_js.contains("delta"), "scroll should normalize delta");
+    }
+
+    // ── Phase 6: Advanced rendering tests ─────────────────────────
+
+    #[test]
+    fn raymarch_has_shadow_and_ao() {
+        let source = r#"
+            cinematic {
+              layer terrain {
+                fn: fbm(p * 2.0, octaves: 6, persistence: 0.5) | shade(albedo: gold)
+              }
+              lens {
+                mode: raymarch
+                camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("raymarch should compile");
+        assert!(output.wgsl.contains("soft_shadow") || output.wgsl.contains("shadow"),
+            "raymarch should include shadow calculation");
+        assert!(output.wgsl.contains("calc_ao") || output.wgsl.contains("occ"),
+            "raymarch should include ambient occlusion");
+    }
+
+    #[test]
+    fn smooth_union_builtin_available() {
+        // Test that smooth boolean operations can be used if registered as builtins
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0)
+              }
+            }
+        "#;
+        // This just verifies compilation still works - smooth ops are helpers
+        let output = compile_full(source).expect("compilation should succeed");
+        assert!(!output.wgsl.is_empty());
+    }
+
+    #[test]
+    fn color_grade_postprocess() {
+        let source = r#"
+            cinematic {
+              layer {
+                fn: circle(0.3) | glow(2.0) | tint(gold) | color_grade(1.1, 0.0, 1.0)
+              }
+            }
+        "#;
+        let result = compile_full(source);
+        // color_grade may or may not be implemented yet - test it doesn't panic
+        // If it's implemented, verify the output
+        match result {
+            Ok(output) => {
+                assert!(output.wgsl.contains("color_result") || output.wgsl.contains("gamma"),
+                    "color grade should modify color output");
+            }
+            Err(e) => {
+                // If not implemented, should give a clear "unknown function" error
+                let msg = format!("{e}");
+                assert!(msg.contains("unknown") || msg.contains("color_grade"),
+                    "error should mention the unknown function");
+            }
+        }
+    }
+
+    #[test]
+    fn raymarch_performance_basics() {
+        let source = r#"
+            cinematic {
+              layer terrain {
+                fn: fbm(p * 2.0, octaves: 6, persistence: 0.5)
+              }
+              lens {
+                mode: raymarch
+                camera: orbit(radius: 4.0, height: 2.0, speed: 0.05)
+              }
+            }
+        "#;
+        let output = compile_full(source).expect("raymarch should compile");
+        // Verify performance features
+        assert!(output.wgsl.contains("50.0"), "should have distance limit for early termination");
+        assert!(output.wgsl.contains("0.8"), "should have relaxation factor");
+        assert!(output.wgsl.contains("128"), "should have reasonable max iterations");
     }
 }

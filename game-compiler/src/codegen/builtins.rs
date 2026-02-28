@@ -110,6 +110,53 @@ impl WgslGen {
             self.blank();
         }
 
+        // ── Smooth SDF boolean operations ─────────────────────────────
+
+        if self.used_builtins.contains("sdf_smooth_union") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {");
+            self.indent += 1;
+            self.line("let h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);");
+            self.line("return mix(d2, d1, h) - k * h * (1.0 - h);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("sdf_smooth_subtract") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_smooth_subtract(d1: f32, d2: f32, k: f32) -> f32 {");
+            self.indent += 1;
+            self.line("let h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);");
+            self.line("return mix(d1, -d2, h) + k * h * (1.0 - h);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
+        if self.used_builtins.contains("sdf_smooth_intersect") {
+            if !emitted_any {
+                self.line("// ── Built-in functions ──────────────────────────────────");
+                self.blank();
+                emitted_any = true;
+            }
+            self.line("fn sdf_smooth_intersect(d1: f32, d2: f32, k: f32) -> f32 {");
+            self.indent += 1;
+            self.line("let h = clamp(0.5 - 0.5 * (d2 - d1) / k, 0.0, 1.0);");
+            self.line("return mix(d2, d1, h) + k * h * (1.0 - h);");
+            self.indent -= 1;
+            self.line("}");
+            self.blank();
+        }
+
         // ── Glow / effects ───────────────────────────────────────────
 
         if self.used_builtins.contains("apply_glow") {

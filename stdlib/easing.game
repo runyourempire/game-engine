@@ -1,0 +1,36 @@
+# GAME Standard Library - Easing and Timing Functions
+#
+# Usage: import "easing" expose pulse, breathe, strobe
+
+cinematic "stdlib/easing" {
+
+  # Smooth sine pulse
+  define pulse(speed, amount) {
+    scale(1.0 + sin(time * speed) * amount)
+  }
+
+  # Slow breathing scale effect
+  define breathe(amount) {
+    scale(1.0 + sin(time * 0.5) * amount)
+  }
+
+  # Fast strobe-like flash
+  define strobe(speed) {
+    glow(2.0 + sin(time * speed) * 2.0)
+  }
+
+  # Smooth rotation
+  define spin(speed) {
+    rotate(time * speed)
+  }
+
+  # Oscillating horizontal drift
+  define drift(speed, amount) {
+    translate(sin(time * speed) * amount, 0.0)
+  }
+
+  # Bounce up and down
+  define bounce(speed, height) {
+    translate(0.0, sin(time * speed) * height)
+  }
+}

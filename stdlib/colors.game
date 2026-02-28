@@ -1,0 +1,36 @@
+# GAME Standard Library - Color Palettes and Tints
+#
+# Usage: import "colors" expose neon_cyan, sunset, monochrome
+
+cinematic "stdlib/colors" {
+
+  # Neon cyan tint
+  define neon_cyan(intensity) {
+    tint(cyan) | glow(intensity)
+  }
+
+  # Warm sunset gradient
+  define sunset(scale) {
+    gradient(orange, violet, "y") | glow(scale)
+  }
+
+  # Monochrome desaturation effect
+  define monochrome(amount) {
+    desaturate(amount)
+  }
+
+  # Gold accent highlight
+  define gold_accent(intensity) {
+    tint(gold) | glow(intensity)
+  }
+
+  # Cool blue atmosphere
+  define cool_blue(intensity) {
+    tint(blue) | glow(intensity)
+  }
+
+  # Warm red pulse
+  define warm_red(intensity) {
+    tint(red) | glow(intensity)
+  }
+}

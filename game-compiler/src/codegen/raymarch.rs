@@ -81,6 +81,42 @@ impl WgslGen {
         self.line("}");
         self.blank();
 
+        // soft_shadow: cast ray from hit point toward light
+        self.line("fn soft_shadow(ro: vec3f, rd: vec3f, mint: f32, maxt: f32, k: f32) -> f32 {");
+        self.indent += 1;
+        self.line("var result = 1.0;");
+        self.line("var t = mint;");
+        self.line("for (var i: i32 = 0; i < 32; i++) {");
+        self.indent += 1;
+        self.line("let h = map_scene(ro + rd * t);");
+        self.line("result = min(result, k * h / t);");
+        self.line("t += clamp(h, 0.01, 0.5);");
+        self.line("if (t > maxt) { break; }");
+        self.indent -= 1;
+        self.line("}");
+        self.line("return clamp(result, 0.0, 1.0);");
+        self.indent -= 1;
+        self.line("}");
+        self.blank();
+
+        // calc_ao: ambient occlusion
+        self.line("fn calc_ao(pos: vec3f, nor: vec3f) -> f32 {");
+        self.indent += 1;
+        self.line("var occ = 0.0;");
+        self.line("var sca = 1.0;");
+        self.line("for (var i: i32 = 0; i < 5; i++) {");
+        self.indent += 1;
+        self.line("let h = 0.01 + 0.12 * f32(i);");
+        self.line("let d = map_scene(pos + nor * h);");
+        self.line("occ += (h - d) * sca;");
+        self.line("sca *= 0.95;");
+        self.indent -= 1;
+        self.line("}");
+        self.line("return clamp(1.0 - 3.0 * occ, 0.0, 1.0);");
+        self.indent -= 1;
+        self.line("}");
+        self.blank();
+
         Ok(())
     }
 
@@ -127,7 +163,7 @@ impl WgslGen {
         self.line("let pos = cam_pos + rd * t;");
         self.line("let d = map_scene(pos);");
         self.line("if (abs(d) < 0.001) { hit = true; break; }");
-        self.line("t += d * 0.8;  // relaxation factor");
+        self.line("t += max(d * 0.8, 0.001);  // relaxation factor + min step");
         self.line("if (t > 50.0) { break; }");
         self.indent -= 1;
         self.line("}");
@@ -148,12 +184,14 @@ impl WgslGen {
         self.line("let height = clamp(field_at(hit_pos.xz) * 0.5 + 0.5, 0.0, 1.0);");
         self.blank();
 
-        // Lighting (sun + ambient)
+        // Lighting (sun + ambient with soft shadows and AO)
         self.line("let sun_dir = normalize(vec3f(0.5, 0.8, 1.0));");
         self.line("let sun_intensity = 0.8;");
         self.line("let ambient = 0.15;");
         self.line("let ndotl = max(dot(normal, sun_dir), 0.0);");
-        self.line("let lighting = ndotl * sun_intensity + ambient;");
+        self.line("let shadow = soft_shadow(hit_pos + normal * 0.01, sun_dir, 0.02, 10.0, 8.0);");
+        self.line("let ao = calc_ao(hit_pos, normal);");
+        self.line("let lighting = ndotl * sun_intensity * shadow + ambient * ao;");
         self.blank();
 
         // Material from shade() stage

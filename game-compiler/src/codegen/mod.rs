@@ -186,6 +186,10 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
     // Collect params from all layers
     gen.collect_params(&cinematic, &mut warnings);
 
+    // Validate identifiers in expressions (after defines are expanded and params collected)
+    let ident_warnings = validate_identifiers(&cinematic, &gen.params);
+    warnings.extend(ident_warnings);
+
     // Determine rendering mode from lens block
     gen.render_mode = determine_render_mode(&cinematic);
 
@@ -209,6 +213,18 @@ pub fn generate_full(cinematic: &Cinematic) -> Result<CompileOutput> {
 
     // Compile resonance block
     let resonance_js = if let Some(res_block) = &cinematic.resonance {
+        // Warn about bindings with unresolvable targets
+        let param_names: Vec<&str> = gen.params.iter().map(|p| p.name.as_str()).collect();
+        for binding in &res_block.bindings {
+            let target_name = binding.target.rsplit('.').next().unwrap_or(&binding.target);
+            if !param_names.contains(&target_name) {
+                warnings.push(format!(
+                    "resonate: target '{}' does not match any known param — \
+                     this binding will be silently ignored",
+                    binding.target
+                ));
+            }
+        }
         let compiled = resonance::compile_resonance(res_block, &gen.params);
         compiled.js_code
     } else {
@@ -362,6 +378,7 @@ fn classify_stage_kind(name: &str) -> StageKind {
         | "line" | "polygon" | "star" | "fbm" | "simplex" | "voronoi" | "noise"
         | "mask_arc" | "displace" | "round" | "onion"
         | "curl_noise" | "concentric_waves" | "threshold"
+        | "smooth_union" | "smooth_subtract" | "smooth_intersect"
             => StageKind::Sdf,
         "glow" => StageKind::Glow,
         "shade" | "emissive" | "colormap" | "spectrum" | "tint" | "gradient"
@@ -369,6 +386,7 @@ fn classify_stage_kind(name: &str) -> StageKind {
             => StageKind::Color,
         "bloom" | "chromatic" | "vignette" | "grain" | "fog" | "glitch"
         | "scanlines" | "tonemap" | "invert" | "saturate_color" | "iridescent"
+        | "color_grade"
             => StageKind::PostProcess,
         _ => StageKind::Unknown,
     }
@@ -611,7 +629,8 @@ impl WgslGen {
 
     pub(super) fn is_postprocess(&self, name: &str) -> bool {
         matches!(name, "bloom" | "vignette" | "chromatic" | "grain"
-            | "fog" | "glitch" | "scanlines" | "tonemap" | "invert" | "saturate_color")
+            | "fog" | "glitch" | "scanlines" | "tonemap" | "invert" | "saturate_color"
+            | "color_grade")
     }
 
     pub(super) fn classify_stage(&self, name: &str) -> Result<ShaderState> {
@@ -626,10 +645,11 @@ impl WgslGen {
             "mask_arc" | "threshold" => Ok(ShaderState::Sdf),
             "translate" | "rotate" | "scale" | "repeat" | "mirror" | "twist"
             => Ok(ShaderState::Position),
-            "displace" | "round" | "onion" => Ok(ShaderState::Sdf),
+            "displace" | "round" | "onion"
+            | "smooth_union" | "smooth_subtract" | "smooth_intersect" => Ok(ShaderState::Sdf),
             "bloom" | "chromatic" | "vignette" | "grain"
             | "fog" | "glitch" | "scanlines" | "tonemap" | "invert"
-            | "saturate_color" | "iridescent" => Ok(ShaderState::Color),
+            | "saturate_color" | "iridescent" | "color_grade" => Ok(ShaderState::Color),
             _ => Err(crate::error::GameError::unknown_function(name)),
         }
     }
@@ -645,6 +665,126 @@ impl WgslGen {
 }
 
 // ── Types ──────────────────────────────────────────────────────────────
+
+// ── Identifier validation ──────────────────────────────────────────
+
+/// Known built-in identifiers that are always valid in expressions.
+const KNOWN_BUILTINS: &[&str] = &[
+    "time", "p", "uv", "height", "pi", "tau", "e", "phi",
+    // Colors
+    "black", "white", "red", "green", "blue", "gold", "midnight",
+    "obsidian", "ember", "cyan", "ivory", "frost", "orange",
+    "deep_blue", "ash", "charcoal", "plasma", "violet", "magenta",
+];
+
+/// Objects that are valid as the root of field access expressions.
+const KNOWN_FIELD_OBJECTS: &[&str] = &["audio", "mouse", "data", "arc"];
+
+/// Collect all identifiers used in an expression tree.
+fn collect_idents(expr: &Expr, idents: &mut Vec<String>) {
+    match expr {
+        Expr::Ident(name) => {
+            if !idents.contains(name) {
+                idents.push(name.clone());
+            }
+        }
+        Expr::FieldAccess { object, .. } => {
+            // Only collect the root object — field access is valid if root is known
+            collect_idents(object, idents);
+        }
+        Expr::BinaryOp { left, right, .. } => {
+            collect_idents(left, idents);
+            collect_idents(right, idents);
+        }
+        Expr::Negate(inner) => collect_idents(inner, idents),
+        Expr::Call(call) => {
+            for arg in &call.args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                        collect_idents(e, idents);
+                    }
+                }
+            }
+        }
+        Expr::Array(elements) => {
+            for e in elements {
+                collect_idents(e, idents);
+            }
+        }
+        Expr::Ternary { condition, if_true, if_false } => {
+            collect_idents(condition, idents);
+            collect_idents(if_true, idents);
+            collect_idents(if_false, idents);
+        }
+        Expr::Number(_) | Expr::String(_) => {}
+    }
+}
+
+/// Validate all identifiers used in expressions across the cinematic.
+/// Returns warnings for any unrecognized identifiers.
+fn validate_identifiers(cinematic: &Cinematic, params: &[CompiledParam]) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    // Build the set of known names
+    let param_names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+    let layer_names: Vec<&str> = cinematic.layers.iter()
+        .filter_map(|l| l.name.as_deref())
+        .collect();
+    let define_names: Vec<&str> = cinematic.defines.iter()
+        .map(|d| d.name.as_str())
+        .collect();
+
+    // Collect all identifiers from all layer expressions
+    let mut all_idents = Vec::new();
+
+    for layer in &cinematic.layers {
+        // From pipe chain args
+        if let Some(chain) = &layer.fn_chain {
+            for stage in &chain.stages {
+                for arg in &stage.args {
+                    match arg {
+                        Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                            collect_idents(e, &mut all_idents);
+                        }
+                    }
+                }
+            }
+        }
+
+        // From param modulations
+        for param in &layer.params {
+            if let Some(modulation) = &param.modulation {
+                collect_idents(&modulation.signal, &mut all_idents);
+            }
+        }
+    }
+
+    // Check each identifier against known names
+    for ident in &all_idents {
+        let name = ident.as_str();
+        if KNOWN_BUILTINS.contains(&name) {
+            continue;
+        }
+        if KNOWN_FIELD_OBJECTS.contains(&name) {
+            continue;
+        }
+        if param_names.contains(&name) {
+            continue;
+        }
+        if layer_names.contains(&name) {
+            continue;
+        }
+        if define_names.contains(&name) {
+            continue;
+        }
+        warnings.push(format!(
+            "unknown identifier '{}' — not a known builtin, param, layer, or define",
+            name
+        ));
+    }
+
+    warnings
+}
 
 #[derive(Debug, Clone)]
 pub(super) enum ShaderState {

@@ -8,6 +8,14 @@
 //!     damping: 0.96
 //!   }
 //!
+//! Audio band names (bass, mid, treble, energy, beat) can be used as source
+//! expressions to create audio-reactive resonance:
+//!   resonate {
+//!     scale ~ bass * 0.5
+//!     rotation ~ treble * 2.0
+//!     damping: 0.96
+//!   }
+//!
 //! This compiles to a JS function that runs each frame, updating param base
 //! values based on other param values. The damping factor prevents runaway
 //! feedback loops.
@@ -17,6 +25,15 @@ use std::collections::HashMap;
 use crate::ast::ResonanceBlock;
 use crate::codegen::expr::compile_expr_js;
 use crate::codegen::CompiledParam;
+
+/// Audio frequency band names that map to JS runtime variables.
+const AUDIO_BANDS: &[(&str, &str)] = &[
+    ("bass", "audioBass"),
+    ("mid", "audioMid"),
+    ("treble", "audioTreble"),
+    ("energy", "audioEnergy"),
+    ("beat", "audioBeat"),
+];
 
 /// Compiled resonance output — JS code to inject into the runtime.
 pub struct CompiledResonance {
@@ -34,7 +51,9 @@ pub fn compile_resonance(
     block: &ResonanceBlock,
     params: &[CompiledParam],
 ) -> CompiledResonance {
-    let damping = block.damping.unwrap_or(0.95);
+    // Clamp damping to [0, 1] to prevent runaway feedback
+    let raw_damping = block.damping.unwrap_or(0.95);
+    let damping = raw_damping.clamp(0.0, 1.0);
 
     if block.bindings.is_empty() {
         return CompiledResonance {
@@ -43,7 +62,7 @@ pub fn compile_resonance(
         };
     }
 
-    // Build a param name → index map
+    // Build a param name -> index map
     let param_map: HashMap<&str, usize> = params.iter()
         .enumerate()
         .map(|(i, p)| (p.name.as_str(), i))
@@ -52,6 +71,10 @@ pub fn compile_resonance(
     let mut js = String::with_capacity(512);
     js.push_str("// ── Resonance: cross-layer parameter modulation ──\n");
     js.push_str("(function resonanceUpdate(params, dt) {\n");
+
+    // Guard for empty params array
+    js.push_str("  if (!params || params.length === 0) return;\n");
+
     js.push_str(&format!("  const damp = {};\n", damping));
 
     // Track contributions separately to avoid order-dependent updates
@@ -66,7 +89,7 @@ pub fn compile_resonance(
             // Compile the source expression to JS
             let source_js = compile_expr_js(&binding.source);
 
-            // Replace param references in source with params[N].value lookups
+            // Replace param references and audio band names with their JS lookups
             let resolved_js = resolve_param_refs(&source_js, &param_map);
 
             js.push_str(&format!(
@@ -87,8 +110,8 @@ pub fn compile_resonance(
     }
 }
 
-/// Extract the param name from a dotted path like "fire.freq" → "freq"
-/// or a plain name like "freq" → "freq".
+/// Extract the param name from a dotted path like "fire.freq" -> "freq"
+/// or a plain name like "freq" -> "freq".
 fn extract_param_name(target: &str) -> String {
     if let Some(pos) = target.rfind('.') {
         target[pos + 1..].to_string()
@@ -97,7 +120,8 @@ fn extract_param_name(target: &str) -> String {
     }
 }
 
-/// Replace param names in a JS expression with `params[N].value` lookups.
+/// Replace param names in a JS expression with `params[N].value` lookups,
+/// and audio band names with their JS runtime variables.
 fn resolve_param_refs(js: &str, param_map: &HashMap<&str, usize>) -> String {
     let mut result = js.to_string();
 
@@ -107,9 +131,15 @@ fn resolve_param_refs(js: &str, param_map: &HashMap<&str, usize>) -> String {
 
     for (name, idx) in entries {
         // Only replace standalone identifiers (not inside other words)
-        // Simple approach: replace if preceded/followed by non-alphanumeric
         let replacement = format!("params[{idx}].value");
         result = replace_word(&result, name, &replacement);
+    }
+
+    // Resolve audio band names to their JS runtime variables.
+    // This allows resonance bindings like `scale ~ bass * 0.5` to read
+    // from the Web Audio analysis data.
+    for &(band_name, js_var) in AUDIO_BANDS {
+        result = replace_word(&result, band_name, js_var);
     }
 
     result
@@ -118,7 +148,6 @@ fn resolve_param_refs(js: &str, param_map: &HashMap<&str, usize>) -> String {
 /// Replace a word (identifier) in a string, only matching whole words.
 fn replace_word(text: &str, word: &str, replacement: &str) -> String {
     let mut result = String::with_capacity(text.len());
-    let _word_len = word.len(); // touch word for validation
     let mut i = 0;
 
     while i < text.len() {

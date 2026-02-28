@@ -13,4 +13,4 @@ mod helpers;
 mod html;
 
 pub use component::wrap_web_component;
-pub use html::{wrap_html, wrap_html_full};
+pub use html::{wrap_html, wrap_html_embed, wrap_html_full};
