@@ -1,0 +1,6 @@
+cinematic "temporal-demo" {
+  layer reactive {
+    bass: 0.5 ~ audio.bass <> 50ms >> 200ms .. [0.0, 1.0]
+    beat: 0.0 ~ audio.beat !! 300ms
+  }
+}

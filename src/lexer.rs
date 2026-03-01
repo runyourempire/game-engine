@@ -31,6 +31,24 @@ enum LexToken {
     Memory,
     #[token("cast")]
     Cast,
+    #[token("listen")]
+    Listen,
+    #[token("voice")]
+    Voice,
+    #[token("score")]
+    Score,
+    #[token("breed")]
+    Breed,
+    #[token("from")]
+    From,
+    #[token("inherit")]
+    Inherit,
+    #[token("mutate")]
+    Mutate,
+    #[token("gravity")]
+    Gravity,
+    #[token("project")]
+    Project,
     #[token("true")]
     True,
     #[token("false")]
@@ -151,6 +169,15 @@ fn convert(lt: LexToken, slice: &str) -> Result<Token, CompileError> {
         LexToken::Over => Token::Over,
         LexToken::Memory => Token::Memory,
         LexToken::Cast => Token::Cast,
+        LexToken::Listen => Token::Listen,
+        LexToken::Voice => Token::Voice,
+        LexToken::Score => Token::Score,
+        LexToken::Breed => Token::Breed,
+        LexToken::From => Token::From,
+        LexToken::Inherit => Token::Inherit,
+        LexToken::Mutate => Token::Mutate,
+        LexToken::Gravity => Token::Gravity,
+        LexToken::Project => Token::Project,
         LexToken::True => Token::Ident("true".into()),
         LexToken::False => Token::Ident("false".into()),
 
