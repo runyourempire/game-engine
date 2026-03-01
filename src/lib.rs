@@ -1,3 +1,4 @@
+pub mod adapters;
 pub mod ast;
 pub mod builtins;
 pub mod codegen;
