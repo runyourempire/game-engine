@@ -1,0 +1,9 @@
+cinematic "cast-demo" {
+  layer sdf_only cast sdf {
+    translate(0.2, 0.0) | circle(0.3)
+  }
+
+  layer colored cast color {
+    ring(0.4, 0.02) | glow(2.0) | tint(0.5, 0.8, 1.0)
+  }
+}

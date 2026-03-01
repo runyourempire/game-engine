@@ -1,0 +1,5 @@
+cinematic "trails" {
+  layer glow_core memory: 0.97 {
+    translate(audio.bass, 0.0) | circle(0.1) | glow(2.5) | tint(1.0, 0.5, 0.2)
+  }
+}

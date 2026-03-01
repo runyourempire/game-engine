@@ -1,0 +1,21 @@
+[package]
+name = "game-compiler"
+version = "0.2.0"
+edition = "2021"
+description = "GAME (Generative Animation Matrix Engine) — compiles .game DSL to WebGPU shaders + Web Components"
+
+[[bin]]
+name = "game"
+path = "src/main.rs"
+
+[lib]
+name = "game_compiler"
+path = "src/lib.rs"
+
+[dependencies]
+logos = "0.14"
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

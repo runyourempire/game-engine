@@ -1,0 +1,5 @@
+cinematic "hello-glow" {
+  layer main {
+    circle(0.3) | glow(2.0) | tint(0.831, 0.686, 0.216)
+  }
+}
