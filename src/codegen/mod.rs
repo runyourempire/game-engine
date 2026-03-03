@@ -3,6 +3,7 @@
 //! Generates WGSL and/or GLSL shaders from GAME AST, then hands off to
 //! the runtime module to wrap them in Web Components or standalone HTML.
 
+pub mod arc;
 pub mod breed;
 pub mod cast;
 pub mod glsl;
@@ -10,6 +11,7 @@ pub mod gravity;
 pub mod listen;
 pub mod memory;
 pub mod project;
+pub mod resonate;
 pub mod score;
 pub mod stages;
 pub mod temporal;
@@ -161,6 +163,22 @@ pub fn generate(cinematic: &Cinematic) -> Result<ShaderOutput, CompileError> {
         None
     };
 
+    // Resonate → GameResonanceNetwork JS class (parametric coupling)
+    if !cinematic.resonates.is_empty() {
+        let resonate_js = resonate::generate_resonate_js(&cinematic.resonates);
+        if !resonate_js.is_empty() {
+            js_modules.push(resonate_js);
+        }
+    }
+
+    // Arc → GameArcTimeline JS class (parameter animation)
+    if !cinematic.arcs.is_empty() {
+        let arc_js = arc::generate_arc_js(&cinematic.arcs);
+        if !arc_js.is_empty() {
+            js_modules.push(arc_js);
+        }
+    }
+
     Ok(ShaderOutput {
         name: cinematic.name.clone(),
         wgsl_fragment,
@@ -191,15 +209,24 @@ mod tests {
             }],
             arcs: vec![],
             resonates: vec![],
-            listen: None, voice: None, score: None, gravity: None,
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
         }
     }
 
     #[test]
     fn generate_produces_both_shaders() {
         let cin = make_cinematic(vec![
-            Stage { name: "circle".into(), args: vec![] },
-            Stage { name: "glow".into(), args: vec![] },
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
         ]);
         let output = generate(&cin).unwrap();
         assert!(output.wgsl_fragment.contains("fn fs_main"));
@@ -218,7 +245,10 @@ mod tests {
                     value: Expr::Ident("my_radius".into()),
                 }],
             },
-            Stage { name: "glow".into(), args: vec![] },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
         ]);
         let uniforms = extract_uniforms(&cin);
         assert_eq!(uniforms.len(), 1);
@@ -227,9 +257,10 @@ mod tests {
 
     #[test]
     fn validate_rejects_bad_pipeline() {
-        let cin = make_cinematic(vec![
-            Stage { name: "glow".into(), args: vec![] },
-        ]);
+        let cin = make_cinematic(vec![Stage {
+            name: "glow".into(),
+            args: vec![],
+        }]);
         assert!(generate(&cin).is_err());
     }
 
@@ -242,18 +273,19 @@ mod tests {
                 opts: vec![],
                 memory: None,
                 cast: None,
-                body: LayerBody::Params(vec![
-                    Param {
-                        name: "intensity".into(),
-                        value: Expr::Number(0.5),
-                        modulation: None,
-                        temporal_ops: vec![],
-                    },
-                ]),
+                body: LayerBody::Params(vec![Param {
+                    name: "intensity".into(),
+                    value: Expr::Number(0.5),
+                    modulation: None,
+                    temporal_ops: vec![],
+                }]),
             }],
             arcs: vec![],
             resonates: vec![],
-            listen: None, voice: None, score: None, gravity: None,
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
         };
         let uniforms = extract_uniforms(&cin);
         assert_eq!(uniforms.len(), 1);
@@ -270,13 +302,17 @@ mod tests {
                 opts: vec![],
                 memory: None,
                 cast: Some("sdf".into()),
-                body: LayerBody::Pipeline(vec![
-                    Stage { name: "circle".into(), args: vec![] },
-                ]),
+                body: LayerBody::Pipeline(vec![Stage {
+                    name: "circle".into(),
+                    args: vec![],
+                }]),
             }],
             arcs: vec![],
             resonates: vec![],
-            listen: None, voice: None, score: None, gravity: None,
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
         };
         assert!(generate(&cin).is_ok());
     }
@@ -291,13 +327,22 @@ mod tests {
                 memory: None,
                 cast: Some("sdf".into()),
                 body: LayerBody::Pipeline(vec![
-                    Stage { name: "circle".into(), args: vec![] },
-                    Stage { name: "glow".into(), args: vec![] },
+                    Stage {
+                        name: "circle".into(),
+                        args: vec![],
+                    },
+                    Stage {
+                        name: "glow".into(),
+                        args: vec![],
+                    },
                 ]),
             }],
             arcs: vec![],
             resonates: vec![],
-            listen: None, voice: None, score: None, gravity: None,
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
         };
         let err = generate(&cin).unwrap_err();
         assert!(err.to_string().contains("cast as 'sdf'"));
@@ -313,8 +358,14 @@ mod tests {
                 memory: None,
                 cast: None,
                 body: LayerBody::Pipeline(vec![
-                    Stage { name: "circle".into(), args: vec![] },
-                    Stage { name: "glow".into(), args: vec![] },
+                    Stage {
+                        name: "circle".into(),
+                        args: vec![],
+                    },
+                    Stage {
+                        name: "glow".into(),
+                        args: vec![],
+                    },
                 ]),
             }],
             arcs: vec![],
@@ -346,8 +397,14 @@ mod tests {
                 memory: None,
                 cast: None,
                 body: LayerBody::Pipeline(vec![
-                    Stage { name: "circle".into(), args: vec![] },
-                    Stage { name: "glow".into(), args: vec![] },
+                    Stage {
+                        name: "circle".into(),
+                        args: vec![],
+                    },
+                    Stage {
+                        name: "glow".into(),
+                        args: vec![],
+                    },
                 ]),
             }],
             arcs: vec![],
@@ -364,17 +421,165 @@ mod tests {
         let output = generate(&cin).unwrap();
         assert!(output.compute_wgsl.is_some());
         assert!(output.compute_wgsl.unwrap().contains("cs_main"));
-        assert!(output.js_modules.iter().any(|m| m.contains("GameGravitySim")));
+        assert!(output
+            .js_modules
+            .iter()
+            .any(|m| m.contains("GameGravitySim")));
     }
 
     #[test]
     fn generate_default_has_empty_js_modules() {
         let cin = make_cinematic(vec![
-            Stage { name: "circle".into(), args: vec![] },
-            Stage { name: "glow".into(), args: vec![] },
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
         ]);
         let output = generate(&cin).unwrap();
         assert!(output.js_modules.is_empty());
         assert!(output.compute_wgsl.is_none());
+    }
+
+    #[test]
+    fn generate_with_resonate_produces_js_module() {
+        let cin = Cinematic {
+            name: "coupled".into(),
+            layers: vec![Layer {
+                name: "main".into(),
+                opts: vec![],
+                memory: None,
+                cast: None,
+                body: LayerBody::Pipeline(vec![
+                    Stage {
+                        name: "circle".into(),
+                        args: vec![],
+                    },
+                    Stage {
+                        name: "glow".into(),
+                        args: vec![],
+                    },
+                ]),
+            }],
+            arcs: vec![],
+            resonates: vec![crate::ast::ResonateBlock {
+                entries: vec![crate::ast::ResonateEntry {
+                    source: "bass".into(),
+                    target: "core".into(),
+                    field: "scale".into(),
+                    weight: Expr::Number(0.3),
+                }],
+            }],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+        };
+        let output = generate(&cin).unwrap();
+        assert!(output
+            .js_modules
+            .iter()
+            .any(|m| m.contains("GameResonanceNetwork")));
+    }
+
+    #[test]
+    fn generate_with_arc_produces_js_module() {
+        let cin = Cinematic {
+            name: "evolving".into(),
+            layers: vec![Layer {
+                name: "main".into(),
+                opts: vec![],
+                memory: None,
+                cast: None,
+                body: LayerBody::Pipeline(vec![
+                    Stage {
+                        name: "circle".into(),
+                        args: vec![],
+                    },
+                    Stage {
+                        name: "glow".into(),
+                        args: vec![],
+                    },
+                ]),
+            }],
+            arcs: vec![crate::ast::ArcBlock {
+                entries: vec![crate::ast::ArcEntry {
+                    target: "scale".into(),
+                    from: Expr::Number(0.1),
+                    to: Expr::Number(1.0),
+                    duration: crate::ast::Duration::Seconds(3.0),
+                    easing: Some("ease-out".into()),
+                }],
+            }],
+            resonates: vec![],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+        };
+        let output = generate(&cin).unwrap();
+        assert!(output
+            .js_modules
+            .iter()
+            .any(|m| m.contains("GameArcTimeline")));
+        assert!(output.js_modules.iter().any(|m| m.contains("ease_out")));
+    }
+
+    #[test]
+    fn generate_with_resonate_and_arc_together() {
+        let cin = Cinematic {
+            name: "living".into(),
+            layers: vec![Layer {
+                name: "main".into(),
+                opts: vec![],
+                memory: None,
+                cast: None,
+                body: LayerBody::Pipeline(vec![
+                    Stage {
+                        name: "circle".into(),
+                        args: vec![],
+                    },
+                    Stage {
+                        name: "glow".into(),
+                        args: vec![],
+                    },
+                ]),
+            }],
+            arcs: vec![crate::ast::ArcBlock {
+                entries: vec![crate::ast::ArcEntry {
+                    target: "scale".into(),
+                    from: Expr::Number(0.0),
+                    to: Expr::Number(1.0),
+                    duration: crate::ast::Duration::Seconds(5.0),
+                    easing: None,
+                }],
+            }],
+            resonates: vec![crate::ast::ResonateBlock {
+                entries: vec![crate::ast::ResonateEntry {
+                    source: "scale".into(),
+                    target: "core".into(),
+                    field: "brightness".into(),
+                    weight: Expr::Number(0.5),
+                }],
+            }],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+        };
+        let output = generate(&cin).unwrap();
+        let has_resonate = output
+            .js_modules
+            .iter()
+            .any(|m| m.contains("GameResonanceNetwork"));
+        let has_arc = output
+            .js_modules
+            .iter()
+            .any(|m| m.contains("GameArcTimeline"));
+        assert!(has_resonate, "Should have resonance network");
+        assert!(has_arc, "Should have arc timeline");
     }
 }

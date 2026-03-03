@@ -1,0 +1,24 @@
+// Arc Evolution — parameters that sweep through values over time.
+// Scale grows, intensity builds, hue shifts. One-shot cinematic progression.
+
+cinematic "arc-demo" {
+  layer config {
+    scale: 0.1
+    intensity: 0.0
+    hue: 0.0
+  }
+
+  layer core memory: 0.95 {
+    circle(0.35) | glow(2.0) | tint(0.5, 0.3, 0.1)
+  }
+
+  layer aura {
+    fbm(3.0, 4, 0.5, 2.0) | glow(1.8) | tint(0.8, 0.6, 0.2)
+  }
+
+  arc {
+    scale: 0.1 -> 1.0 over 5s ease-out
+    intensity: 0.0 -> 0.85 over 3s ease-in-out
+    hue: 0.0 -> 360.0 over 10s
+  }
+}

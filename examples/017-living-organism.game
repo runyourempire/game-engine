@@ -1,0 +1,39 @@
+// Living Organism — arc + resonate + memory = visual creature that grows,
+// breathes, and responds to its own state. GAME's generative trifecta.
+//
+// The arc drives growth. Resonate creates breathing feedback loops.
+// Memory creates visual trails. Together: emergence.
+
+cinematic "organism" {
+  layer config {
+    pulse: 0.0
+    growth: 0.0
+    breath: 0.0
+  }
+
+  layer nucleus memory: 0.96 {
+    circle(0.2) | glow(3.0) | tint(1.0, 0.4, 0.1)
+  }
+
+  layer membrane memory: 0.88 {
+    ring(0.35, 0.02) | glow(1.5) | tint(0.8, 0.7, 0.3)
+  }
+
+  layer cilia {
+    fbm(5.0, 5, 0.4, 2.0) | glow(1.0) | tint(0.3, 0.9, 0.5)
+  }
+
+  // Growth arc: organism develops over 8 seconds
+  arc {
+    growth: 0.0 -> 1.0 over 8s ease-in-out
+    pulse: 0.0 -> 0.6 over 3s ease-out
+  }
+
+  // Breathing resonance: growth drives membrane, membrane feeds back to nucleus
+  resonate {
+    growth -> nucleus.scale * 0.4
+    growth -> membrane.scale * 0.6
+    pulse -> cilia.intensity * 0.5
+    pulse -> nucleus.brightness * 0.3
+  }
+}
