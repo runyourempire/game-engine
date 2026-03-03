@@ -1,0 +1,39 @@
+// Domain warping — fbm(p + fbm(p)) produces organic, flowing distortion.
+// The single biggest visual quality upgrade for generative art.
+
+cinematic "organic-flow" {
+  layer main {
+    warp(scale: 3.0, octaves: 4, strength: 0.3)
+    | voronoi(5.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 1.0,
+        d_r: 0.0, d_g: 0.33, d_b: 0.67
+      )
+  }
+}
+
+// Warped noise fields — turbulent, painterly textures
+cinematic "turbulence" {
+  layer main {
+    warp(scale: 2.0, octaves: 6, persistence: 0.6, strength: 0.5)
+    | fbm(scale: 4.0, octaves: 3)
+    | glow(2.0)
+    | tint(0.9, 0.4, 0.1)
+  }
+}
+
+// Gentle undulation — subtle, meditative
+cinematic "undulate" {
+  layer main {
+    warp(scale: 1.5, octaves: 3, strength: 0.15)
+    | radial_fade(inner: 0.0, outer: 0.8)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 2.0, c_g: 1.0, c_b: 0.0,
+        d_r: 0.5, d_g: 0.2, d_b: 0.25
+      )
+  }
+}

@@ -1,0 +1,36 @@
+// Polar coordinates + distortion — radial symmetry and animated warping.
+
+// Polar noise rings — organic ring patterns
+cinematic "polar-rings" {
+  layer main {
+    polar
+    | simplex(6.0)
+    | glow(1.5)
+    | tint(0.6, 0.8, 1.0)
+  }
+}
+
+// Animated distortion — cheap, lively movement
+cinematic "living-field" {
+  layer main {
+    distort(scale: 4.0, speed: 0.5, strength: 0.3)
+    | circle(0.3)
+    | glow(2.0)
+    | tint(1.0, 0.7, 0.3)
+  }
+}
+
+// Combined: polar + distort + voronoi — crystalline vortex
+cinematic "crystal-vortex" {
+  layer main {
+    distort(scale: 3.0, speed: 0.3, strength: 0.15)
+    | polar
+    | voronoi(12.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 0.5,
+        d_r: 0.8, d_g: 0.9, d_b: 0.3
+      )
+  }
+}

@@ -124,4 +124,28 @@ mod tests {
         let val = get_arg(&args, "radius", 0, "circle");
         assert_eq!(val, "0.750000");
     }
+
+    #[test]
+    fn phase7_warp_voronoi_palette_pipeline() {
+        let stages = vec![stage("warp"), stage("voronoi"), stage("palette")];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ShaderState::Color);
+    }
+
+    #[test]
+    fn phase7_distort_radial_fade_glow() {
+        let stages = vec![stage("distort"), stage("radial_fade"), stage("glow")];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ShaderState::Color);
+    }
+
+    #[test]
+    fn phase7_polar_simplex_shade() {
+        let stages = vec![stage("polar"), stage("simplex"), stage("shade")];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ShaderState::Color);
+    }
 }

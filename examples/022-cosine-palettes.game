@@ -1,0 +1,41 @@
+// Cosine palettes (Inigo Quilez) — infinite color schemes from 4 vec3 params.
+// Formula: color = a + b * cos(2π(c*t + d))
+
+// Sunset gradient mapped to distance from center
+cinematic "sunset-orb" {
+  layer main {
+    radial_fade(inner: 0.0, outer: 1.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 0.7, c_b: 0.4,
+        d_r: 0.0, d_g: 0.15, d_b: 0.20
+      )
+  }
+}
+
+// Electric neon mapped to voronoi cells
+cinematic "neon-cells" {
+  layer main {
+    voronoi(8.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 1.0,
+        d_r: 0.0, d_g: 0.1, d_b: 0.2
+      )
+  }
+}
+
+// Ice/crystal mapped to noise
+cinematic "crystal" {
+  layer main {
+    simplex(3.0)
+    | palette(
+        a_r: 0.8, a_g: 0.9, a_b: 1.0,
+        b_r: 0.2, b_g: 0.3, b_b: 0.5,
+        c_r: 0.5, c_g: 0.5, c_b: 0.5,
+        d_r: 0.5, d_g: 0.6, d_b: 0.7
+      )
+  }
+}

@@ -73,6 +73,10 @@ pub fn generate_fragment(cinematic: &Cinematic, uniforms: &[UniformInfo]) -> Str
 fn emit_wgsl_builtins(s: &mut String, cinematic: &Cinematic) {
     let needs_circle = cinematic.layers.iter().any(|l| has_stage(l, "circle"));
     let needs_fbm = cinematic.layers.iter().any(|l| has_stage(l, "fbm"));
+    let needs_warp = cinematic.layers.iter().any(|l| has_stage(l, "warp"));
+    let needs_simplex = cinematic.layers.iter().any(|l| has_stage(l, "simplex"));
+    let needs_voronoi = cinematic.layers.iter().any(|l| has_stage(l, "voronoi"));
+    let needs_palette = cinematic.layers.iter().any(|l| has_stage(l, "palette"));
 
     if needs_circle {
         s.push_str("fn sdf_circle(p: vec2<f32>, radius: f32) -> f32 {\n");
@@ -84,8 +88,16 @@ fn emit_wgsl_builtins(s: &mut String, cinematic: &Cinematic) {
     s.push_str("    return exp(-max(d, 0.0) * intensity * 8.0);\n");
     s.push_str("}\n\n");
 
-    if needs_fbm {
+    if needs_fbm || needs_warp || needs_simplex {
         emit_wgsl_fbm(s);
+    }
+
+    if needs_voronoi {
+        emit_wgsl_voronoi(s);
+    }
+
+    if needs_palette {
+        emit_wgsl_palette(s);
     }
 }
 
@@ -121,6 +133,38 @@ fn emit_wgsl_fbm(s: &mut String) {
     s.push_str("        frequency = frequency * lacunarity;\n");
     s.push_str("    }\n");
     s.push_str("    return value / max_val;\n");
+    s.push_str("}\n\n");
+}
+
+fn emit_wgsl_voronoi(s: &mut String) {
+    s.push_str("fn hash2v(p: vec2<f32>) -> vec2<f32> {\n");
+    s.push_str(
+        "    let p3 = fract(vec3<f32>(p.x, p.y, p.x) * vec3<f32>(0.1031, 0.1030, 0.0973));\n",
+    );
+    s.push_str("    let pp = p3 + vec3<f32>(dot(p3, p3.yzx + 33.33));\n");
+    s.push_str("    return fract(vec2<f32>((pp.x + pp.y) * pp.z, (pp.x + pp.z) * pp.y));\n");
+    s.push_str("}\n\n");
+
+    s.push_str("fn voronoi2(p: vec2<f32>) -> f32 {\n");
+    s.push_str("    let n = floor(p);\n");
+    s.push_str("    let f = fract(p);\n");
+    s.push_str("    var md: f32 = 8.0;\n");
+    s.push_str("    for (var j: i32 = -1; j <= 1; j = j + 1) {\n");
+    s.push_str("        for (var i: i32 = -1; i <= 1; i = i + 1) {\n");
+    s.push_str("            let g = vec2<f32>(f32(i), f32(j));\n");
+    s.push_str("            let o = hash2v(n + g);\n");
+    s.push_str("            let r = g + o - f;\n");
+    s.push_str("            let d = dot(r, r);\n");
+    s.push_str("            md = min(md, d);\n");
+    s.push_str("        }\n");
+    s.push_str("    }\n");
+    s.push_str("    return sqrt(md);\n");
+    s.push_str("}\n\n");
+}
+
+fn emit_wgsl_palette(s: &mut String) {
+    s.push_str("fn cosine_palette(t: f32, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, d: vec3<f32>) -> vec3<f32> {\n");
+    s.push_str("    return a + b * cos(6.28318 * (c * t + d));\n");
     s.push_str("}\n\n");
 }
 
@@ -253,6 +297,67 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             s.push_str(&format!("{indent}let grain_noise = fract(sin(dot(p, vec2<f32>(12.9898, 78.233)) + time) * 43758.5453);\n"));
             s.push_str(&format!("{indent}color_result = vec4<f32>(color_result.rgb + (grain_noise - 0.5) * {amount}, color_result.a);\n"));
         }
+        "simplex" => {
+            let sc = get_arg(args, "scale", 0, "simplex");
+            s.push_str(&format!("{indent}let sdf_result = noise2(p * {sc});\n"));
+        }
+        "warp" => {
+            let sc = get_arg(args, "scale", 0, "warp");
+            let oct = get_arg(args, "octaves", 1, "warp");
+            let pers = get_arg(args, "persistence", 2, "warp");
+            let lac = get_arg(args, "lacunarity", 3, "warp");
+            let str_ = get_arg(args, "strength", 4, "warp");
+            s.push_str(&format!(
+                "{indent}{{ let warp_x = fbm2(p * {sc} + vec2<f32>(0.0, 1.3), i32({oct}), {pers}, {lac});\n"
+            ));
+            s.push_str(&format!(
+                "{indent}let warp_y = fbm2(p * {sc} + vec2<f32>(1.7, 0.0), i32({oct}), {pers}, {lac});\n"
+            ));
+            s.push_str(&format!(
+                "{indent}p = p + vec2<f32>(warp_x, warp_y) * {str_}; }}\n"
+            ));
+        }
+        "distort" => {
+            let sc = get_arg(args, "scale", 0, "distort");
+            let speed = get_arg(args, "speed", 1, "distort");
+            let str_ = get_arg(args, "strength", 2, "distort");
+            s.push_str(&format!(
+                "{indent}p = p + vec2<f32>(sin(p.y * {sc} + time * {speed}), cos(p.x * {sc} + time * {speed})) * {str_};\n"
+            ));
+        }
+        "polar" => {
+            s.push_str(&format!(
+                "{indent}p = vec2<f32>(length(p), atan2(p.y, p.x));\n"
+            ));
+        }
+        "voronoi" => {
+            let sc = get_arg(args, "scale", 0, "voronoi");
+            s.push_str(&format!("{indent}let sdf_result = voronoi2(p * {sc});\n"));
+        }
+        "radial_fade" => {
+            let inner = get_arg(args, "inner", 0, "radial_fade");
+            let outer = get_arg(args, "outer", 1, "radial_fade");
+            s.push_str(&format!(
+                "{indent}let sdf_result = smoothstep({inner}, {outer}, length(p));\n"
+            ));
+        }
+        "palette" => {
+            let a_r = get_arg(args, "a_r", 0, "palette");
+            let a_g = get_arg(args, "a_g", 1, "palette");
+            let a_b = get_arg(args, "a_b", 2, "palette");
+            let b_r = get_arg(args, "b_r", 3, "palette");
+            let b_g = get_arg(args, "b_g", 4, "palette");
+            let b_b = get_arg(args, "b_b", 5, "palette");
+            let c_r = get_arg(args, "c_r", 6, "palette");
+            let c_g = get_arg(args, "c_g", 7, "palette");
+            let c_b = get_arg(args, "c_b", 8, "palette");
+            let d_r = get_arg(args, "d_r", 9, "palette");
+            let d_g = get_arg(args, "d_g", 10, "palette");
+            let d_b = get_arg(args, "d_b", 11, "palette");
+            s.push_str(&format!(
+                "{indent}var color_result = vec4<f32>(cosine_palette(sdf_result, vec3<f32>({a_r}, {a_g}, {a_b}), vec3<f32>({b_r}, {b_g}, {b_b}), vec3<f32>({c_r}, {c_g}, {c_b}), vec3<f32>({d_r}, {d_g}, {d_b})), 1.0);\n"
+            ));
+        }
         _ => {
             s.push_str(&format!("{indent}// Unknown stage: {}\n", stage.name));
         }
@@ -362,5 +467,80 @@ mod tests {
         let vs = vertex_shader();
         assert!(vs.contains("fn vs_main"));
         assert!(vs.contains("@vertex"));
+    }
+
+    #[test]
+    fn wgsl_warp_voronoi_palette_pipeline() {
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "warp".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "voronoi".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "palette".into(),
+                args: vec![],
+            },
+        ]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(output.contains("fn voronoi2"), "voronoi helper emitted");
+        assert!(
+            output.contains("fn cosine_palette"),
+            "palette helper emitted"
+        );
+        assert!(output.contains("fn fbm2"), "fbm helper emitted for warp");
+        assert!(output.contains("warp_x"), "warp displacement x");
+        assert!(output.contains("voronoi2(p *"), "voronoi stage call");
+        assert!(
+            output.contains("cosine_palette(sdf_result"),
+            "palette stage call"
+        );
+    }
+
+    #[test]
+    fn wgsl_distort_radial_fade_glow() {
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "distort".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "radial_fade".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(output.contains("sin(p.y *"), "distort sin displacement");
+        assert!(output.contains("cos(p.x *"), "distort cos displacement");
+        assert!(output.contains("smoothstep("), "radial_fade smoothstep");
+    }
+
+    #[test]
+    fn wgsl_polar_simplex() {
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "polar".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "simplex".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(output.contains("atan2(p.y, p.x)"), "polar transform");
+        assert!(output.contains("noise2(p *"), "simplex noise");
+        assert!(output.contains("fn noise2"), "noise2 helper emitted");
     }
 }

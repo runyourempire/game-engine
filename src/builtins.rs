@@ -167,6 +167,115 @@ static MASK_ARC_PARAMS: &[BuiltinParam] = &[BuiltinParam {
     default: None,
 }];
 
+// ── Phase 7: Visual quality stages ──────────────────────
+
+static WARP_PARAMS: &[BuiltinParam] = &[
+    BuiltinParam {
+        name: "scale",
+        default: Some(3.0),
+    },
+    BuiltinParam {
+        name: "octaves",
+        default: Some(4.0),
+    },
+    BuiltinParam {
+        name: "persistence",
+        default: Some(0.5),
+    },
+    BuiltinParam {
+        name: "lacunarity",
+        default: Some(2.0),
+    },
+    BuiltinParam {
+        name: "strength",
+        default: Some(0.3),
+    },
+];
+
+static DISTORT_PARAMS: &[BuiltinParam] = &[
+    BuiltinParam {
+        name: "scale",
+        default: Some(3.0),
+    },
+    BuiltinParam {
+        name: "speed",
+        default: Some(1.0),
+    },
+    BuiltinParam {
+        name: "strength",
+        default: Some(0.2),
+    },
+];
+
+static VORONOI_PARAMS: &[BuiltinParam] = &[BuiltinParam {
+    name: "scale",
+    default: Some(5.0),
+}];
+
+static PALETTE_PARAMS: &[BuiltinParam] = &[
+    BuiltinParam {
+        name: "a_r",
+        default: Some(0.5),
+    },
+    BuiltinParam {
+        name: "a_g",
+        default: Some(0.5),
+    },
+    BuiltinParam {
+        name: "a_b",
+        default: Some(0.5),
+    },
+    BuiltinParam {
+        name: "b_r",
+        default: Some(0.5),
+    },
+    BuiltinParam {
+        name: "b_g",
+        default: Some(0.5),
+    },
+    BuiltinParam {
+        name: "b_b",
+        default: Some(0.5),
+    },
+    BuiltinParam {
+        name: "c_r",
+        default: Some(1.0),
+    },
+    BuiltinParam {
+        name: "c_g",
+        default: Some(1.0),
+    },
+    BuiltinParam {
+        name: "c_b",
+        default: Some(1.0),
+    },
+    BuiltinParam {
+        name: "d_r",
+        default: Some(0.0),
+    },
+    BuiltinParam {
+        name: "d_g",
+        default: Some(0.33),
+    },
+    BuiltinParam {
+        name: "d_b",
+        default: Some(0.67),
+    },
+];
+
+static RADIAL_FADE_PARAMS: &[BuiltinParam] = &[
+    BuiltinParam {
+        name: "inner",
+        default: Some(0.0),
+    },
+    BuiltinParam {
+        name: "outer",
+        default: Some(1.0),
+    },
+];
+
+static POLAR_PARAMS: &[BuiltinParam] = &[];
+
 // ── Registry ─────────────────────────────────────────────
 
 static BUILTINS: &[BuiltinFn] = &[
@@ -265,6 +374,47 @@ static BUILTINS: &[BuiltinFn] = &[
         input: ShaderState::Sdf,
         output: ShaderState::Sdf,
     },
+    // Phase 7: Visual quality stages
+    // Domain warping: Position -> Position
+    BuiltinFn {
+        name: "warp",
+        params: WARP_PARAMS,
+        input: ShaderState::Position,
+        output: ShaderState::Position,
+    },
+    BuiltinFn {
+        name: "distort",
+        params: DISTORT_PARAMS,
+        input: ShaderState::Position,
+        output: ShaderState::Position,
+    },
+    BuiltinFn {
+        name: "polar",
+        params: POLAR_PARAMS,
+        input: ShaderState::Position,
+        output: ShaderState::Position,
+    },
+    // Cellular noise: Position -> Sdf
+    BuiltinFn {
+        name: "voronoi",
+        params: VORONOI_PARAMS,
+        input: ShaderState::Position,
+        output: ShaderState::Sdf,
+    },
+    // Radial falloff: Position -> Sdf
+    BuiltinFn {
+        name: "radial_fade",
+        params: RADIAL_FADE_PARAMS,
+        input: ShaderState::Position,
+        output: ShaderState::Sdf,
+    },
+    // Cosine palette: Sdf -> Color
+    BuiltinFn {
+        name: "palette",
+        params: PALETTE_PARAMS,
+        input: ShaderState::Sdf,
+        output: ShaderState::Color,
+    },
 ];
 
 /// Look up a built-in function by name.
@@ -299,6 +449,13 @@ mod tests {
             "fbm",
             "simplex",
             "mask_arc",
+            // Phase 7: Visual quality stages
+            "warp",
+            "distort",
+            "polar",
+            "voronoi",
+            "radial_fade",
+            "palette",
         ] {
             assert!(lookup(name).is_some(), "missing builtin: {name}");
         }
