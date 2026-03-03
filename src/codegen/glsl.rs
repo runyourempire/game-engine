@@ -395,7 +395,9 @@ fn emit_glsl_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "simplex" => {
             let sc = get_arg(args, "scale", 0, "simplex");
-            s.push_str(&format!("{indent}float sdf_result = noise2(p * {sc} + vec2(time * 0.1, time * 0.07));\n"));
+            s.push_str(&format!(
+                "{indent}float sdf_result = noise2(p * {sc} + vec2(time * 0.1, time * 0.07));\n"
+            ));
         }
         "warp" => {
             let sc = get_arg(args, "scale", 0, "warp");
@@ -426,7 +428,9 @@ fn emit_glsl_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "voronoi" => {
             let sc = get_arg(args, "scale", 0, "voronoi");
-            s.push_str(&format!("{indent}float sdf_result = voronoi2(p * {sc} + vec2(time * 0.05, time * 0.03));\n"));
+            s.push_str(&format!(
+                "{indent}float sdf_result = voronoi2(p * {sc} + vec2(time * 0.05, time * 0.03));\n"
+            ));
         }
         "radial_fade" => {
             let inner = get_arg(args, "inner", 0, "radial_fade");

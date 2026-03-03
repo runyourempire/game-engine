@@ -123,6 +123,25 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
         "  setAudioSource(bridge) { bridge?.subscribe(d => this._renderer?.setAudioData(d)); }\n\n",
     );
 
+    // Generate property getters/setters for each uniform so el.fill_angle = 0.5 works
+    s.push_str("  // Property accessors for each uniform\n");
+    for u in &shader.uniforms {
+        let name = &u.name;
+        s.push_str(&format!(
+            "  get {name}() {{ return this._renderer?.userParams['{name}'] ?? 0; }}\n"
+        ));
+        s.push_str(&format!(
+            "  set {name}(v) {{ this.setParam('{name}', v); }}\n"
+        ));
+    }
+    // Convenience alias: 'progress' maps to fill_angle (scaled to radians)
+    s.push_str("  get progress() { return this.fill_angle / (2 * Math.PI); }\n");
+    s.push_str("  set progress(v) { this.fill_angle = v * 2 * Math.PI; }\n");
+    // Convenience alias: 'health' maps to intensity
+    s.push_str("  get health() { return this.intensity; }\n");
+    s.push_str("  set health(v) { this.intensity = v; }\n");
+    s.push_str("\n");
+
     s.push_str("  static get observedAttributes() { return UNIFORMS.map(u => u.name); }\n");
     s.push_str("  attributeChangedCallback(name, _, val) {\n");
     s.push_str("    if (val !== null) this.setParam(name, parseFloat(val));\n");

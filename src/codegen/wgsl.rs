@@ -386,7 +386,9 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "simplex" => {
             let sc = get_arg(args, "scale", 0, "simplex");
-            s.push_str(&format!("{indent}var sdf_result = noise2(p * {sc} + vec2<f32>(time * 0.1, time * 0.07));\n"));
+            s.push_str(&format!(
+                "{indent}var sdf_result = noise2(p * {sc} + vec2<f32>(time * 0.1, time * 0.07));\n"
+            ));
         }
         "warp" => {
             let sc = get_arg(args, "scale", 0, "warp");
