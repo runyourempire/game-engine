@@ -1,0 +1,13 @@
+// Engagement Bars — procedural noise visualization for system activity.
+// Uses FBM for organic turbulence patterns.
+
+cinematic "engagement-bars" {
+  layer config {
+    glow_val: 1.0
+    green: 0.22
+  }
+
+  layer noise_field {
+    fbm(1.0, 2, 0.5, 2.0) | glow(glow_val) | tint(green, 0.84, 0.22)
+  }
+}

@@ -1,0 +1,19 @@
+// Boot Ring — startup progress indicator with track and fill arc.
+// Smaller radius than achievement-progress, used during initialization.
+
+cinematic "boot-ring" {
+  layer config {
+    charcoal: 0.3
+    fill_angle: 0.0
+    glow_str: 2.0
+    gold: 0.83
+  }
+
+  layer track {
+    ring(0.30, 0.015) | glow(1.0) | tint(charcoal, charcoal, charcoal)
+  }
+
+  layer fill {
+    ring(0.30, 0.025) | mask_arc(fill_angle) | glow(glow_str) | tint(gold, 0.69, 0.22)
+  }
+}

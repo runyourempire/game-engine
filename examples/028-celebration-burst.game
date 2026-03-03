@@ -1,0 +1,26 @@
+// Celebration Burst — concentric expanding rings with center flash.
+// Triple-layer design: outer ring, inner ring, center flash.
+
+cinematic "celebration-burst" {
+  layer config {
+    ring_r: 0.1
+    glow_str: 4.0
+    gold: 0.83
+    inner_r: 0.05
+    inner_glow: 3.0
+    flash_str: 2.0
+    white: 1.0
+  }
+
+  layer ring_outer {
+    ring(ring_r, 0.02) | glow(glow_str) | bloom(0.3, 2.0) | tint(gold, 0.69, 0.22)
+  }
+
+  layer ring_inner {
+    ring(inner_r, 0.015) | glow(inner_glow) | bloom(0.3, 2.0) | tint(gold, 0.69, 0.22)
+  }
+
+  layer center_flash {
+    circle(0.08) | glow(flash_str) | bloom(0.4, 3.0) | tint(white, white, white)
+  }
+}

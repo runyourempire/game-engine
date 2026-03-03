@@ -1,0 +1,13 @@
+// Status Orb — simple glowing circle status indicator.
+// intensity drives glow strength, green controls tint color.
+
+cinematic "status-orb" {
+  layer config {
+    intensity: 1.0
+    green: 0.0
+  }
+
+  layer orb {
+    circle(0.2) | glow(intensity) | tint(green, 1.0, green)
+  }
+}

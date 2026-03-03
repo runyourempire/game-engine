@@ -1,0 +1,8 @@
+// Scan Ring — rotating radar sweep indicator.
+// Static component with no user parameters.
+
+cinematic "scan-ring" {
+  layer sweep {
+    rotate(3.0) | ring(0.25, 0.03) | mask_arc(4.0) | glow(2.5) | tint(0.83, 0.69, 0.22)
+  }
+}
