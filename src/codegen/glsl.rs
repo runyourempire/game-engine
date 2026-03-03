@@ -333,10 +333,10 @@ fn emit_glsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             s.push_str(&format!("{indent}color_result = vec4(color_result.rgb + max(pp_lum - {thresh}, 0.0) * {strength}, 1.0);\n"));
         }
         "rotate" => {
-            let angle = get_arg(args, "angle", 0, "rotate");
+            let speed = get_arg(args, "speed", 0, "rotate");
             // GLSL: use `float`, NOT `let`
             s.push_str(&format!(
-                "{indent}{{ float rc = cos({angle}); float rs = sin({angle});\n"
+                "{indent}{{ float ra = time * {speed}; float rc = cos(ra); float rs = sin(ra);\n"
             ));
             s.push_str(&format!(
                 "{indent}p = vec2(p.x * rc - p.y * rs, p.x * rs + p.y * rc); }}\n"

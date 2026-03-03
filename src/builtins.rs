@@ -125,8 +125,8 @@ static TRANSLATE_PARAMS: &[BuiltinParam] = &[
 ];
 
 static ROTATE_PARAMS: &[BuiltinParam] = &[BuiltinParam {
-    name: "angle",
-    default: Some(0.0),
+    name: "speed",
+    default: Some(1.0),
 }];
 
 static SCALE_PARAMS: &[BuiltinParam] = &[BuiltinParam {
