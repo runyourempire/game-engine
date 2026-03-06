@@ -10,14 +10,17 @@ GAME eliminates this tradeoff. A declarative DSL that reads like describing a pa
 
 ---
 
-## Current State: v0.2.0
+## Current State: v0.3.0
 
-- 7,400 lines of clean Rust (logos lexer, hand-written recursive descent parser)
+- 13,690 lines of clean Rust (logos lexer, hand-written recursive descent parser)
 - Full pipeline: `.game` source → Lex → Parse → Validate → Codegen → Runtime
 - Dual-target: WGSL (WebGPU primary) + GLSL ES 3.0 (WebGL2 fallback)
-- 22 built-in functions across 4 shader states (Position, SDF, Color, Color)
+- 43 built-in functions across 3 shader states (Position, SDF, Color)
+- SDF algebra: boolean ops, spatial ops, shape modifiers, 9 new primitives
 - 15+ synthesis techniques: temporal operators, audio DSP, voice synthesis, musical timelines, genetic composition, N-body gravity, reaction-diffusion, physarum stigmergy, vector field advection
-- 29 example `.game` files
+- Live preview: `game dev` with HTTP server, file watcher, hot reload, parameter sliders
+- Scaffolding: `game new` with 5 templates
+- 34 example `.game` files, 234 passing tests
 - 9 components deployed in production (4DA)
 
 ---
@@ -269,18 +272,19 @@ The dev server should add minimal weight to the compiler binary:
 
 ## Release Plan
 
-### v0.3 — Shape Algebra + Live Studio (Next)
-- [ ] SDF boolean operations: union, subtract, intersect, smooth_union, smooth_subtract, smooth_intersect
-- [ ] Spatial operations: repeat, mirror, radial
-- [ ] Shape modifiers: round, shell, onion, morph
-- [ ] 10 new SDF primitives: line, capsule, triangle, arc, cross, heart, egg, spiral, grid, elongate
-- [ ] Layer opacity (alpha compositing)
-- [ ] Named color presets (fire, ocean, neon, aurora, sunset, ice)
-- [ ] Outline/stroke effect
-- [ ] `game dev` with file watcher + HTTP server + SSE hot reload
-- [ ] Preview HTML with parameter sliders + audio input
-- [ ] `game new` scaffolding with 5 templates
-- [ ] README.md with language reference
+### v0.3 — Shape Algebra + Live Studio (SHIPPED)
+- [x] SDF boolean operations: union, subtract, intersect, smooth_union, smooth_subtract, smooth_intersect, xor
+- [x] Spatial operations: repeat, mirror, radial
+- [x] Shape modifiers: round, shell, onion
+- [x] 9 new SDF primitives: line, capsule, triangle, arc_sdf, cross, heart, egg, spiral, grid
+- [x] Layer opacity (alpha compositing)
+- [x] Outline/stroke effect
+- [x] `game dev` with file watcher + HTTP server + hot reload
+- [x] Preview HTML with parameter sliders + audio input
+- [x] `game new` scaffolding with 5 templates
+- [x] README.md with language reference
+- [ ] Named color presets (fire, ocean, neon, aurora, sunset, ice) — deferred to v0.4
+- [ ] Morph (SDF interpolation) — deferred to v0.4
 
 ### v0.4 — Functions + Composition
 - [ ] User-defined functions: `fn name(params) { pipeline }`
