@@ -1,0 +1,22 @@
+// GAME Standard Library — shapes.game
+// Reusable shape functions for common patterns.
+
+fn dot(r) {
+  circle(r) | glow(1.0) | tint(1.0, 1.0, 1.0)
+}
+
+fn petal(size, r, g, b) {
+  circle(size) | glow(2.0) | tint(r, g, b)
+}
+
+fn gear(radius, teeth) {
+  star(teeth, radius, radius * 0.7) | glow(1.5)
+}
+
+fn bullseye(r1, r2) {
+  ring(r1, 0.02) | glow(1.5) | tint(1.0, 1.0, 1.0)
+}
+
+fn halo(radius) {
+  ring(radius, 0.01) | glow(3.0) | tint(1.0, 0.9, 0.7)
+}

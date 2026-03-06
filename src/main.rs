@@ -64,6 +64,7 @@ enum FormatArg {
     Component,
     Html,
     Standalone,
+    Artblocks,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -352,6 +353,7 @@ fn compile_game_file(path: &std::path::Path) -> Result<CompileResult> {
     let config = CompileConfig {
         output_format: OutputFormat::Component,
         target: ShaderTarget::Both,
+        seed: None,
     };
 
     let program =
@@ -572,12 +574,14 @@ fn main() -> Result<()> {
                     FormatArg::Component => OutputFormat::Component,
                     FormatArg::Html => OutputFormat::Html,
                     FormatArg::Standalone => OutputFormat::Standalone,
+                    FormatArg::Artblocks => OutputFormat::ArtBlocks,
                 },
                 target: match target {
                     TargetArg::Webgpu => ShaderTarget::WebGpu,
                     TargetArg::Webgl2 => ShaderTarget::WebGl2,
                     TargetArg::Both => ShaderTarget::Both,
                 },
+                seed: None,
             };
 
             std::fs::create_dir_all(&output_dir)

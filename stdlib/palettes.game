@@ -1,0 +1,26 @@
+// GAME Standard Library — palettes.game
+// Named color palette functions for easy styling.
+
+fn warm(intensity) {
+  palette(fire) | bloom(intensity)
+}
+
+fn cool(intensity) {
+  palette(ocean) | bloom(intensity)
+}
+
+fn electric(intensity) {
+  palette(neon) | bloom(intensity)
+}
+
+fn northern(intensity) {
+  palette(aurora) | bloom(intensity)
+}
+
+fn golden(intensity) {
+  palette(sunset) | bloom(intensity)
+}
+
+fn frost(intensity) {
+  palette(ice) | bloom(intensity)
+}

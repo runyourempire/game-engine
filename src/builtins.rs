@@ -292,6 +292,10 @@ static RADIAL_FADE_PARAMS: &[BuiltinParam] = &[
 
 static POLAR_PARAMS: &[BuiltinParam] = &[];
 
+// ── SDF Morph (interpolation) ──────────────────────────
+// Takes two sub-expression SDFs + interpolation factor
+static MORPH_PARAMS: &[BuiltinParam] = &[];
+
 // ── SDF Boolean operations ──────────────────────────────
 // These take sub-expressions as args; params are empty here
 // because validation is handled specially in stages.rs.
@@ -603,6 +607,13 @@ static BUILTINS: &[BuiltinFn] = &[
         input: ShaderState::Sdf,
         output: ShaderState::Color,
     },
+    // ── SDF Morph: Position -> Sdf ────────────────────────
+    BuiltinFn {
+        name: "morph",
+        params: MORPH_PARAMS,
+        input: ShaderState::Position,
+        output: ShaderState::Sdf,
+    },
     // ── SDF Boolean operations: Position -> Sdf ─────────
     BuiltinFn {
         name: "union",
@@ -757,6 +768,50 @@ pub fn all_names() -> impl Iterator<Item = &'static str> {
     BUILTINS.iter().map(|b| b.name)
 }
 
+/// LSP completion item for a builtin.
+#[derive(Debug, Clone)]
+pub struct CompletionItem {
+    pub name: String,
+    pub signature: String,
+    pub input: String,
+    pub output: String,
+}
+
+/// Get all builtins as LSP completion items.
+pub fn completions() -> Vec<CompletionItem> {
+    BUILTINS
+        .iter()
+        .map(|b| {
+            let params: Vec<String> = b
+                .params
+                .iter()
+                .map(|p| {
+                    if let Some(d) = p.default {
+                        format!("{}={}", p.name, d)
+                    } else {
+                        p.name.to_string()
+                    }
+                })
+                .collect();
+            CompletionItem {
+                name: b.name.to_string(),
+                signature: format!("{}({})", b.name, params.join(", ")),
+                input: format!("{:?}", b.input),
+                output: format!("{:?}", b.output),
+            }
+        })
+        .collect()
+}
+
+/// Get valid next stages for LSP completion based on current pipeline state.
+pub fn valid_next_stages(state: ShaderState) -> Vec<&'static str> {
+    BUILTINS
+        .iter()
+        .filter(|b| b.input == state)
+        .map(|b| b.name)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,6 +843,8 @@ mod tests {
             "voronoi",
             "radial_fade",
             "palette",
+            // SDF morph
+            "morph",
             // SDF boolean operations
             "union",
             "subtract",

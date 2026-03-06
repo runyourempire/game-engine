@@ -1,0 +1,18 @@
+// GAME Standard Library — patterns.game
+// Common visual patterns built from basic primitives.
+
+fn glowing_ring(radius, width, r, g, b) {
+  ring(radius, width) | glow(2.5) | tint(r, g, b)
+}
+
+fn soft_circle(radius, r, g, b) {
+  circle(radius) | glow(3.0) | tint(r, g, b)
+}
+
+fn sharp_circle(radius, r, g, b) {
+  circle(radius) | shade(1.0) | tint(r, g, b)
+}
+
+fn outlined_shape(radius, r, g, b) {
+  circle(radius) | glow(2.0) | tint(r, g, b) | outline(1.0, 0.005)
+}
