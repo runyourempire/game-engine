@@ -38,6 +38,10 @@ struct VertexOutput {
     @location(0) uv: vec2<f32>,
 };
 
+fn sdf_circle(p: vec2<f32>, radius: f32) -> f32 {
+    return length(p) - radius;
+}
+
 fn apply_glow(d: f32, intensity: f32) -> f32 {
     return exp(-max(d, 0.0) * intensity * 8.0);
 }
@@ -102,20 +106,22 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         var color_result: vec4<f32>;
         {
             var p_then = p;
+            var then_color: vec4<f32>;
+            var else_color: vec4<f32>;
             { var p = p_then;
             var sdf_result = sdf_circle(p, 0.200000);
             let glow_pulse = intensity * (0.9 + 0.1 * sin(time * 2.0));
             let glow_result = apply_glow(sdf_result, glow_pulse);
             var color_result = vec4<f32>(vec3<f32>(glow_result), 1.0);
             color_result = vec4<f32>(color_result.rgb * vec3<f32>(0.200000, 1.000000, 0.400000), 1.0);
-            var then_color = color_result; }
+            then_color = color_result; }
             { var p = p_then;
             var sdf_result = sdf_circle(p, 0.180000);
             let glow_pulse = intensity * (0.9 + 0.1 * sin(time * 2.0));
             let glow_result = apply_glow(sdf_result, glow_pulse);
             var color_result = vec4<f32>(vec3<f32>(glow_result), 1.0);
             color_result = vec4<f32>(color_result.rgb * vec3<f32>(0.900000, 0.500000, 0.100000), 1.0);
-            var else_color = color_result; }
+            else_color = color_result; }
             color_result = select(else_color, then_color, (green > 0.500000));
         }
         let lc = color_result.rgb;
@@ -166,6 +172,10 @@ uniform float u_p_green;
 
 in vec2 v_uv;
 out vec4 fragColor;
+
+float sdf_circle(vec2 p, float radius){
+    return length(p) - radius;
+}
 
 float apply_glow(float d, float intensity){
     return exp(-max(d, 0.0) * intensity * 8.0);
@@ -231,6 +241,8 @@ void main(){
         vec4 color_result;
         {
             vec2 p_then = p;
+            vec4 then_color;
+            vec4 else_color;
             { vec2 p = p_then;
             float sdf_result = sdf_circle(p, 0.200000);
             float glow_pulse = intensity * (0.9 + 0.1 * sin(time * 2.0));
@@ -238,7 +250,7 @@ void main(){
 
             vec4 color_result = vec4(vec3(glow_result), 1.0);
             color_result = vec4(color_result.rgb * vec3(0.200000, 1.000000, 0.400000), 1.0);
-            vec4 then_color = color_result; }
+            then_color = color_result; }
             { vec2 p = p_then;
             float sdf_result = sdf_circle(p, 0.180000);
             float glow_pulse = intensity * (0.9 + 0.1 * sin(time * 2.0));
@@ -246,7 +258,7 @@ void main(){
 
             vec4 color_result = vec4(vec3(glow_result), 1.0);
             color_result = vec4(color_result.rgb * vec3(0.900000, 0.500000, 0.100000), 1.0);
-            vec4 else_color = color_result; }
+            else_color = color_result; }
             color_result = (green > 0.500000) ? then_color : else_color;
         }
         vec3 lc = color_result.rgb;

@@ -47,6 +47,27 @@ struct VertexOutput {
     @location(0) uv: vec2<f32>,
 };
 
+fn sdf_circle(p: vec2<f32>, radius: f32) -> f32 {
+    return length(p) - radius;
+}
+
+fn sdf_star(p: vec2<f32>, n: f32, r: f32, ir: f32) -> f32 {
+    let an = 3.14159265 / n;
+    let a = atan2(p.y, p.x);
+    let period = 2.0 * an;
+    let sa = (a + an) - floor((a + an) / period) * period - an;
+    let q = length(p) * vec2<f32>(cos(sa), abs(sin(sa)));
+    let tip = vec2<f32>(r, 0.0);
+    let valley = vec2<f32>(ir * cos(an), ir * sin(an));
+    let e = tip - valley;
+    let d = q - valley;
+    let t = clamp(dot(d, e) / dot(e, e), 0.0, 1.0);
+    let closest = valley + e * t;
+    let dist = length(q - closest);
+    let cross_val = d.x * e.y - d.y * e.x;
+    return select(dist, -dist, cross_val > 0.0);
+}
+
 fn apply_glow(d: f32, intensity: f32) -> f32 {
     return exp(-max(d, 0.0) * intensity * 8.0);
 }
@@ -123,20 +144,22 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         var color_result: vec4<f32>;
         {
             var p_then = p;
+            var then_color: vec4<f32>;
+            var else_color: vec4<f32>;
             { var p = p_then;
             var sdf_result = sdf_star(p, 5.000000, 0.280000, 0.120000);
             let glow_pulse = 3.000000 * (0.9 + 0.1 * sin(time * 2.0));
             let glow_result = apply_glow(sdf_result, glow_pulse);
             var color_result = vec4<f32>(vec3<f32>(glow_result), 1.0);
             color_result = vec4<f32>(color_result.rgb * vec3<f32>(1.000000, 0.150000, 0.100000), 1.0);
-            var then_color = color_result; }
+            then_color = color_result; }
             { var p = p_then;
             var sdf_result = sdf_circle(p, 0.250000);
             let glow_pulse = 2.000000 * (0.9 + 0.1 * sin(time * 2.0));
             let glow_result = apply_glow(sdf_result, glow_pulse);
             var color_result = vec4<f32>(vec3<f32>(glow_result), 1.0);
             color_result = vec4<f32>(color_result.rgb * vec3<f32>(0.550000, 0.280000, 0.060000), 1.0);
-            var else_color = color_result; }
+            else_color = color_result; }
             color_result = select(else_color, then_color, (critical_count > 0.000000));
         }
         let lc = color_result.rgb;
@@ -221,6 +244,27 @@ uniform float u_p_metabolism;
 in vec2 v_uv;
 out vec4 fragColor;
 
+float sdf_circle(vec2 p, float radius){
+    return length(p) - radius;
+}
+
+float sdf_star(vec2 p, float n, float r, float ir){
+    float an = 3.14159265 / n;
+    float a = atan(p.y, p.x);
+    float period = 2.0 * an;
+    float sa = mod(a + an, period) - an;
+    vec2 q = length(p) * vec2(cos(sa), abs(sin(sa)));
+    vec2 tip = vec2(r, 0.0);
+    vec2 valley = vec2(ir * cos(an), ir * sin(an));
+    vec2 e = tip - valley;
+    vec2 d = q - valley;
+    float t = clamp(dot(d, e) / dot(e, e), 0.0, 1.0);
+    vec2 closest = valley + e * t;
+    float dist = length(q - closest);
+    float cross_val = d.x * e.y - d.y * e.x;
+    return cross_val > 0.0 ? -dist : dist;
+}
+
 float apply_glow(float d, float intensity){
     return exp(-max(d, 0.0) * intensity * 8.0);
 }
@@ -297,6 +341,8 @@ void main(){
         vec4 color_result;
         {
             vec2 p_then = p;
+            vec4 then_color;
+            vec4 else_color;
             { vec2 p = p_then;
             float sdf_result = sdf_star(p, 5.000000, 0.280000, 0.120000);
             float glow_pulse = 3.000000 * (0.9 + 0.1 * sin(time * 2.0));
@@ -304,7 +350,7 @@ void main(){
 
             vec4 color_result = vec4(vec3(glow_result), 1.0);
             color_result = vec4(color_result.rgb * vec3(1.000000, 0.150000, 0.100000), 1.0);
-            vec4 then_color = color_result; }
+            then_color = color_result; }
             { vec2 p = p_then;
             float sdf_result = sdf_circle(p, 0.250000);
             float glow_pulse = 2.000000 * (0.9 + 0.1 * sin(time * 2.0));
@@ -312,7 +358,7 @@ void main(){
 
             vec4 color_result = vec4(vec3(glow_result), 1.0);
             color_result = vec4(color_result.rgb * vec3(0.550000, 0.280000, 0.060000), 1.0);
-            vec4 else_color = color_result; }
+            else_color = color_result; }
             color_result = (critical_count > 0.000000) ? then_color : else_color;
         }
         vec3 lc = color_result.rgb;

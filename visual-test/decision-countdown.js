@@ -71,6 +71,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         var color_result: vec4<f32>;
         {
             var p_then = p;
+            var then_color: vec4<f32>;
+            var else_color: vec4<f32>;
             { var p = p_then;
             var sdf_result = abs(length(p) - 0.400000) - 0.035000;
             let arc_theta = atan2(p.x, p.y) + 3.14159265359;
@@ -79,7 +81,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             let glow_result = apply_glow(sdf_result, glow_pulse);
             var color_result = vec4<f32>(vec3<f32>(glow_result), 1.0);
             color_result = vec4<f32>(color_result.rgb * vec3<f32>(1.000000, 0.150000, 0.100000), 1.0);
-            var then_color = color_result; }
+            then_color = color_result; }
             { var p = p_then;
             var sdf_result = abs(length(p) - 0.400000) - 0.030000;
             let arc_theta = atan2(p.x, p.y) + 3.14159265359;
@@ -88,7 +90,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             let glow_result = apply_glow(sdf_result, glow_pulse);
             var color_result = vec4<f32>(vec3<f32>(glow_result), 1.0);
             color_result = vec4<f32>(color_result.rgb * vec3<f32>(0.830000, 0.690000, 0.220000), 1.0);
-            var else_color = color_result; }
+            else_color = color_result; }
             color_result = select(else_color, then_color, (urgency > 0.700000));
         }
         let lc = color_result.rgb;
@@ -173,6 +175,8 @@ void main(){
         vec4 color_result;
         {
             vec2 p_then = p;
+            vec4 then_color;
+            vec4 else_color;
             { vec2 p = p_then;
             float sdf_result = abs(length(p) - 0.400000) - 0.035000;
             float arc_theta = atan(p.x, p.y) + 3.14159265359;
@@ -182,7 +186,7 @@ void main(){
 
             vec4 color_result = vec4(vec3(glow_result), 1.0);
             color_result = vec4(color_result.rgb * vec3(1.000000, 0.150000, 0.100000), 1.0);
-            vec4 then_color = color_result; }
+            then_color = color_result; }
             { vec2 p = p_then;
             float sdf_result = abs(length(p) - 0.400000) - 0.030000;
             float arc_theta = atan(p.x, p.y) + 3.14159265359;
@@ -192,7 +196,7 @@ void main(){
 
             vec4 color_result = vec4(vec3(glow_result), 1.0);
             color_result = vec4(color_result.rgb * vec3(0.830000, 0.690000, 0.220000), 1.0);
-            vec4 else_color = color_result; }
+            else_color = color_result; }
             color_result = (urgency > 0.700000) ? then_color : else_color;
         }
         vec3 lc = color_result.rgb;

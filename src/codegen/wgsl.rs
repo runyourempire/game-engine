@@ -503,18 +503,20 @@ fn emit_wgsl_layer(s: &mut String, layer: &Layer, idx: usize, multi: bool, fns: 
             s.push_str(&format!("{indent}{{\n"));
             let inner = &format!("{indent}    ");
             s.push_str(&format!("{inner}var p_then = p;\n"));
+            s.push_str(&format!("{inner}var then_color: vec4<f32>;\n"));
+            s.push_str(&format!("{inner}var else_color: vec4<f32>;\n"));
             // We use a fresh `p` for the then branch
             s.push_str(&format!("{inner}{{ var p = p_then;\n"));
             for stage in then_branch {
                 emit_wgsl_stage_with_fns(s, stage, inner, fns);
             }
-            s.push_str(&format!("{inner}var then_color = color_result; }}\n"));
+            s.push_str(&format!("{inner}then_color = color_result; }}\n"));
             // Else branch
             s.push_str(&format!("{inner}{{ var p = p_then;\n"));
             for stage in else_branch {
                 emit_wgsl_stage_with_fns(s, stage, inner, fns);
             }
-            s.push_str(&format!("{inner}var else_color = color_result; }}\n"));
+            s.push_str(&format!("{inner}else_color = color_result; }}\n"));
             // Conditional select
             let cond_str = emit_wgsl_expr(condition);
             s.push_str(&format!(
@@ -1149,15 +1151,23 @@ fn emit_wgsl_smooth_bool_op(s: &mut String, stage: &Stage, indent: &str) {
 
 fn has_stage(layer: &Layer, name: &str) -> bool {
     match &layer.body {
-        LayerBody::Pipeline(stages) => stages.iter().any(|s| {
-            if s.name == name {
-                return true;
-            }
-            // Check inside boolean op sub-expression args
-            s.args.iter().any(|a| has_stage_in_expr(&a.value, name))
-        }),
-        _ => false,
+        LayerBody::Pipeline(stages) => has_stage_in_stages(stages, name),
+        LayerBody::Conditional {
+            then_branch,
+            else_branch,
+            ..
+        } => has_stage_in_stages(then_branch, name) || has_stage_in_stages(else_branch, name),
+        LayerBody::Params(_) => false,
     }
+}
+
+fn has_stage_in_stages(stages: &[Stage], name: &str) -> bool {
+    stages.iter().any(|s| {
+        if s.name == name {
+            return true;
+        }
+        s.args.iter().any(|a| has_stage_in_expr(&a.value, name))
+    })
 }
 
 /// Recursively check if an expression tree references a stage by name.
