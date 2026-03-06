@@ -44,8 +44,9 @@ pub fn emit_glsl_memory_mix(s: &mut String, decay: f64, indent: &str) {
     ));
 }
 
-/// Generate the JS runtime code for WebGPU ping-pong texture management.
-pub fn webgpu_memory_runtime() -> &'static str {
+/// Legacy: JS runtime was moved into helpers::webgpu_renderer() for proper class integration.
+#[allow(dead_code)]
+fn _legacy_webgpu_memory_runtime() -> &'static str {
     r#"  _initMemory() {
     const w = this.canvas.width || 1;
     const h = this.canvas.height || 1;
@@ -98,8 +99,9 @@ pub fn webgpu_memory_runtime() -> &'static str {
   }"#
 }
 
-/// Generate the JS runtime code for WebGL2 ping-pong FBO management.
-pub fn webgl2_memory_runtime() -> &'static str {
+/// Legacy: JS runtime was moved into helpers::webgl2_renderer() for proper class integration.
+#[allow(dead_code)]
+fn _legacy_webgl2_memory_runtime() -> &'static str {
     r#"  _initMemoryGL() {
     const gl = this.gl;
     const w = this.canvas.width || 1;

@@ -67,11 +67,27 @@ pub fn generate_fragment(cinematic: &Cinematic, uniforms: &[UniformInfo]) -> Str
 /// A pass reads from a texture (previous pass output) and writes a processed result.
 /// The pass pipeline operates on UV-sampled color values.
 pub fn generate_pass_fragment(pass: &PassBlock) -> String {
-    let mut s = String::with_capacity(1024);
+    let mut s = String::with_capacity(2048);
 
     s.push_str("// Post-processing pass: ");
     s.push_str(&pass.name);
-    s.push_str("\n");
+    s.push_str("\n\n");
+
+    // Struct definitions (must be self-contained — each shader module needs its own)
+    s.push_str("struct Uniforms {\n");
+    s.push_str("    time: f32,\n");
+    s.push_str("    audio_bass: f32,\n");
+    s.push_str("    audio_mid: f32,\n");
+    s.push_str("    audio_treble: f32,\n");
+    s.push_str("    audio_energy: f32,\n");
+    s.push_str("    audio_beat: f32,\n");
+    s.push_str("    resolution: vec2<f32>,\n");
+    s.push_str("    mouse: vec2<f32>,\n");
+    s.push_str("};\n\n");
+    s.push_str("struct VertexOutput {\n");
+    s.push_str("    @builtin(position) pos: vec4<f32>,\n");
+    s.push_str("    @location(0) uv: vec2<f32>,\n");
+    s.push_str("};\n\n");
 
     // Bindings: uniforms + input texture
     s.push_str("@group(0) @binding(0) var<uniform> u: Uniforms;\n");
@@ -1975,6 +1991,30 @@ mod tests {
         assert!(result.contains("time"), "time ident emitted");
         assert!(result.contains("*"), "mul operator");
         assert!(result.contains("2"), "right operand");
+    }
+
+    #[test]
+    fn pass_shader_has_struct_definitions() {
+        let pass = PassBlock {
+            name: "blur".into(),
+            body: vec![Stage {
+                name: "blur".into(),
+                args: vec![Arg {
+                    name: None,
+                    value: Expr::Number(2.0),
+                }],
+            }],
+        };
+        let wgsl = generate_pass_fragment(&pass);
+        // Must have self-contained struct definitions
+        assert!(wgsl.contains("struct Uniforms {"), "pass shader must define Uniforms");
+        assert!(wgsl.contains("struct VertexOutput {"), "pass shader must define VertexOutput");
+        assert!(wgsl.contains("resolution: vec2<f32>"), "Uniforms has resolution");
+        assert!(wgsl.contains("@location(0) uv: vec2<f32>"), "VertexOutput has uv");
+        // And the actual pass content
+        assert!(wgsl.contains("@group(0) @binding(3) var pass_tex"), "has pass_tex binding");
+        assert!(wgsl.contains("fn fs_main"), "has fragment entry point");
+        assert!(wgsl.contains("textureSample(pass_tex"), "samples pass texture");
     }
 
     #[test]

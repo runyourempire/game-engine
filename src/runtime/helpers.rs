@@ -1,231 +1,542 @@
 //! JavaScript helper code shared by all output formats.
 
-/// WebGPU renderer class — initializes device, creates pipeline, runs render loop.
-pub fn webgpu_renderer() -> &'static str {
-    r#"class GameRenderer {
-  constructor(canvas, wgslVertex, wgslFragment, uniformDefs) {
-    this.canvas = canvas;
-    this.wgslVertex = wgslVertex;
-    this.wgslFragment = wgslFragment;
-    this.uniformDefs = uniformDefs;
-    this.device = null;
-    this.pipeline = null;
-    this.uniformBuffer = null;
-    this.bindGroup = null;
-    this.running = false;
-    this.startTime = performance.now() / 1000;
-    this.audioData = { bass: 0, mid: 0, treble: 0, energy: 0, beat: 0 };
-    this.mouseX = 0; this.mouseY = 0;
-    this.userParams = {};
-    for (const u of uniformDefs) this.userParams[u.name] = u.default;
-    this._onMouseMove = (e) => {
-      const r = this.canvas.getBoundingClientRect();
-      this.mouseX = (e.clientX - r.left) / r.width;
-      this.mouseY = 1.0 - (e.clientY - r.top) / r.height;
-    };
-    this.canvas.addEventListener('mousemove', this._onMouseMove);
-  }
+/// WebGPU renderer class with optional feature support.
+///
+/// `needs_prev_frame` — enables ping-pong memory textures for `memory:` and `feedback:`
+/// `pass_count` — number of post-processing passes (creates FBO chain)
+pub fn webgpu_renderer(needs_prev_frame: bool, pass_count: usize) -> String {
+    let has_passes = pass_count > 0;
+    let mut s = String::with_capacity(8192);
 
-  async init() {
-    if (!navigator.gpu) return false;
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) return false;
-    this.device = await adapter.requestDevice();
-    const ctx = this.canvas.getContext('webgpu');
-    const format = navigator.gpu.getPreferredCanvasFormat();
-    ctx.configure({ device: this.device, format, alphaMode: 'premultiplied' });
-    this.ctx = ctx;
-    this.format = format;
+    // ── Class declaration ────────────────────────────────────────────
+    s.push_str("class GameRenderer {\n");
 
-    const vMod = this.device.createShaderModule({ code: this.wgslVertex });
-    const fMod = this.device.createShaderModule({ code: this.wgslFragment });
+    // ── Constructor ──────────────────────────────────────────────────
+    s.push_str("  constructor(canvas, wgslVertex, wgslFragment, uniformDefs");
+    if has_passes {
+        s.push_str(", passShaders");
+    }
+    s.push_str(") {\n");
+    s.push_str("    this.canvas = canvas;\n");
+    s.push_str("    this.wgslVertex = wgslVertex;\n");
+    s.push_str("    this.wgslFragment = wgslFragment;\n");
+    s.push_str("    this.uniformDefs = uniformDefs;\n");
+    if has_passes {
+        s.push_str("    this.passShaders = passShaders;\n");
+    }
+    s.push_str("    this.device = null;\n");
+    s.push_str("    this.pipeline = null;\n");
+    s.push_str("    this.uniformBuffer = null;\n");
+    s.push_str("    this.bindGroup = null;\n");
+    s.push_str("    this.running = false;\n");
+    s.push_str("    this.startTime = performance.now() / 1000;\n");
+    s.push_str(
+        "    this.audioData = { bass: 0, mid: 0, treble: 0, energy: 0, beat: 0 };\n",
+    );
+    s.push_str("    this.mouseX = 0; this.mouseY = 0;\n");
+    s.push_str("    this.userParams = {};\n");
+    s.push_str("    for (const u of uniformDefs) this.userParams[u.name] = u.default;\n");
+    s.push_str("    this._onMouseMove = (e) => {\n");
+    s.push_str("      const r = this.canvas.getBoundingClientRect();\n");
+    s.push_str("      this.mouseX = (e.clientX - r.left) / r.width;\n");
+    s.push_str("      this.mouseY = 1.0 - (e.clientY - r.top) / r.height;\n");
+    s.push_str("    };\n");
+    s.push_str("    this.canvas.addEventListener('mousemove', this._onMouseMove);\n");
+    s.push_str("  }\n\n");
 
-    // 8 base floats + user params, padded to 16-byte alignment
-    const floatCount = 8 + 2 + 2 + this.uniformDefs.length; // time,bass,mid,treble,energy,beat + res(2) + mouse(2) + user
-    const bufSize = Math.ceil(floatCount * 4 / 16) * 16;
-    this.uniformBuffer = this.device.createBuffer({
-      size: bufSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-    this.floatCount = floatCount;
+    // ── init() ───────────────────────────────────────────────────────
+    s.push_str("  async init() {\n");
+    s.push_str("    if (!navigator.gpu) return false;\n");
+    s.push_str("    const adapter = await navigator.gpu.requestAdapter();\n");
+    s.push_str("    if (!adapter) return false;\n");
+    s.push_str("    this.device = await adapter.requestDevice();\n");
+    s.push_str("    const ctx = this.canvas.getContext('webgpu');\n");
+    s.push_str("    const format = navigator.gpu.getPreferredCanvasFormat();\n");
+    s.push_str(
+        "    ctx.configure({ device: this.device, format, alphaMode: 'premultiplied' });\n",
+    );
+    s.push_str("    this.ctx = ctx;\n");
+    s.push_str("    this.format = format;\n\n");
 
-    const bindGroupLayout = this.device.createBindGroupLayout({
-      entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }]
-    });
-    this.bindGroup = this.device.createBindGroup({
-      layout: bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }]
-    });
+    s.push_str(
+        "    const vMod = this.device.createShaderModule({ code: this.wgslVertex });\n",
+    );
+    s.push_str(
+        "    const fMod = this.device.createShaderModule({ code: this.wgslFragment });\n\n",
+    );
 
-    const pipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
-    this.pipeline = this.device.createRenderPipeline({
-      layout: pipelineLayout,
-      vertex: { module: vMod, entryPoint: 'vs_main' },
-      fragment: { module: fMod, entryPoint: 'fs_main', targets: [{ format }] },
-      primitive: { topology: 'triangle-list' }
-    });
-    return true;
-  }
+    // Uniform buffer
+    s.push_str("    const floatCount = 8 + 2 + 2 + this.uniformDefs.length;\n");
+    s.push_str("    const bufSize = Math.ceil(floatCount * 4 / 16) * 16;\n");
+    s.push_str("    this.uniformBuffer = this.device.createBuffer({\n");
+    s.push_str(
+        "      size: bufSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST\n",
+    );
+    s.push_str("    });\n");
+    s.push_str("    this.floatCount = floatCount;\n\n");
 
-  start() {
-    if (this.running) return;
-    this.running = true;
-    const loop = () => {
-      if (!this.running) return;
-      this.render();
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
-  }
+    // Bind group layout (Group 0 = uniforms)
+    s.push_str("    const bindGroupLayout = this.device.createBindGroupLayout({\n");
+    s.push_str("      entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }]\n");
+    s.push_str("    });\n");
+    s.push_str("    this.bindGroup = this.device.createBindGroup({\n");
+    s.push_str("      layout: bindGroupLayout,\n");
+    s.push_str("      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }]\n");
+    s.push_str("    });\n\n");
 
-  stop() { this.running = false; }
+    // Memory/feedback init
+    if needs_prev_frame {
+        s.push_str("    // Memory/feedback: ping-pong textures (Group 1)\n");
+        s.push_str("    this._initMemory();\n");
+        s.push_str("    const pipelineLayout = this.device.createPipelineLayout({\n");
+        s.push_str(
+            "      bindGroupLayouts: [bindGroupLayout, this._memBindGroupLayout]\n",
+        );
+        s.push_str("    });\n\n");
+    } else {
+        s.push_str(
+            "    const pipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });\n\n",
+        );
+    }
 
-  render() {
-    const t = performance.now() / 1000 - this.startTime;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
-    const data = new Float32Array(this.floatCount);
-    data[0] = t;
-    data[1] = this.audioData.bass;
-    data[2] = this.audioData.mid;
-    data[3] = this.audioData.treble;
-    data[4] = this.audioData.energy;
-    data[5] = this.audioData.beat;
-    data[6] = w; data[7] = h;
-    data[8] = this.mouseX; data[9] = this.mouseY;
-    let i = 10;
-    for (const u of this.uniformDefs) data[i++] = this.userParams[u.name] ?? u.default;
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, data);
+    // Main render pipeline
+    s.push_str("    this.pipeline = this.device.createRenderPipeline({\n");
+    s.push_str("      layout: pipelineLayout,\n");
+    s.push_str("      vertex: { module: vMod, entryPoint: 'vs_main' },\n");
+    s.push_str(
+        "      fragment: { module: fMod, entryPoint: 'fs_main', targets: [{ format }] },\n",
+    );
+    s.push_str("      primitive: { topology: 'triangle-list' }\n");
+    s.push_str("    });\n");
 
-    const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.ctx.getCurrentTexture().createView(),
-        loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 }
-      }]
-    });
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.draw(3);
-    pass.end();
-    this.device.queue.submit([encoder.finish()]);
-  }
+    // Pass pipelines
+    if has_passes {
+        s.push_str("\n    // Post-processing pass pipelines\n");
+        s.push_str("    this._passPipelines = [];\n");
+        s.push_str("    const passBGL = this.device.createBindGroupLayout({\n");
+        s.push_str("      entries: [\n");
+        s.push_str("        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },\n");
+        s.push_str("        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },\n");
+        s.push_str("        { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }\n");
+        s.push_str("      ]\n");
+        s.push_str("    });\n");
+        s.push_str("    this._passBGL = passBGL;\n");
+        s.push_str("    const passPL = this.device.createPipelineLayout({ bindGroupLayouts: [passBGL] });\n");
+        s.push_str("    for (const code of this.passShaders) {\n");
+        s.push_str(
+            "      const mod = this.device.createShaderModule({ code });\n",
+        );
+        s.push_str("      this._passPipelines.push(this.device.createRenderPipeline({\n");
+        s.push_str("        layout: passPL,\n");
+        s.push_str("        vertex: { module: vMod, entryPoint: 'vs_main' },\n");
+        s.push_str("        fragment: { module: mod, entryPoint: 'fs_main', targets: [{ format }] },\n");
+        s.push_str("        primitive: { topology: 'triangle-list' }\n");
+        s.push_str("      }));\n");
+        s.push_str("    }\n");
+        s.push_str("    this._passSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });\n");
+        s.push_str("    this._initPassFBOs();\n");
+    }
 
-  setParam(name, value) { this.userParams[name] = value; }
-  setAudioData(d) { Object.assign(this.audioData, d); }
-  destroy() { this.stop(); this.canvas.removeEventListener('mousemove', this._onMouseMove); this.device?.destroy(); }
-}"#
+    s.push_str("    return true;\n");
+    s.push_str("  }\n\n");
+
+    // ── start / stop ─────────────────────────────────────────────────
+    s.push_str("  start() {\n");
+    s.push_str("    if (this.running) return;\n");
+    s.push_str("    this.running = true;\n");
+    s.push_str("    const loop = () => {\n");
+    s.push_str("      if (!this.running) return;\n");
+    s.push_str("      this.render();\n");
+    s.push_str("      requestAnimationFrame(loop);\n");
+    s.push_str("    };\n");
+    s.push_str("    requestAnimationFrame(loop);\n");
+    s.push_str("  }\n\n");
+    s.push_str("  stop() { this.running = false; }\n\n");
+
+    // ── render() ─────────────────────────────────────────────────────
+    s.push_str("  render() {\n");
+    // Uniform data
+    s.push_str("    const t = performance.now() / 1000 - this.startTime;\n");
+    s.push_str("    const w = this.canvas.width;\n");
+    s.push_str("    const h = this.canvas.height;\n");
+    s.push_str("    const data = new Float32Array(this.floatCount);\n");
+    s.push_str("    data[0] = t;\n");
+    s.push_str("    data[1] = this.audioData.bass;\n");
+    s.push_str("    data[2] = this.audioData.mid;\n");
+    s.push_str("    data[3] = this.audioData.treble;\n");
+    s.push_str("    data[4] = this.audioData.energy;\n");
+    s.push_str("    data[5] = this.audioData.beat;\n");
+    s.push_str("    data[6] = w; data[7] = h;\n");
+    s.push_str("    data[8] = this.mouseX; data[9] = this.mouseY;\n");
+    s.push_str("    let i = 10;\n");
+    s.push_str("    for (const u of this.uniformDefs) data[i++] = this.userParams[u.name] ?? u.default;\n");
+    s.push_str("    this.device.queue.writeBuffer(this.uniformBuffer, 0, data);\n\n");
+
+    s.push_str("    const encoder = this.device.createCommandEncoder();\n\n");
+
+    // Main render pass target
+    if has_passes {
+        s.push_str("    // Main pass renders to FBO (input for post-processing)\n");
+        s.push_str("    const mainPass = encoder.beginRenderPass({\n");
+        s.push_str("      colorAttachments: [{\n");
+        s.push_str("        view: this._passFBOs[0].createView(),\n");
+        s.push_str("        loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 }\n");
+        s.push_str("      }]\n");
+        s.push_str("    });\n");
+    } else {
+        s.push_str("    const mainPass = encoder.beginRenderPass({\n");
+        s.push_str("      colorAttachments: [{\n");
+        s.push_str("        view: this.ctx.getCurrentTexture().createView(),\n");
+        s.push_str("        loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 }\n");
+        s.push_str("      }]\n");
+        s.push_str("    });\n");
+    }
+    s.push_str("    mainPass.setPipeline(this.pipeline);\n");
+    s.push_str("    mainPass.setBindGroup(0, this.bindGroup);\n");
+    if needs_prev_frame {
+        s.push_str("    mainPass.setBindGroup(1, this._memBindGroup);\n");
+    }
+    s.push_str("    mainPass.draw(3);\n");
+    s.push_str("    mainPass.end();\n");
+
+    // Memory swap (capture main output for next frame)
+    if needs_prev_frame {
+        s.push_str("\n    // Capture frame for memory/feedback\n");
+        if has_passes {
+            s.push_str("    this._swapMemory(encoder, this._passFBOs[0]);\n");
+        } else {
+            s.push_str("    this._swapMemory(encoder, this.ctx.getCurrentTexture());\n");
+        }
+    }
+
+    // Post-processing pass chain
+    if has_passes {
+        s.push_str(&format!(
+            "\n    // Post-processing chain ({pass_count} pass{})\n",
+            if pass_count > 1 { "es" } else { "" }
+        ));
+        s.push_str(&format!(
+            "    for (let p = 0; p < {pass_count}; p++) {{\n"
+        ));
+        s.push_str(&format!(
+            "      const isLast = (p === {pass_count} - 1);\n"
+        ));
+        s.push_str("      const readIdx = p % 2;\n");
+        s.push_str("      const targetView = isLast\n");
+        s.push_str("        ? this.ctx.getCurrentTexture().createView()\n");
+        s.push_str("        : this._passFBOs[(p + 1) % 2].createView();\n");
+        s.push_str("      const passBindGroup = this.device.createBindGroup({\n");
+        s.push_str("        layout: this._passBGL,\n");
+        s.push_str("        entries: [\n");
+        s.push_str("          { binding: 0, resource: { buffer: this.uniformBuffer } },\n");
+        s.push_str("          { binding: 3, resource: this._passFBOs[readIdx].createView() },\n");
+        s.push_str("          { binding: 4, resource: this._passSampler }\n");
+        s.push_str("        ]\n");
+        s.push_str("      });\n");
+        s.push_str("      const pp = encoder.beginRenderPass({\n");
+        s.push_str("        colorAttachments: [{\n");
+        s.push_str("          view: targetView,\n");
+        s.push_str("          loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 }\n");
+        s.push_str("        }]\n");
+        s.push_str("      });\n");
+        s.push_str("      pp.setPipeline(this._passPipelines[p]);\n");
+        s.push_str("      pp.setBindGroup(0, passBindGroup);\n");
+        s.push_str("      pp.draw(3);\n");
+        s.push_str("      pp.end();\n");
+        s.push_str("    }\n");
+    }
+
+    s.push_str("    this.device.queue.submit([encoder.finish()]);\n");
+    s.push_str("  }\n\n");
+
+    // ── Memory/feedback methods ──────────────────────────────────────
+    if needs_prev_frame {
+        s.push_str("  _initMemory() {\n");
+        s.push_str("    const w = this.canvas.width || 1;\n");
+        s.push_str("    const h = this.canvas.height || 1;\n");
+        s.push_str("    const desc = {\n");
+        s.push_str("      size: { width: w, height: h },\n");
+        s.push_str("      format: 'rgba8unorm',\n");
+        s.push_str("      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST\n");
+        s.push_str("    };\n");
+        s.push_str("    this._memTex = [this.device.createTexture(desc), this.device.createTexture(desc)];\n");
+        s.push_str("    this._memIdx = 0;\n");
+        s.push_str("    this._memSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });\n");
+        s.push_str("    this._memBindGroupLayout = this.device.createBindGroupLayout({\n");
+        s.push_str("      entries: [\n");
+        s.push_str("        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },\n");
+        s.push_str("        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }\n");
+        s.push_str("      ]\n");
+        s.push_str("    });\n");
+        s.push_str("    this._updateMemBindGroup();\n");
+        s.push_str("  }\n\n");
+
+        s.push_str("  _updateMemBindGroup() {\n");
+        s.push_str("    const readTex = this._memTex[this._memIdx];\n");
+        s.push_str("    this._memBindGroup = this.device.createBindGroup({\n");
+        s.push_str("      layout: this._memBindGroupLayout,\n");
+        s.push_str("      entries: [\n");
+        s.push_str("        { binding: 0, resource: readTex.createView() },\n");
+        s.push_str("        { binding: 1, resource: this._memSampler }\n");
+        s.push_str("      ]\n");
+        s.push_str("    });\n");
+        s.push_str("  }\n\n");
+
+        s.push_str("  _swapMemory(encoder, sourceTex) {\n");
+        s.push_str("    const writeTex = this._memTex[1 - this._memIdx];\n");
+        s.push_str("    encoder.copyTextureToTexture(\n");
+        s.push_str("      { texture: sourceTex },\n");
+        s.push_str("      { texture: writeTex },\n");
+        s.push_str("      { width: this.canvas.width, height: this.canvas.height }\n");
+        s.push_str("    );\n");
+        s.push_str("    this._memIdx = 1 - this._memIdx;\n");
+        s.push_str("    this._updateMemBindGroup();\n");
+        s.push_str("  }\n\n");
+
+        s.push_str("  _resizeMemory() {\n");
+        s.push_str("    if (this._memTex) {\n");
+        s.push_str("      this._memTex[0].destroy();\n");
+        s.push_str("      this._memTex[1].destroy();\n");
+        s.push_str("      this._initMemory();\n");
+        s.push_str("    }\n");
+        s.push_str("  }\n\n");
+    }
+
+    // ── Pass FBO methods ─────────────────────────────────────────────
+    if has_passes {
+        s.push_str("  _initPassFBOs() {\n");
+        s.push_str("    const w = this.canvas.width || 1;\n");
+        s.push_str("    const h = this.canvas.height || 1;\n");
+        s.push_str("    const desc = {\n");
+        s.push_str("      size: { width: w, height: h },\n");
+        s.push_str("      format: this.format,\n");
+        s.push_str("      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC\n");
+        s.push_str("    };\n");
+        s.push_str("    this._passFBOs = [this.device.createTexture(desc), this.device.createTexture(desc)];\n");
+        s.push_str("  }\n\n");
+
+        s.push_str("  _resizePassFBOs() {\n");
+        s.push_str("    if (this._passFBOs) {\n");
+        s.push_str("      this._passFBOs[0].destroy();\n");
+        s.push_str("      this._passFBOs[1].destroy();\n");
+        s.push_str("      this._initPassFBOs();\n");
+        s.push_str("    }\n");
+        s.push_str("  }\n\n");
+    }
+
+    // ── Utility methods ──────────────────────────────────────────────
+    s.push_str("  setParam(name, value) { this.userParams[name] = value; }\n");
+    s.push_str(
+        "  setAudioData(d) { Object.assign(this.audioData, d); }\n",
+    );
+    s.push_str("  destroy() { this.stop(); this.canvas.removeEventListener('mousemove', this._onMouseMove); this.device?.destroy(); }\n");
+
+    s.push_str("}\n");
+
+    s
 }
 
-/// WebGL2 fallback renderer class.
-pub fn webgl2_renderer() -> &'static str {
-    r#"class GameRendererGL {
-  constructor(canvas, glslVertex, glslFragment, uniformDefs) {
-    this.canvas = canvas;
-    this.glslVertex = glslVertex;
-    this.glslFragment = glslFragment;
-    this.uniformDefs = uniformDefs;
-    this.gl = null;
-    this.program = null;
-    this.running = false;
-    this.startTime = performance.now() / 1000;
-    this.audioData = { bass: 0, mid: 0, treble: 0, energy: 0, beat: 0 };
-    this.mouseX = 0; this.mouseY = 0;
-    this.userParams = {};
-    for (const u of uniformDefs) this.userParams[u.name] = u.default;
-    this._onMouseMove = (e) => {
-      const r = this.canvas.getBoundingClientRect();
-      this.mouseX = (e.clientX - r.left) / r.width;
-      this.mouseY = 1.0 - (e.clientY - r.top) / r.height;
-    };
-    this.canvas.addEventListener('mousemove', this._onMouseMove);
-  }
+/// WebGL2 fallback renderer class with optional memory support.
+///
+/// Passes are WebGPU-only (they need separate render targets).
+pub fn webgl2_renderer(needs_prev_frame: bool) -> String {
+    let mut s = String::with_capacity(4096);
 
-  init() {
-    const gl = this.canvas.getContext('webgl2');
-    if (!gl) return false;
-    this.gl = gl;
+    s.push_str("class GameRendererGL {\n");
 
-    const vs = this._compile(gl.VERTEX_SHADER, this.glslVertex);
-    const fs = this._compile(gl.FRAGMENT_SHADER, this.glslFragment);
-    if (!vs || !fs) return false;
+    // ── Constructor ──────────────────────────────────────────────────
+    s.push_str("  constructor(canvas, glslVertex, glslFragment, uniformDefs) {\n");
+    s.push_str("    this.canvas = canvas;\n");
+    s.push_str("    this.glslVertex = glslVertex;\n");
+    s.push_str("    this.glslFragment = glslFragment;\n");
+    s.push_str("    this.uniformDefs = uniformDefs;\n");
+    s.push_str("    this.gl = null;\n");
+    s.push_str("    this.program = null;\n");
+    s.push_str("    this.running = false;\n");
+    s.push_str("    this.startTime = performance.now() / 1000;\n");
+    s.push_str(
+        "    this.audioData = { bass: 0, mid: 0, treble: 0, energy: 0, beat: 0 };\n",
+    );
+    s.push_str("    this.mouseX = 0; this.mouseY = 0;\n");
+    s.push_str("    this.userParams = {};\n");
+    s.push_str("    for (const u of uniformDefs) this.userParams[u.name] = u.default;\n");
+    s.push_str("    this._onMouseMove = (e) => {\n");
+    s.push_str("      const r = this.canvas.getBoundingClientRect();\n");
+    s.push_str("      this.mouseX = (e.clientX - r.left) / r.width;\n");
+    s.push_str("      this.mouseY = 1.0 - (e.clientY - r.top) / r.height;\n");
+    s.push_str("    };\n");
+    s.push_str("    this.canvas.addEventListener('mousemove', this._onMouseMove);\n");
+    s.push_str("  }\n\n");
 
-    this.program = gl.createProgram();
-    gl.attachShader(this.program, vs);
-    gl.attachShader(this.program, fs);
-    gl.linkProgram(this.program);
-    if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
-      console.error('GAME link error:', gl.getProgramInfoLog(this.program));
-      return false;
+    // ── init() ───────────────────────────────────────────────────────
+    s.push_str("  init() {\n");
+    s.push_str("    const gl = this.canvas.getContext('webgl2');\n");
+    s.push_str("    if (!gl) return false;\n");
+    s.push_str("    this.gl = gl;\n\n");
+
+    s.push_str("    const vs = this._compile(gl.VERTEX_SHADER, this.glslVertex);\n");
+    s.push_str("    const fs = this._compile(gl.FRAGMENT_SHADER, this.glslFragment);\n");
+    s.push_str("    if (!vs || !fs) return false;\n\n");
+
+    s.push_str("    this.program = gl.createProgram();\n");
+    s.push_str("    gl.attachShader(this.program, vs);\n");
+    s.push_str("    gl.attachShader(this.program, fs);\n");
+    s.push_str("    gl.linkProgram(this.program);\n");
+    s.push_str("    if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {\n");
+    s.push_str("      console.error('GAME link error:', gl.getProgramInfoLog(this.program));\n");
+    s.push_str("      return false;\n");
+    s.push_str("    }\n");
+    s.push_str("    gl.useProgram(this.program);\n\n");
+
+    // Uniform locations
+    s.push_str("    this.locs = {\n");
+    s.push_str("      time: gl.getUniformLocation(this.program, 'u_time'),\n");
+    s.push_str("      bass: gl.getUniformLocation(this.program, 'u_audio_bass'),\n");
+    s.push_str("      mid: gl.getUniformLocation(this.program, 'u_audio_mid'),\n");
+    s.push_str("      treble: gl.getUniformLocation(this.program, 'u_audio_treble'),\n");
+    s.push_str("      energy: gl.getUniformLocation(this.program, 'u_audio_energy'),\n");
+    s.push_str("      beat: gl.getUniformLocation(this.program, 'u_audio_beat'),\n");
+    s.push_str("      resolution: gl.getUniformLocation(this.program, 'u_resolution'),\n");
+    s.push_str("      mouse: gl.getUniformLocation(this.program, 'u_mouse'),\n");
+    s.push_str("    };\n");
+    s.push_str("    this.paramLocs = {};\n");
+    s.push_str("    for (const u of this.uniformDefs) {\n");
+    s.push_str(
+        "      this.paramLocs[u.name] = gl.getUniformLocation(this.program, 'u_p_' + u.name);\n",
+    );
+    s.push_str("    }\n");
+
+    if needs_prev_frame {
+        s.push_str("    this._initMemoryGL();\n");
     }
-    gl.useProgram(this.program);
 
-    // Cache uniform locations
-    this.locs = {
-      time: gl.getUniformLocation(this.program, 'u_time'),
-      bass: gl.getUniformLocation(this.program, 'u_audio_bass'),
-      mid: gl.getUniformLocation(this.program, 'u_audio_mid'),
-      treble: gl.getUniformLocation(this.program, 'u_audio_treble'),
-      energy: gl.getUniformLocation(this.program, 'u_audio_energy'),
-      beat: gl.getUniformLocation(this.program, 'u_audio_beat'),
-      resolution: gl.getUniformLocation(this.program, 'u_resolution'),
-      mouse: gl.getUniformLocation(this.program, 'u_mouse'),
-    };
-    this.paramLocs = {};
-    for (const u of this.uniformDefs) {
-      this.paramLocs[u.name] = gl.getUniformLocation(this.program, 'u_p_' + u.name);
+    s.push_str("    return true;\n");
+    s.push_str("  }\n\n");
+
+    // ── _compile ─────────────────────────────────────────────────────
+    s.push_str("  _compile(type, src) {\n");
+    s.push_str("    const gl = this.gl;\n");
+    s.push_str("    const s = gl.createShader(type);\n");
+    s.push_str("    gl.shaderSource(s, src);\n");
+    s.push_str("    gl.compileShader(s);\n");
+    s.push_str("    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {\n");
+    s.push_str("      console.error('GAME shader error:', gl.getShaderInfoLog(s));\n");
+    s.push_str("      return null;\n");
+    s.push_str("    }\n");
+    s.push_str("    return s;\n");
+    s.push_str("  }\n\n");
+
+    // ── start / stop ─────────────────────────────────────────────────
+    s.push_str("  start() {\n");
+    s.push_str("    if (this.running) return;\n");
+    s.push_str("    this.running = true;\n");
+    s.push_str("    const loop = () => {\n");
+    s.push_str("      if (!this.running) return;\n");
+    s.push_str("      this.render();\n");
+    s.push_str("      requestAnimationFrame(loop);\n");
+    s.push_str("    };\n");
+    s.push_str("    requestAnimationFrame(loop);\n");
+    s.push_str("  }\n\n");
+    s.push_str("  stop() { this.running = false; }\n\n");
+
+    // ── render() ─────────────────────────────────────────────────────
+    s.push_str("  render() {\n");
+    s.push_str("    const gl = this.gl;\n");
+    s.push_str("    const t = performance.now() / 1000 - this.startTime;\n");
+    s.push_str("    gl.viewport(0, 0, this.canvas.width, this.canvas.height);\n");
+    s.push_str("    gl.clearColor(0, 0, 0, 1);\n");
+    s.push_str("    gl.clear(gl.COLOR_BUFFER_BIT);\n");
+    s.push_str("    gl.useProgram(this.program);\n\n");
+
+    if needs_prev_frame {
+        s.push_str("    // Bind previous frame texture\n");
+        s.push_str("    gl.activeTexture(gl.TEXTURE1);\n");
+        s.push_str("    gl.bindTexture(gl.TEXTURE_2D, this._memTex[this._memIdx]);\n");
+        s.push_str("    gl.uniform1i(this._memLoc, 1);\n\n");
     }
-    return true;
-  }
 
-  _compile(type, src) {
-    const gl = this.gl;
-    const s = gl.createShader(type);
-    gl.shaderSource(s, src);
-    gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-      console.error('GAME shader error:', gl.getShaderInfoLog(s));
-      return null;
+    s.push_str("    gl.uniform1f(this.locs.time, t);\n");
+    s.push_str("    gl.uniform1f(this.locs.bass, this.audioData.bass);\n");
+    s.push_str("    gl.uniform1f(this.locs.mid, this.audioData.mid);\n");
+    s.push_str("    gl.uniform1f(this.locs.treble, this.audioData.treble);\n");
+    s.push_str("    gl.uniform1f(this.locs.energy, this.audioData.energy);\n");
+    s.push_str("    gl.uniform1f(this.locs.beat, this.audioData.beat);\n");
+    s.push_str(
+        "    gl.uniform2f(this.locs.resolution, this.canvas.width, this.canvas.height);\n",
+    );
+    s.push_str("    gl.uniform2f(this.locs.mouse, this.mouseX, this.mouseY);\n");
+    s.push_str("    for (const u of this.uniformDefs) {\n");
+    s.push_str(
+        "      gl.uniform1f(this.paramLocs[u.name], this.userParams[u.name] ?? u.default);\n",
+    );
+    s.push_str("    }\n");
+    s.push_str("    gl.drawArrays(gl.TRIANGLES, 0, 3);\n");
+
+    if needs_prev_frame {
+        s.push_str("\n    // Capture frame for memory/feedback\n");
+        s.push_str("    this._swapMemoryGL();\n");
     }
-    return s;
-  }
 
-  start() {
-    if (this.running) return;
-    this.running = true;
-    const loop = () => {
-      if (!this.running) return;
-      this.render();
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
-  }
+    s.push_str("  }\n\n");
 
-  stop() { this.running = false; }
+    // ── Memory methods (WebGL2) ──────────────────────────────────────
+    if needs_prev_frame {
+        s.push_str("  _initMemoryGL() {\n");
+        s.push_str("    const gl = this.gl;\n");
+        s.push_str("    const w = this.canvas.width || 1;\n");
+        s.push_str("    const h = this.canvas.height || 1;\n");
+        s.push_str("    this._memFbo = [gl.createFramebuffer(), gl.createFramebuffer()];\n");
+        s.push_str("    this._memTex = [gl.createTexture(), gl.createTexture()];\n");
+        s.push_str("    for (let i = 0; i < 2; i++) {\n");
+        s.push_str("      gl.bindTexture(gl.TEXTURE_2D, this._memTex[i]);\n");
+        s.push_str("      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);\n");
+        s.push_str("      gl.bindFramebuffer(gl.FRAMEBUFFER, this._memFbo[i]);\n");
+        s.push_str("      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this._memTex[i], 0);\n");
+        s.push_str("    }\n");
+        s.push_str("    gl.bindFramebuffer(gl.FRAMEBUFFER, null);\n");
+        s.push_str("    gl.bindTexture(gl.TEXTURE_2D, null);\n");
+        s.push_str("    this._memIdx = 0;\n");
+        s.push_str("    this._memLoc = gl.getUniformLocation(this.program, 'u_prev_frame');\n");
+        s.push_str("  }\n\n");
 
-  render() {
-    const gl = this.gl;
-    const t = performance.now() / 1000 - this.startTime;
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.program);
+        s.push_str("  _swapMemoryGL() {\n");
+        s.push_str("    const gl = this.gl;\n");
+        s.push_str("    const w = this.canvas.width;\n");
+        s.push_str("    const h = this.canvas.height;\n");
+        s.push_str("    const writeIdx = 1 - this._memIdx;\n");
+        s.push_str("    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);\n");
+        s.push_str("    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._memFbo[writeIdx]);\n");
+        s.push_str("    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);\n");
+        s.push_str("    gl.bindFramebuffer(gl.FRAMEBUFFER, null);\n");
+        s.push_str("    this._memIdx = writeIdx;\n");
+        s.push_str("  }\n\n");
 
-    gl.uniform1f(this.locs.time, t);
-    gl.uniform1f(this.locs.bass, this.audioData.bass);
-    gl.uniform1f(this.locs.mid, this.audioData.mid);
-    gl.uniform1f(this.locs.treble, this.audioData.treble);
-    gl.uniform1f(this.locs.energy, this.audioData.energy);
-    gl.uniform1f(this.locs.beat, this.audioData.beat);
-    gl.uniform2f(this.locs.resolution, this.canvas.width, this.canvas.height);
-    gl.uniform2f(this.locs.mouse, this.mouseX, this.mouseY);
-    for (const u of this.uniformDefs) {
-      gl.uniform1f(this.paramLocs[u.name], this.userParams[u.name] ?? u.default);
+        s.push_str("  _resizeMemory() {\n");
+        s.push_str("    if (this._memTex) {\n");
+        s.push_str("      const gl = this.gl;\n");
+        s.push_str("      const w = this.canvas.width || 1;\n");
+        s.push_str("      const h = this.canvas.height || 1;\n");
+        s.push_str("      for (let i = 0; i < 2; i++) {\n");
+        s.push_str("        gl.bindTexture(gl.TEXTURE_2D, this._memTex[i]);\n");
+        s.push_str("        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);\n");
+        s.push_str("      }\n");
+        s.push_str("      gl.bindTexture(gl.TEXTURE_2D, null);\n");
+        s.push_str("    }\n");
+        s.push_str("  }\n\n");
     }
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-  }
 
-  setParam(name, value) { this.userParams[name] = value; }
-  setAudioData(d) { Object.assign(this.audioData, d); }
-  destroy() { this.stop(); this.canvas.removeEventListener('mousemove', this._onMouseMove); }
-}"#
+    // ── Utility methods ──────────────────────────────────────────────
+    s.push_str("  setParam(name, value) { this.userParams[name] = value; }\n");
+    s.push_str(
+        "  setAudioData(d) { Object.assign(this.audioData, d); }\n",
+    );
+    s.push_str("  destroy() { this.stop(); this.canvas.removeEventListener('mousemove', this._onMouseMove); }\n");
+
+    s.push_str("}\n");
+
+    s
 }

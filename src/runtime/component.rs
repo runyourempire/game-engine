@@ -3,7 +3,6 @@
 //! Generates a self-contained `.js` file that defines a custom element
 //! (`<game-xyz>`) with WebGPU primary and WebGL2 fallback.
 
-use crate::codegen::memory;
 use crate::codegen::ShaderOutput;
 
 /// Generate a zero-dependency Web Component JS file.
@@ -23,7 +22,9 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     let glsl_v = escape_js(&shader.glsl_vertex);
     let glsl_f = escape_js(&shader.glsl_fragment);
 
-    let uses_memory = shader.uses_memory;
+    let needs_prev_frame = shader.uses_memory || shader.uses_feedback;
+    let pass_count = shader.pass_count;
+    let has_passes = pass_count > 0;
 
     // Build incrementally to avoid stack overflow from giant format! macro
     let mut s = String::with_capacity(16384);
@@ -37,26 +38,25 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     s.push_str(&format!("const GLSL_V = `{glsl_v}`;\n"));
     s.push_str(&format!("const GLSL_F = `{glsl_f}`;\n"));
     s.push_str(&format!("const UNIFORMS = [{uniform_defs_json}];\n"));
-    s.push_str(&format!(
-        "const USES_MEMORY = {};\n\n",
-        if uses_memory { "true" } else { "false" }
-    ));
 
-    s.push_str(super::helpers::webgpu_renderer());
+    // Pass shader constants
+    if has_passes {
+        for (i, pass_wgsl) in shader.pass_wgsl.iter().enumerate() {
+            let escaped = escape_js(pass_wgsl);
+            s.push_str(&format!("const PASS_WGSL_{i} = `{escaped}`;\n"));
+        }
+        let pass_refs: Vec<String> = (0..pass_count).map(|i| format!("PASS_WGSL_{i}")).collect();
+        s.push_str(&format!("const PASS_SHADERS = [{}];\n", pass_refs.join(",")));
+    }
+    s.push('\n');
+
+    // WebGPU renderer (with features)
+    s.push_str(&super::helpers::webgpu_renderer(needs_prev_frame, pass_count));
     s.push_str("\n\n");
 
-    if uses_memory {
-        s.push_str(memory::webgpu_memory_runtime());
-        s.push_str("\n\n");
-    }
-
-    s.push_str(super::helpers::webgl2_renderer());
+    // WebGL2 fallback renderer (with memory, no passes)
+    s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame));
     s.push_str("\n\n");
-
-    if uses_memory {
-        s.push_str(memory::webgl2_memory_runtime());
-        s.push_str("\n\n");
-    }
 
     // Inject feature JS modules (listen, voice, score, temporal, gravity, breed)
     for module_js in &shader.js_modules {
@@ -92,7 +92,11 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     s.push_str("  }\n\n");
 
     s.push_str("  async _initRenderer() {\n");
-    s.push_str("    const gpu = new GameRenderer(this._canvas, WGSL_V, WGSL_F, UNIFORMS);\n");
+    s.push_str("    const gpu = new GameRenderer(this._canvas, WGSL_V, WGSL_F, UNIFORMS");
+    if has_passes {
+        s.push_str(", PASS_SHADERS");
+    }
+    s.push_str(");\n");
     s.push_str("    if (await gpu.init()) {\n");
     s.push_str("      this._renderer = gpu;\n");
     s.push_str("    } else {\n");
@@ -116,6 +120,9 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     s.push_str("    this._canvas.width = Math.round(rect.width * dpr);\n");
     s.push_str("    this._canvas.height = Math.round(rect.height * dpr);\n");
     s.push_str("    if (this._renderer?._resizeMemory) this._renderer._resizeMemory();\n");
+    if has_passes {
+        s.push_str("    if (this._renderer?._resizePassFBOs) this._renderer._resizePassFBOs();\n");
+    }
     s.push_str("  }\n\n");
 
     s.push_str("  setParam(name, value) { this._renderer?.setParam(name, value); }\n");
@@ -207,10 +214,9 @@ mod tests {
     use super::*;
     use crate::codegen::{ShaderOutput, UniformInfo};
 
-    #[test]
-    fn component_has_custom_element_define() {
-        let shader = ShaderOutput {
-            name: "test-viz".into(),
+    fn make_shader(name: &str) -> ShaderOutput {
+        ShaderOutput {
+            name: name.into(),
             wgsl_fragment: "fn fs_main() {}".into(),
             wgsl_vertex: "fn vs_main() {}".into(),
             glsl_fragment: "void main(){}".into(),
@@ -226,7 +232,12 @@ mod tests {
             pass_wgsl: vec![],
             pass_count: 0,
             uses_feedback: false,
-        };
+        }
+    }
+
+    #[test]
+    fn component_has_custom_element_define() {
+        let shader = make_shader("test-viz");
         let js = generate_component(&shader);
         assert!(js.contains("customElements.define('game-test-viz'"));
         assert!(js.contains("class TestViz extends HTMLElement"));
@@ -234,27 +245,11 @@ mod tests {
 
     #[test]
     fn component_includes_both_renderers() {
-        let shader = ShaderOutput {
-            name: "demo".into(),
-            wgsl_fragment: "wgsl".into(),
-            wgsl_vertex: "wgsl_v".into(),
-            glsl_fragment: "glsl".into(),
-            glsl_vertex: "glsl_v".into(),
-            uniforms: vec![UniformInfo {
-                name: "speed".into(),
-                default: 1.0,
-            }],
-            uses_memory: false,
-            js_modules: vec![],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+        let mut shader = make_shader("demo");
+        shader.uniforms = vec![UniformInfo {
+            name: "speed".into(),
+            default: 1.0,
+        }];
         let js = generate_component(&shader);
         assert!(js.contains("class GameRenderer"));
         assert!(js.contains("class GameRendererGL"));
@@ -262,51 +257,82 @@ mod tests {
     }
 
     #[test]
-    fn component_with_memory_includes_pingpong() {
-        let shader = ShaderOutput {
-            name: "trails".into(),
-            wgsl_fragment: "wgsl".into(),
-            wgsl_vertex: "wgsl_v".into(),
-            glsl_fragment: "glsl".into(),
-            glsl_vertex: "glsl_v".into(),
-            uniforms: vec![],
-            uses_memory: true,
-            js_modules: vec![],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+    fn component_with_memory_includes_methods_inside_class() {
+        let mut shader = make_shader("trails");
+        shader.uses_memory = true;
         let js = generate_component(&shader);
-        assert!(js.contains("USES_MEMORY = true"));
-        assert!(js.contains("_initMemory"));
-        assert!(js.contains("_initMemoryGL"));
+        // Memory methods should be inside GameRenderer class
+        assert!(js.contains("_initMemory()"));
+        assert!(js.contains("_swapMemory(encoder"));
+        assert!(js.contains("_resizeMemory()"));
+        // Memory init should be called in init()
+        assert!(js.contains("this._initMemory()"));
+        // Memory bind group should be set in render
+        assert!(js.contains("setBindGroup(1, this._memBindGroup)"));
+        // Pipeline layout should include memory BGL
+        assert!(js.contains("this._memBindGroupLayout"));
+    }
+
+    #[test]
+    fn component_with_feedback_enables_memory() {
+        let mut shader = make_shader("feedback-viz");
+        shader.uses_feedback = true;
+        let js = generate_component(&shader);
+        assert!(js.contains("_initMemory()"));
+        assert!(js.contains("setBindGroup(1, this._memBindGroup)"));
+    }
+
+    #[test]
+    fn component_with_passes_has_fbo_chain() {
+        let mut shader = make_shader("bloom");
+        shader.pass_wgsl = vec!["// pass 0 shader".into(), "// pass 1 shader".into()];
+        shader.pass_count = 2;
+        let js = generate_component(&shader);
+        // Pass shader constants
+        assert!(js.contains("PASS_WGSL_0"));
+        assert!(js.contains("PASS_WGSL_1"));
+        assert!(js.contains("PASS_SHADERS"));
+        // Pass pipelines
+        assert!(js.contains("_passPipelines"));
+        assert!(js.contains("_initPassFBOs()"));
+        // Main render to FBO (not canvas) when passes exist
+        assert!(js.contains("this._passFBOs[0].createView()"));
+        // Pass rendering loop
+        assert!(js.contains("for (let p = 0; p < 2; p++)"));
+        // FBO resize
+        assert!(js.contains("_resizePassFBOs"));
+    }
+
+    #[test]
+    fn component_with_memory_and_passes() {
+        let mut shader = make_shader("full");
+        shader.uses_memory = true;
+        shader.pass_wgsl = vec!["// blur pass".into()];
+        shader.pass_count = 1;
+        let js = generate_component(&shader);
+        // Memory captures from FBO (not canvas) when passes exist
+        assert!(js.contains("this._swapMemory(encoder, this._passFBOs[0])"));
+        // Both memory and pass features present
+        assert!(js.contains("_initMemory()"));
+        assert!(js.contains("_initPassFBOs()"));
+    }
+
+    #[test]
+    fn component_without_features_has_simple_render() {
+        let shader = make_shader("simple");
+        let js = generate_component(&shader);
+        // Direct render to canvas
+        assert!(js.contains("this.ctx.getCurrentTexture().createView()"));
+        // No memory or pass references
+        assert!(!js.contains("_memBindGroup"));
+        assert!(!js.contains("_passFBOs"));
+        assert!(!js.contains("PASS_SHADERS"));
     }
 
     #[test]
     fn component_with_listen_includes_pipeline() {
-        let shader = ShaderOutput {
-            name: "audio-viz".into(),
-            wgsl_fragment: "wgsl".into(),
-            wgsl_vertex: "wgsl_v".into(),
-            glsl_fragment: "glsl".into(),
-            glsl_vertex: "glsl_v".into(),
-            uniforms: vec![],
-            uses_memory: false,
-            js_modules: vec!["class GameListenPipeline { /* listen */ }".into()],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+        let mut shader = make_shader("audio-viz");
+        shader.js_modules = vec!["class GameListenPipeline { /* listen */ }".into()];
         let js = generate_component(&shader);
         assert!(js.contains("GameListenPipeline"));
     }
@@ -321,141 +347,59 @@ mod tests {
 
     #[test]
     fn progress_alias_only_when_fill_angle_exists() {
-        let with_fill = ShaderOutput {
-            name: "ring".into(),
-            wgsl_fragment: "f".into(),
-            wgsl_vertex: "v".into(),
-            glsl_fragment: "f".into(),
-            glsl_vertex: "v".into(),
-            uniforms: vec![UniformInfo {
-                name: "fill_angle".into(),
-                default: 0.0,
-            }],
-            uses_memory: false,
-            js_modules: vec![],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+        let mut with_fill = make_shader("ring");
+        with_fill.uniforms = vec![UniformInfo {
+            name: "fill_angle".into(),
+            default: 0.0,
+        }];
         let js = generate_component(&with_fill);
         assert!(js.contains("set progress(v)"), "should have progress alias");
         assert!(js.contains("set fill_angle(v)"), "should have fill_angle setter");
 
-        let without_fill = ShaderOutput {
-            name: "orb".into(),
-            wgsl_fragment: "f".into(),
-            wgsl_vertex: "v".into(),
-            glsl_fragment: "f".into(),
-            glsl_vertex: "v".into(),
-            uniforms: vec![UniformInfo {
-                name: "glow".into(),
-                default: 1.0,
-            }],
-            uses_memory: false,
-            js_modules: vec![],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+        let mut without_fill = make_shader("orb");
+        without_fill.uniforms = vec![UniformInfo {
+            name: "glow".into(),
+            default: 1.0,
+        }];
         let js = generate_component(&without_fill);
         assert!(!js.contains("set progress(v)"), "should NOT have progress alias");
     }
 
     #[test]
     fn health_alias_only_when_intensity_exists() {
-        let with_intensity = ShaderOutput {
-            name: "orb".into(),
-            wgsl_fragment: "f".into(),
-            wgsl_vertex: "v".into(),
-            glsl_fragment: "f".into(),
-            glsl_vertex: "v".into(),
-            uniforms: vec![UniformInfo {
-                name: "intensity".into(),
-                default: 1.0,
-            }],
-            uses_memory: false,
-            js_modules: vec![],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+        let mut with_intensity = make_shader("orb");
+        with_intensity.uniforms = vec![UniformInfo {
+            name: "intensity".into(),
+            default: 1.0,
+        }];
         let js = generate_component(&with_intensity);
         assert!(js.contains("set health(v)"), "should have health alias");
 
-        let without_intensity = ShaderOutput {
-            name: "bars".into(),
-            wgsl_fragment: "f".into(),
-            wgsl_vertex: "v".into(),
-            glsl_fragment: "f".into(),
-            glsl_vertex: "v".into(),
-            uniforms: vec![UniformInfo {
-                name: "glow_val".into(),
-                default: 1.0,
-            }],
-            uses_memory: false,
-            js_modules: vec![],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+        let mut without_intensity = make_shader("bars");
+        without_intensity.uniforms = vec![UniformInfo {
+            name: "glow_val".into(),
+            default: 1.0,
+        }];
         let js = generate_component(&without_intensity);
         assert!(!js.contains("set health(v)"), "should NOT have health alias");
     }
 
     #[test]
     fn no_duplicate_progress_when_uniform_named_progress() {
-        let shader = ShaderOutput {
-            name: "countdown".into(),
-            wgsl_fragment: "f".into(),
-            wgsl_vertex: "v".into(),
-            glsl_fragment: "f".into(),
-            glsl_vertex: "v".into(),
-            uniforms: vec![
-                UniformInfo {
-                    name: "progress".into(),
-                    default: 0.0,
-                },
-                UniformInfo {
-                    name: "urgency".into(),
-                    default: 0.0,
-                },
-            ],
-            uses_memory: false,
-            js_modules: vec![],
-            compute_wgsl: None,
-            react_wgsl: None,
-            swarm_agent_wgsl: None,
-            swarm_trail_wgsl: None,
-            flow_wgsl: None,
-            pass_wgsl: vec![],
-            pass_count: 0,
-            uses_feedback: false,
-        };
+        let mut shader = make_shader("countdown");
+        shader.uniforms = vec![
+            UniformInfo {
+                name: "progress".into(),
+                default: 0.0,
+            },
+            UniformInfo {
+                name: "urgency".into(),
+                default: 0.0,
+            },
+        ];
         let js = generate_component(&shader);
-        // Should have exactly one 'set progress' (the uniform setter), not the alias
         let count = js.matches("set progress(v)").count();
         assert_eq!(count, 1, "expected exactly one progress setter, got {count}");
-        // The one setter should be setParam-based, not fill_angle-based
         assert!(js.contains("set progress(v) { this.setParam('progress', v); }"));
         assert!(!js.contains("this.fill_angle"));
     }

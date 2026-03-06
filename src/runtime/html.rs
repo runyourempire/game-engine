@@ -34,9 +34,22 @@ pub fn generate_html(shader: &ShaderOutput) -> String {
     s.push_str(&format!("const GLSL_F = `{glsl_f}`;\n"));
     s.push_str(&format!("const UNIFORMS = [{uniform_defs_json}];\n\n"));
 
-    s.push_str(super::helpers::webgpu_renderer());
+    let needs_prev_frame = shader.uses_memory || shader.uses_feedback;
+    let pass_count = shader.pass_count;
+
+    // Pass shader constants for HTML output
+    if pass_count > 0 {
+        for (i, pass_wgsl) in shader.pass_wgsl.iter().enumerate() {
+            let escaped = escape_html_js(pass_wgsl);
+            s.push_str(&format!("const PASS_WGSL_{i} = `{escaped}`;\n"));
+        }
+        let pass_refs: Vec<String> = (0..pass_count).map(|i| format!("PASS_WGSL_{i}")).collect();
+        s.push_str(&format!("const PASS_SHADERS = [{}];\n", pass_refs.join(",")));
+    }
+
+    s.push_str(&super::helpers::webgpu_renderer(needs_prev_frame, pass_count));
     s.push_str("\n\n");
-    s.push_str(super::helpers::webgl2_renderer());
+    s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame));
     s.push_str("\n\n");
 
     // Inject feature JS modules (listen, voice, score, temporal, gravity, breed)
@@ -53,7 +66,11 @@ pub fn generate_html(shader: &ShaderOutput) -> String {
     s.push_str("  }\n");
     s.push_str("  window.addEventListener('resize', resize);\n");
     s.push_str("  resize();\n\n");
-    s.push_str("  const gpu = new GameRenderer(canvas, WGSL_V, WGSL_F, UNIFORMS);\n");
+    s.push_str("  const gpu = new GameRenderer(canvas, WGSL_V, WGSL_F, UNIFORMS");
+    if pass_count > 0 {
+        s.push_str(", PASS_SHADERS");
+    }
+    s.push_str(");\n");
     s.push_str("  if (await gpu.init()) { gpu.start(); return; }\n");
     s.push_str("  const gl = new GameRendererGL(canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
     s.push_str("  if (gl.init()) { gl.start(); return; }\n");
@@ -118,9 +135,28 @@ pub fn generate_artblocks_html(shader: &ShaderOutput, seed: Option<u64>) -> Stri
     s.push_str(&format!("const GLSL_F = `{glsl_f}`;\n"));
     s.push_str(&format!("const UNIFORMS = [{uniform_defs_json}];\n\n"));
 
-    s.push_str(super::helpers::webgpu_renderer());
+    let needs_prev_frame_ab = shader.uses_memory || shader.uses_feedback;
+    let pass_count_ab = shader.pass_count;
+
+    if pass_count_ab > 0 {
+        for (i, pass_wgsl) in shader.pass_wgsl.iter().enumerate() {
+            let escaped = escape_html_js(pass_wgsl);
+            s.push_str(&format!("const PASS_WGSL_{i} = `{escaped}`;\n"));
+        }
+        let pass_refs: Vec<String> =
+            (0..pass_count_ab).map(|i| format!("PASS_WGSL_{i}")).collect();
+        s.push_str(&format!(
+            "const PASS_SHADERS = [{}];\n",
+            pass_refs.join(",")
+        ));
+    }
+
+    s.push_str(&super::helpers::webgpu_renderer(
+        needs_prev_frame_ab,
+        pass_count_ab,
+    ));
     s.push_str("\n\n");
-    s.push_str(super::helpers::webgl2_renderer());
+    s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame_ab));
     s.push_str("\n\n");
 
     for module_js in &shader.js_modules {
@@ -136,7 +172,11 @@ pub fn generate_artblocks_html(shader: &ShaderOutput, seed: Option<u64>) -> Stri
     s.push_str("  }\n");
     s.push_str("  window.addEventListener('resize', resize);\n");
     s.push_str("  resize();\n\n");
-    s.push_str("  const gpu = new GameRenderer(canvas, WGSL_V, WGSL_F, UNIFORMS);\n");
+    s.push_str("  const gpu = new GameRenderer(canvas, WGSL_V, WGSL_F, UNIFORMS");
+    if pass_count_ab > 0 {
+        s.push_str(", PASS_SHADERS");
+    }
+    s.push_str(");\n");
     s.push_str("  if (await gpu.init()) { gpu.start(); return; }\n");
     s.push_str("  const gl = new GameRendererGL(canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
     s.push_str("  if (gl.init()) { gl.start(); return; }\n");
