@@ -155,6 +155,7 @@ pub fn webgpu_renderer(needs_prev_frame: bool, pass_count: usize) -> String {
 
     // ── render() ─────────────────────────────────────────────────────
     s.push_str("  render() {\n");
+    s.push_str("    if (this._preRender) this._preRender();\n");
     // Uniform data
     s.push_str("    const t = performance.now() / 1000 - this.startTime;\n");
     s.push_str("    const w = this.canvas.width;\n");

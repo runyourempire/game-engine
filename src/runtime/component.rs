@@ -48,6 +48,29 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
         let pass_refs: Vec<String> = (0..pass_count).map(|i| format!("PASS_WGSL_{i}")).collect();
         s.push_str(&format!("const PASS_SHADERS = [{}];\n", pass_refs.join(",")));
     }
+
+    // Compute shader constants
+    if let Some(ref wgsl) = shader.compute_wgsl {
+        s.push_str(&format!("const COMPUTE_WGSL = `{}`;\n", escape_js(wgsl)));
+    }
+    if let Some(ref wgsl) = shader.react_wgsl {
+        s.push_str(&format!("const REACT_WGSL = `{}`;\n", escape_js(wgsl)));
+    }
+    if let Some(ref wgsl) = shader.swarm_agent_wgsl {
+        s.push_str(&format!(
+            "const SWARM_AGENT_WGSL = `{}`;\n",
+            escape_js(wgsl)
+        ));
+    }
+    if let Some(ref wgsl) = shader.swarm_trail_wgsl {
+        s.push_str(&format!(
+            "const SWARM_TRAIL_WGSL = `{}`;\n",
+            escape_js(wgsl)
+        ));
+    }
+    if let Some(ref wgsl) = shader.flow_wgsl {
+        s.push_str(&format!("const FLOW_WGSL = `{}`;\n", escape_js(wgsl)));
+    }
     s.push('\n');
 
     // WebGPU renderer (with features)
@@ -111,6 +134,62 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     s.push_str("      }\n");
     s.push_str("    }\n");
     s.push_str("    this._resize();\n");
+
+    // Initialize compute simulations (WebGPU only)
+    let has_compute = shader.compute_wgsl.is_some()
+        || shader.react_wgsl.is_some()
+        || shader.swarm_agent_wgsl.is_some()
+        || shader.flow_wgsl.is_some();
+    if has_compute {
+        s.push_str("    if (this._renderer.device) {\n");
+        s.push_str("      const dev = this._renderer.device;\n");
+        if shader.compute_wgsl.is_some() {
+            s.push_str("      if (typeof COMPUTE_WGSL !== 'undefined') {\n");
+            s.push_str("        const sim = new GameGravitySim(dev, COMPUTE_WGSL);\n");
+            s.push_str("        await sim.init();\n");
+            s.push_str("        this._gravitySim = sim;\n");
+            s.push_str("      }\n");
+        }
+        if shader.react_wgsl.is_some() {
+            s.push_str("      if (typeof REACT_WGSL !== 'undefined') {\n");
+            s.push_str("        const sim = new GameReactionField(dev, REACT_WGSL);\n");
+            s.push_str("        await sim.init();\n");
+            s.push_str("        this._reactSim = sim;\n");
+            s.push_str("      }\n");
+        }
+        if shader.swarm_agent_wgsl.is_some() {
+            s.push_str("      if (typeof SWARM_AGENT_WGSL !== 'undefined') {\n");
+            s.push_str("        const sim = new GameSwarmSim(dev, SWARM_AGENT_WGSL, SWARM_TRAIL_WGSL);\n");
+            s.push_str("        await sim.init();\n");
+            s.push_str("        this._swarmSim = sim;\n");
+            s.push_str("      }\n");
+        }
+        if shader.flow_wgsl.is_some() {
+            s.push_str("      if (typeof FLOW_WGSL !== 'undefined') {\n");
+            s.push_str("        const sim = new GameFlowField(dev, FLOW_WGSL);\n");
+            s.push_str("        await sim.init();\n");
+            s.push_str("        this._flowSim = sim;\n");
+            s.push_str("      }\n");
+        }
+        // Wire pre-render dispatch
+        s.push_str("      this._renderer._preRender = () => {\n");
+        s.push_str("        const dt = 1/60;\n");
+        if shader.compute_wgsl.is_some() {
+            s.push_str("        if (this._gravitySim) this._gravitySim.dispatch(dt);\n");
+        }
+        if shader.react_wgsl.is_some() {
+            s.push_str("        if (this._reactSim) this._reactSim.dispatch(4);\n");
+        }
+        if shader.swarm_agent_wgsl.is_some() {
+            s.push_str("        if (this._swarmSim) this._swarmSim.dispatch(dt);\n");
+        }
+        if shader.flow_wgsl.is_some() {
+            s.push_str("        if (this._flowSim) this._flowSim.dispatch(dt);\n");
+        }
+        s.push_str("      };\n");
+        s.push_str("    }\n");
+    }
+
     s.push_str("    this._renderer.start();\n");
     s.push_str("  }\n\n");
 
@@ -315,6 +394,33 @@ mod tests {
         // Both memory and pass features present
         assert!(js.contains("_initMemory()"));
         assert!(js.contains("_initPassFBOs()"));
+    }
+
+    #[test]
+    fn component_with_compute_has_dispatch() {
+        let mut shader = make_shader("particles");
+        shader.compute_wgsl = Some("// gravity compute shader".into());
+        shader.js_modules = vec!["class GameGravitySim { dispatch(dt){} }".into()];
+        let js = generate_component(&shader);
+        // Compute WGSL constant
+        assert!(js.contains("COMPUTE_WGSL"));
+        // Compute init
+        assert!(js.contains("new GameGravitySim(dev, COMPUTE_WGSL)"));
+        assert!(js.contains("await sim.init()"));
+        // Pre-render dispatch
+        assert!(js.contains("_gravitySim"));
+        assert!(js.contains("_preRender"));
+    }
+
+    #[test]
+    fn component_with_react_has_dispatch() {
+        let mut shader = make_shader("turing");
+        shader.react_wgsl = Some("// react compute shader".into());
+        shader.js_modules = vec!["class GameReactionField { dispatch(n){} }".into()];
+        let js = generate_component(&shader);
+        assert!(js.contains("REACT_WGSL"));
+        assert!(js.contains("new GameReactionField(dev, REACT_WGSL)"));
+        assert!(js.contains("_reactSim"));
     }
 
     #[test]
