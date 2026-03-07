@@ -2,47 +2,103 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>GAME Compiler — Component Gallery</title>
+<title>GAME Compiler — State of the Art Components</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #0A0A0A; color: #fff; font-family: 'Inter', system-ui, sans-serif; padding: 32px; }
 h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.5px; }
 .subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 1200px; }
-.card { background: #141414; border: 1px solid #2A2A2A; border-radius: 12px; overflow: hidden; }
-.card iframe { width: 100%; height: 280px; border: none; display: block; }
-.card .label { padding: 12px 16px; font-size: 13px; font-weight: 500; color: #A0A0A0; }
+.card { background: #141414; border: 1px solid #2A2A2A; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.card .label { font-size: 13px; font-weight: 500; color: #A0A0A0; text-align: center; }
 .card .label span { color: #D4AF37; }
+.card .size { font-size: 11px; color: #444; font-family: 'JetBrains Mono', monospace; }
 </style>
 </head>
 <body>
-<h1>GAME Compiler v0.2.0</h1>
-<p class="subtitle">Compiled from .game DSL — WebGPU with WebGL2 fallback — 208 tests passing</p>
+<h1>GAME Components — Advanced Features</h1>
+<p class="subtitle">warp + memory + palette + resonate + arc + vignette — compiled from .game DSL</p>
 <div class="grid">
   <div class="card">
-    <iframe src="scan-ring.html"></iframe>
-    <div class="label"><span>scan-ring</span> — rotating radar sweep</div>
+    <game-ambient-intelligence style="width:160px;height:160px;display:block"></game-ambient-intelligence>
+    <div class="label"><span>ambient-intelligence</span> — organic heartbeat</div>
+    <div class="size">48px in 4DA | warp + memory + resonate + vignette</div>
   </div>
   <div class="card">
-    <iframe src="ambient-intelligence.html"></iframe>
-    <div class="label"><span>ambient-intelligence</span> — 11-param state indicator</div>
+    <game-celebration-burst style="width:200px;height:200px;display:block"></game-celebration-burst>
+    <div class="label"><span>celebration-burst</span> — achievement splash</div>
+    <div class="size">320px in 4DA | warp + memory + palette + resonate + bloom</div>
   </div>
   <div class="card">
-    <iframe src="status-orb.html"></iframe>
-    <div class="label"><span>status-orb</span> — glowing status circle</div>
+    <game-boot-ring style="width:160px;height:160px;display:block"></game-boot-ring>
+    <div class="label"><span>boot-ring</span> — splash screen</div>
+    <div class="size">160px in 4DA | warp + memory + palette + bloom</div>
   </div>
   <div class="card">
-    <iframe src="achievement-progress.html"></iframe>
-    <div class="label"><span>achievement-progress</span> — arc fill ring</div>
+    <game-scan-ring style="width:120px;height:120px;display:block"></game-scan-ring>
+    <div class="label"><span>scan-ring</span> — radar sweep</div>
+    <div class="size">20px in 4DA | memory trail + vignette</div>
   </div>
   <div class="card">
-    <iframe src="engagement-bars.html"></iframe>
-    <div class="label"><span>engagement-bars</span> — FBM noise field</div>
+    <game-achievement-progress style="width:120px;height:120px;display:block"></game-achievement-progress>
+    <div class="label"><span>achievement-progress</span> — progress ring</div>
+    <div class="size">32px in 4DA | warp + memory + bloom</div>
   </div>
   <div class="card">
-    <iframe src="celebration-burst.html"></iframe>
-    <div class="label"><span>celebration-burst</span> — triple-ring burst</div>
+    <game-decision-countdown style="width:120px;height:120px;display:block"></game-decision-countdown>
+    <div class="label"><span>decision-countdown</span> — urgency ring</div>
+    <div class="size">32px in 4DA | warp + memory + resonate + vignette</div>
+  </div>
+  <div class="card">
+    <game-score-fingerprint style="width:120px;height:120px;display:block"></game-score-fingerprint>
+    <div class="label"><span>score-fingerprint</span> — radial identity</div>
+    <div class="size">32px in 4DA | warp + memory + resonate + vignette</div>
+  </div>
+  <div class="card">
+    <game-status-orb style="width:80px;height:80px;display:block"></game-status-orb>
+    <div class="label"><span>status-orb</span> — connection indicator</div>
+    <div class="size">10px in 4DA | warp + memory + vignette</div>
+  </div>
+  <div class="card">
+    <game-engagement-bars style="width:120px;height:120px;display:block"></game-engagement-bars>
+    <div class="label"><span>engagement-bars</span> — activity field</div>
+    <div class="size">varies in 4DA | warp + memory + vignette</div>
   </div>
 </div>
+<script type="module">
+import './ambient-intelligence.js';
+import './celebration-burst.js';
+import './boot-ring.js';
+import './scan-ring.js';
+import './achievement-progress.js';
+import './decision-countdown.js';
+import './score-fingerprint.js';
+import './status-orb.js';
+import './engagement-bars.js';
+
+// Set some default params to make components visible
+setTimeout(() => {
+  const ai = document.querySelector('game-ambient-intelligence');
+  if (ai) { ai.setParam('pulse', 0.5); ai.setParam('heat', 0.3); ai.setParam('metabolism', 0.4); }
+
+  const ap = document.querySelector('game-achievement-progress');
+  if (ap) { ap.setParam('fill_angle', 4.2); ap.setParam('glow_val', 2.0); }
+
+  const br = document.querySelector('game-boot-ring');
+  if (br) { br.setParam('fill_angle', 3.5); }
+
+  const cb = document.querySelector('game-celebration-burst');
+  if (cb) { cb.setParam('glow_str', 2.5); cb.setParam('inner_glow', 1.8); cb.setParam('flash_str', 1.2); }
+
+  const dc = document.querySelector('game-decision-countdown');
+  if (dc) { dc.setParam('progress', 4.0); dc.setParam('urgency', 0.3); }
+
+  const so = document.querySelector('game-status-orb');
+  if (so) { so.setParam('green', 1.0); so.setParam('intensity', 1.0); }
+
+  const sf = document.querySelector('game-score-fingerprint');
+  if (sf) { sf.setParam('relevance', 0.7); sf.setParam('confidence', 0.8); }
+}, 500);
+</script>
 </body>
 </html>

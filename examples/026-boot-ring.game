@@ -1,27 +1,37 @@
-// Boot Ring — startup progress with edge dot.
-// Arc fill sweeps as boot progresses.
+// Boot Ring — 160px startup ring for SplashScreen.
+// Arc fill with warped inner texture, memory persistence, cosine palette.
+// Not a loading bar — an organism awakening.
 
 cinematic "boot-ring" {
   layer config {
-    charcoal: 0.3
     fill_angle: 0.0
-    glow_str: 2.0
-    gold: 0.83
   }
 
-  // Static track ring
+  // Inner organic texture — warped noise
+  layer texture memory: 0.92 {
+    warp(scale: 1.8, octaves: 3, strength: 0.1)
+    | fbm(scale: 3.0, octaves: 3, persistence: 0.5)
+    | palette(
+        a_r: 0.05, a_g: 0.03, a_b: 0.01,
+        b_r: 0.3, b_g: 0.18, b_b: 0.06,
+        c_r: 1.0, c_g: 0.7, c_b: 0.4,
+        d_r: 0.0, d_g: 0.1, d_b: 0.2
+      )
+  }
+
+  // Dim track
   layer track {
-    ring(0.30, 0.012) | glow(0.6) | tint(charcoal, charcoal, charcoal)
+    ring(0.38, 0.008) | glow(0.8) | tint(0.25, 0.25, 0.25)
   }
 
-  // Fill arc
-  layer fill {
-    ring(0.30, 0.025) | mask_arc(fill_angle) | glow(glow_str) | tint(gold, 0.69, 0.22)
+  // Gold fill arc with memory trail
+  layer fill memory: 0.90 blend: add {
+    ring(0.38, 0.02) | mask_arc(fill_angle) | glow(2.5) | tint(0.83, 0.6, 0.15)
   }
 
   // Leading edge dot
   layer edge blend: add {
-    rotate(fill_angle) | translate(0.30, 0.0) | circle(0.012) | glow(2.5) | tint(1.0, 0.9, 0.5)
+    rotate(fill_angle) | translate(0.38, 0.0) | circle(0.012) | glow(3.0) | tint(1.0, 0.85, 0.4)
   }
 
   pass bloom {

@@ -1,5 +1,6 @@
-// Ambient Intelligence — 11-param reactive state indicator for 4DA VoidHeartbeat.
-// Conditionals, multi-layer blend, post-processing bloom.
+// Ambient Intelligence — 48px living state indicator for 4DA VoidHeartbeat.
+// Domain-warped organic core with memory trails and parametric breathing.
+// Data-driven: 11 uniforms from VoidSignal map to visual behavior.
 
 cinematic "ambient-intelligence" {
   layer config {
@@ -16,36 +17,49 @@ cinematic "ambient-intelligence" {
     metabolism: 0.0
   }
 
-  // Deep background: warped noise field
-  layer deep_field blend: screen {
-    warp(2.0, 3, 0.5, 2.0, 0.2) | fbm(2.0, 3, 0.5, 2.0) | glow(1.0) | tint(0.15, 0.08, 0.02)
+  // Organic nebula — warped noise field, fading persistence
+  layer nebula memory: 0.93 {
+    warp(scale: 2.5, octaves: 3, strength: 0.12)
+    | fbm(scale: 5.0, octaves: 3, persistence: 0.4)
+    | palette(
+        a_r: 0.06, a_g: 0.03, a_b: 0.01,
+        b_r: 0.35, b_g: 0.20, b_b: 0.08,
+        c_r: 1.0, c_g: 0.7, c_b: 0.5,
+        d_r: 0.0, d_g: 0.12, d_b: 0.25
+      )
   }
 
-  // Core orb: shape-shifts on alert
-  layer core {
+  // Core presence — warm seed with critical-state shift
+  layer core memory: 0.88 {
     if critical_count > 0.0 {
-      star(5, 0.28, 0.12) | glow(3.0) | tint(1.0, 0.15, 0.1)
+      distort(scale: 4.0, speed: 1.2, strength: 0.15)
+      | circle(0.08) | glow(3.5) | tint(1.0, 0.2, 0.08)
     } else {
-      circle(0.25) | glow(2.0) | tint(0.55, 0.28, 0.06)
+      circle(0.07) | glow(2.8) | tint(0.83, 0.65, 0.18)
     }
   }
 
-  // Noise halo
-  layer noise_halo blend: add {
-    fbm(3.0, 4, 0.5, 2.0) | glow(1.2) | tint(1.0, 0.82, 0.3)
+  // Outer corona — polar noise halo
+  layer corona {
+    polar
+    | simplex(8.0) | glow(0.6) | tint(0.25, 0.15, 0.06)
   }
 
-  // Outer sentinel ring
-  layer sentinel_ring blend: add {
-    ring(0.38, 0.015) | glow(1.5) | tint(0.83, 0.69, 0.22)
+  // Breathing animation
+  arc {
+    morph: 0.0 -> 0.3 over 8s ease-in-out
   }
 
-  // Pulse ring
-  layer pulse_ring blend: add {
-    ring(0.32, 0.008) | glow(2.0) | tint(0.9, 0.75, 0.3)
+  // Data-driven coupling
+  resonate {
+    pulse -> core.brightness * 0.5
+    heat -> nebula.intensity * 0.4
+    metabolism -> core.scale * 0.25
+    signal_intensity -> corona.intensity * 0.3
   }
 
-  pass bloom {
-    blur(2.0)
+  // Soft edge blending into dark UI
+  pass edge {
+    vignette(0.35)
   }
 }

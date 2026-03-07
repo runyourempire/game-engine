@@ -1,5 +1,5 @@
-// Status Orb — connection status with conditional color.
-// green > 0.5 = connected (green), else amber warning.
+// Status Orb — 10px micro living indicator for Ollama connection status.
+// Even at 10px: domain warp gives it organic life vs a dead pixel.
 
 cinematic "status-orb" {
   layer config {
@@ -7,26 +7,19 @@ cinematic "status-orb" {
     green: 0.0
   }
 
-  // Subtle ambient noise
-  layer field blend: screen {
-    simplex(4.0) | glow(0.6) | tint(0.1, 0.15, 0.05)
-  }
-
-  // Core orb — conditional color
-  layer orb {
+  // Living core — warped circle with memory glow
+  layer orb memory: 0.85 {
     if green > 0.5 {
-      circle(0.2) | glow(intensity) | tint(0.2, 1.0, 0.4)
+      warp(scale: 3.0, octaves: 2, strength: 0.08)
+      | circle(0.22) | glow(3.0) | tint(0.15, 0.85, 0.3)
     } else {
-      circle(0.18) | glow(intensity) | tint(0.9, 0.5, 0.1)
+      warp(scale: 3.0, octaves: 2, strength: 0.08)
+      | circle(0.22) | glow(3.0) | tint(0.83, 0.5, 0.1)
     }
   }
 
-  // Outer halo ring
-  layer halo blend: add {
-    ring(0.28, 0.006) | glow(1.2) | tint(green, 0.8, green)
-  }
-
-  pass bloom {
-    blur(1.5)
+  // Soft edge
+  pass soft {
+    vignette(0.3)
   }
 }

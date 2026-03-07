@@ -1,23 +1,18 @@
-// Scan Ring — rotating radar sweep with hot dot.
-// Multi-layer: track + sweep + leading edge.
+// Scan Ring — 20px analysis indicator for ActionBar.
+// Rotating arc with memory trail — a radar sweep that shows where it's been.
 
 cinematic "scan-ring" {
-  // Faint static track ring
-  layer track blend: add {
-    ring(0.25, 0.008) | glow(0.5) | tint(0.3, 0.25, 0.1)
+  // Fading trail of the sweep
+  layer sweep memory: 0.90 {
+    rotate(3.0) | ring(0.28, 0.06) | mask_arc(2.0) | glow(2.8) | tint(0.83, 0.55, 0.12)
   }
 
-  // Main sweep
-  layer sweep {
-    rotate(3.0) | ring(0.25, 0.03) | mask_arc(4.0) | glow(2.5) | tint(0.83, 0.69, 0.22)
+  // Dim track ring
+  layer track {
+    ring(0.28, 0.008) | glow(0.5) | tint(0.2, 0.2, 0.2)
   }
 
-  // Hot dot at sweep head
-  layer head blend: add {
-    rotate(3.0) | translate(0.25, 0.0) | circle(0.02) | glow(3.0) | tint(1.0, 0.9, 0.5)
-  }
-
-  pass bloom {
-    blur(1.5)
+  pass edge {
+    vignette(0.3)
   }
 }

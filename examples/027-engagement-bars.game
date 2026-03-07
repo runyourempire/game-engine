@@ -1,28 +1,18 @@
-// Engagement Bars — layered noise for system activity.
-// Dual noise fields with detail overlay.
+// Engagement Bars — activity level indicator.
+// Warped noise field with memory trails, organic green texture.
 
 cinematic "engagement-bars" {
   layer config {
-    glow_val: 1.0
-    green: 0.22
+    glow_val: 1.2
   }
 
-  // Deep slow-moving noise
-  layer deep blend: screen {
-    fbm(1.5, 3, 0.5, 2.0) | glow(0.8) | tint(0.05, 0.12, 0.03)
+  // Organic noise field with persistence
+  layer field memory: 0.88 {
+    warp(scale: 2.0, octaves: 2, strength: 0.1)
+    | simplex(4.0) | glow(glow_val) | tint(0.08, 0.45, 0.1)
   }
 
-  // Primary noise field
-  layer noise_field {
-    fbm(1.0, 2, 0.5, 2.0) | glow(glow_val) | tint(green, 0.84, 0.22)
-  }
-
-  // High-frequency detail overlay
-  layer detail blend: add {
-    simplex(6.0) | glow(0.5) | tint(0.4, 0.9, 0.2)
-  }
-
-  pass bloom {
-    blur(1.0)
+  pass edge {
+    vignette(0.3)
   }
 }

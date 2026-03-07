@@ -1,38 +1,47 @@
-// Celebration Burst — GPU ring explosion with radial spray.
-// Multi-ring burst with bloom post-processing.
+// Celebration Burst — 320px achievement unlock splash.
+// Full visual power: warped layers, memory trails, cosine palette, bloom.
 
 cinematic "celebration-burst" {
   layer config {
-    ring_r: 0.1
-    glow_str: 4.0
-    gold: 0.83
-    inner_r: 0.05
-    inner_glow: 3.0
-    flash_str: 2.0
-    white: 1.0
+    glow_str: 2.5
+    inner_glow: 1.8
+    flash_str: 1.2
   }
 
-  // Outer expanding ring
-  layer ring_outer {
-    ring(ring_r, 0.02) | glow(glow_str) | tint(gold, 0.69, 0.22)
+  // Organic background texture — warped noise galaxy
+  layer galaxy memory: 0.94 {
+    warp(scale: 1.5, octaves: 4, strength: 0.2)
+    | fbm(scale: 2.5, octaves: 4, persistence: 0.45)
+    | palette(
+        a_r: 0.04, a_g: 0.02, a_b: 0.01,
+        b_r: 0.4, b_g: 0.22, b_b: 0.08,
+        c_r: 1.0, c_g: 0.6, c_b: 0.3,
+        d_r: 0.0, d_g: 0.15, d_b: 0.35
+      )
   }
 
-  // Inner ring
-  layer ring_inner blend: add {
-    ring(inner_r, 0.015) | glow(inner_glow) | tint(gold, 0.69, 0.22)
+  // Outer ring with organic distortion
+  layer outer memory: 0.88 {
+    distort(scale: 3.0, speed: 0.6, strength: 0.1)
+    | ring(0.38, 0.015) | glow(glow_str) | tint(0.83, 0.6, 0.15)
   }
 
-  // Center flash
-  layer center_flash blend: add {
-    circle(0.08) | glow(flash_str) | tint(white, white, white)
+  // Inner ring — tighter, brighter
+  layer inner memory: 0.85 blend: add {
+    ring(0.22, 0.02) | glow(inner_glow) | tint(1.0, 0.75, 0.3)
   }
 
-  // Radial spray
-  layer spray blend: add {
-    radial(8) | ring(ring_r, 0.005) | glow(3.0) | tint(1.0, 0.85, 0.4)
+  // Central flash
+  layer flash blend: add {
+    circle(0.1) | glow(flash_str) | tint(1.0, 0.92, 0.65)
+  }
+
+  resonate {
+    glow_str -> outer.brightness * 0.3
+    inner_glow -> flash.brightness * 0.4
   }
 
   pass bloom {
-    blur(3.0)
+    blur(2.0)
   }
 }

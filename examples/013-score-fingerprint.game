@@ -1,5 +1,5 @@
-// Score Fingerprint — unique visual from PASIFA relevance vector.
-// Multi-layer procedural pattern with bloom.
+// Score Fingerprint — radial identity pattern from relevance vector.
+// Warped radial star with organic texture and memory persistence.
 
 cinematic "score-fingerprint" {
   layer config {
@@ -9,22 +9,23 @@ cinematic "score-fingerprint" {
     confidence: 0.5
   }
 
-  // Base voronoi cells
-  layer cells {
-    voronoi(5.0) | glow(1.0) | tint(0.83, 0.69, 0.22)
+  // Radial structure with organic warp
+  layer structure memory: 0.86 {
+    warp(scale: 3.0, octaves: 2, strength: 0.08)
+    | radial(8) | star(8, 0.28, 0.08) | glow(2.2) | tint(0.83, 0.55, 0.12)
   }
 
-  // Radial structure overlay
-  layer structure blend: add {
-    radial(6) | star(6, 0.3, 0.12) | glow(0.8) | tint(0.6, 0.5, 0.2)
+  // Center glow — warm core
+  layer center blend: add {
+    circle(0.05) | glow(2.5) | tint(1.0, 0.8, 0.35)
   }
 
-  // High-frequency grain
-  layer texture blend: multiply {
-    simplex(8.0) | glow(0.6) | grain(0.5) | tint(0.9, 0.8, 0.4)
+  resonate {
+    relevance -> structure.brightness * 0.3
+    confidence -> center.brightness * 0.4
   }
 
-  pass bloom {
-    blur(1.0)
+  pass edge {
+    vignette(0.35)
   }
 }
