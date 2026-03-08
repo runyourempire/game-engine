@@ -198,6 +198,23 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
         s.push_str("    }\n");
     }
 
+    // Initialize coupling matrix (CPU-side, no GPU required)
+    if shader.has_coupling_matrix {
+        s.push_str("    this._couplingMatrix = new GameCouplingMatrix();\n");
+        s.push_str("    const existingPreRender = this._renderer._preRender;\n");
+        s.push_str("    const comp = this;\n");
+        s.push_str("    this._renderer._preRender = () => {\n");
+        s.push_str("      if (existingPreRender) existingPreRender();\n");
+        s.push_str("      if (comp._couplingMatrix && comp._renderer) {\n");
+        s.push_str("        const params = comp._renderer.userParams || {};\n");
+        s.push_str("        const result = comp._couplingMatrix.propagate(params);\n");
+        s.push_str("        for (const [k, v] of Object.entries(result)) {\n");
+        s.push_str("          if (k in params && params[k] !== v) comp.setParam(k, v);\n");
+        s.push_str("        }\n");
+        s.push_str("      }\n");
+        s.push_str("    };\n");
+    }
+
     s.push_str("    this._renderer.start();\n");
     s.push_str("  }\n\n");
 
@@ -311,8 +328,6 @@ mod tests {
             uniforms: vec![],
             uses_memory: false,
             js_modules: vec![],
-            color_matrix_wgsl: None,
-            color_matrix_glsl: None,
             compute_wgsl: None,
             react_wgsl: None,
             swarm_agent_wgsl: None,
@@ -321,6 +336,7 @@ mod tests {
             pass_wgsl: vec![],
             pass_count: 0,
             uses_feedback: false,
+            has_coupling_matrix: false,
         }
     }
 

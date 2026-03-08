@@ -46,42 +46,13 @@
 //! }
 //! ```
 
-use crate::ast::{Duration, Expr, MatrixColor, MatrixCoupling, MatrixTransitions};
+use crate::ast::{Duration, MatrixColor, MatrixCoupling, MatrixTransitions};
 
 /// Default damping factor for coupling propagation.
 const DEFAULT_COUPLING_DAMPING: f64 = 0.92;
 
 /// Default maximum cascade depth for multi-hop propagation.
 const DEFAULT_COUPLING_DEPTH: u32 = 3;
-
-/// Convert an Expr to a JS literal string.
-fn expr_to_js(e: &Expr) -> String {
-    match e {
-        Expr::Number(v) => format!("{v}"),
-        Expr::Ident(name) => name.clone(),
-        Expr::DottedIdent { object, field } => format!("{object}.{field}"),
-        Expr::BinOp { op, left, right } => {
-            let l = expr_to_js(left);
-            let r = expr_to_js(right);
-            let op_str = match op {
-                crate::ast::BinOp::Add => "+",
-                crate::ast::BinOp::Sub => "-",
-                crate::ast::BinOp::Mul => "*",
-                crate::ast::BinOp::Div => "/",
-                crate::ast::BinOp::Pow => "**",
-                crate::ast::BinOp::Gt => ">",
-                crate::ast::BinOp::Lt => "<",
-                crate::ast::BinOp::Gte => ">=",
-                crate::ast::BinOp::Lte => "<=",
-                crate::ast::BinOp::Eq => "===",
-                crate::ast::BinOp::NotEq => "!==",
-            };
-            format!("({l} {op_str} {r})")
-        }
-        Expr::Neg(inner) => format!("(-{})", expr_to_js(inner)),
-        _ => "0".into(),
-    }
-}
 
 /// Convert a Duration to seconds.
 fn duration_to_seconds(d: &Duration) -> f64 {
@@ -208,8 +179,8 @@ pub fn generate_coupling_js(matrix: &MatrixCoupling) -> String {
     s.push_str("      }\n");
     s.push_str("    }\n\n");
 
-    // Multi-hop cascade
-    s.push_str("    // Multi-hop cascade (depth-limited)\n");
+    // Cascade decay — applies progressive damping to smooth parameter changes
+    s.push_str("    // Cascade decay — progressive damping for smooth transitions\n");
     s.push_str("    for (let d = 1; d < this._maxDepth; d++) {\n");
     s.push_str("      let anyChange = false;\n");
     s.push_str("      for (let t = 0; t < this._targets.length; t++) {\n");
@@ -242,6 +213,9 @@ pub fn generate_coupling_js(matrix: &MatrixCoupling) -> String {
     s.push_str("    }\n");
     s.push_str("    return result;\n");
     s.push_str("  }\n\n");
+
+    // reset()
+    s.push_str("  reset() { this._state = new Map(); }\n\n");
 
     // Diagnostic accessors
     s.push_str("  get weights() { return this._weights; }\n");
@@ -418,6 +392,35 @@ mod tests {
     use super::*;
     use crate::ast::*;
 
+    /// Convert an Expr to a JS literal string (test-only utility).
+    fn expr_to_js(e: &Expr) -> String {
+        match e {
+            Expr::Number(v) => format!("{v}"),
+            Expr::Ident(name) => name.clone(),
+            Expr::DottedIdent { object, field } => format!("{object}.{field}"),
+            Expr::BinOp { op, left, right } => {
+                let l = expr_to_js(left);
+                let r = expr_to_js(right);
+                let op_str = match op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                    BinOp::Div => "/",
+                    BinOp::Pow => "**",
+                    BinOp::Gt => ">",
+                    BinOp::Lt => "<",
+                    BinOp::Gte => ">=",
+                    BinOp::Lte => "<=",
+                    BinOp::Eq => "===",
+                    BinOp::NotEq => "!==",
+                };
+                format!("({l} {op_str} {r})")
+            }
+            Expr::Neg(inner) => format!("(-{})", expr_to_js(inner)),
+            _ => "0".into(),
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Coupling matrix tests
     // -----------------------------------------------------------------------
@@ -492,7 +495,7 @@ mod tests {
         let js = generate_coupling_js(&matrix);
         assert!(js.contains("propagate(uniforms)"));
         assert!(js.contains("return result"));
-        assert!(js.contains("Multi-hop cascade"));
+        assert!(js.contains("Cascade decay"));
     }
 
     #[test]

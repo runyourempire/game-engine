@@ -2089,6 +2089,24 @@ impl Parser {
         }
 
         self.expect(&Token::RBrace)?;
+
+        // Validate weight dimensions: must be sources * targets (or empty)
+        let expected = sources.len() * targets.len();
+        if !weights.is_empty() && weights.len() != expected {
+            let (line, col) = self.current_pos();
+            return Err(CompileError::ParseError {
+                message: format!(
+                    "matrix coupling weights: expected {} values ({}x{}), got {}",
+                    expected,
+                    sources.len(),
+                    targets.len(),
+                    weights.len()
+                ),
+                line,
+                col,
+            });
+        }
+
         Ok(MatrixCoupling {
             sources,
             targets,
@@ -2177,6 +2195,24 @@ impl Parser {
         }
 
         self.expect(&Token::RBrace)?;
+
+        // Validate weight dimensions: must be states * states (or empty)
+        let expected = states.len() * states.len();
+        if !weights.is_empty() && weights.len() != expected {
+            let (line, col) = self.current_pos();
+            return Err(CompileError::ParseError {
+                message: format!(
+                    "matrix transitions weights: expected {} values ({}x{}), got {}",
+                    expected,
+                    states.len(),
+                    states.len(),
+                    weights.len()
+                ),
+                line,
+                col,
+            });
+        }
+
         Ok(MatrixTransitions {
             name,
             states,

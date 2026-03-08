@@ -59,16 +59,14 @@ pub struct ShaderOutput {
     pub swarm_trail_wgsl: Option<String>,
     /// Flow field compute shader.
     pub flow_wgsl: Option<String>,
-    /// Color matrix WGSL function (injected into fragment shader).
-    pub color_matrix_wgsl: Option<String>,
-    /// Color matrix GLSL function.
-    pub color_matrix_glsl: Option<String>,
     /// Post-processing pass fragment shaders (ordered).
     pub pass_wgsl: Vec<String>,
     /// Number of post-processing passes.
     pub pass_count: usize,
     /// Whether this cinematic uses feedback (previous frame as input).
     pub uses_feedback: bool,
+    /// Whether this cinematic has a coupling matrix (CPU-side parameter propagation).
+    pub has_coupling_matrix: bool,
 }
 
 /// Extract user-defined uniform parameters from a cinematic's layers.
@@ -249,16 +247,9 @@ pub fn generate_with_fns(
 
     // Note: transition matrices are top-level (Program.matrix_blocks),
     // not per-cinematic. They are handled separately during scene codegen.
+    // Color matrices are injected directly into fragment shaders by wgsl.rs/glsl.rs.
 
-    // Matrix color → WGSL/GLSL function snippets (injected into fragment shader)
-    let color_matrix_wgsl = cinematic
-        .matrix_color
-        .as_ref()
-        .map(|mc| matrix::generate_color_matrix_wgsl(mc));
-    let color_matrix_glsl = cinematic
-        .matrix_color
-        .as_ref()
-        .map(|mc| matrix::generate_color_matrix_glsl(mc));
+    let has_coupling_matrix = cinematic.matrix_coupling.is_some();
 
     // React → compute WGSL + GameReactionField JS class
     let react_wgsl = if let Some(ref rb) = cinematic.react {
@@ -310,8 +301,6 @@ pub fn generate_with_fns(
         uniforms,
         uses_memory,
         js_modules,
-        color_matrix_wgsl,
-        color_matrix_glsl,
         compute_wgsl,
         react_wgsl,
         swarm_agent_wgsl,
@@ -320,6 +309,7 @@ pub fn generate_with_fns(
         pass_wgsl,
         pass_count,
         uses_feedback,
+        has_coupling_matrix,
     })
 }
 

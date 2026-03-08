@@ -225,8 +225,6 @@ mod tests {
             uniforms: vec![],
             uses_memory: false,
             js_modules: vec![],
-            color_matrix_wgsl: None,
-            color_matrix_glsl: None,
             compute_wgsl: None,
             react_wgsl: None,
             swarm_agent_wgsl: None,
@@ -235,6 +233,7 @@ mod tests {
             pass_wgsl: vec![],
             pass_count: 0,
             uses_feedback: false,
+            has_coupling_matrix: false,
         };
         let html = generate_html(&shader);
         assert!(html.contains("<!DOCTYPE html>"));
