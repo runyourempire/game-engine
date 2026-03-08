@@ -1,0 +1,51 @@
+// Source Vitals — living health indicator for 4DA Channels view
+// 160 × 160px — organic hex grid where cells represent source health
+//
+// Uniforms:
+//   health_avg    (0-1)  — average source health across all sources
+//   active_ratio  (0-1)  — fraction of sources currently active
+//   error_rate    (0-1)  — normalized error rate (0=healthy, 1=failing)
+//   fetch_age     (0-1)  — staleness (0=just fetched, 1=stale)
+
+cinematic "source-vitals" {
+  layer cells memory: 0.85 {
+    hex(12.0) | glow(0.6)
+    | tint(health_avg, health_avg, health_avg, 0.4)
+  }
+
+  layer vitality {
+    warp(3.0, 0.2) | fbm(3, 0.5)
+    | palette(
+        0.08, 0.1, 0.08,
+        active_ratio, 0.3, 0.15,
+        0.6, 0.9, 0.5,
+        0.0, 0.2, 0.1
+      )
+  }
+
+  layer error_signal {
+    warp(2.0, 0.3) | simplex(1.5)
+    | palette(
+        error_rate, 0.02, 0.02,
+        0.5, 0.1, 0.05,
+        1.0, 0.2, 0.1,
+        0.0, 0.0, 0.0
+      )
+  }
+
+  layer core {
+    circle(0.25) | glow(1.2)
+    | tint(0.6, 0.9, 0.5, active_ratio)
+  }
+
+  layer config {
+    health_avg: 0.8
+    active_ratio: 0.6
+    error_rate: 0.0
+    fetch_age: 0.3
+  }
+
+  pass edge {
+    vignette(0.5)
+  }
+}
