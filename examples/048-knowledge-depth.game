@@ -3,13 +3,12 @@
 //
 // Uniforms:
 //   coverage     (0-1)  — overall knowledge coverage percentage
-//   gap_count    (0-1)  — normalized count of knowledge gaps
-//   radar_score  (0-1)  — tech radar health score
 //   depth_val    (0-1)  — profile depth / completeness
 
 cinematic "knowledge-depth" {
   layer terrain memory: 0.88 {
-    warp(4.0, 0.25) | fbm(5, 0.55)
+    warp(scale: 4.0, octaves: 4, strength: 0.25)
+    | fbm(scale: 5.0, octaves: 5, persistence: 0.55)
     | palette(
         0.05, 0.05, 0.08,
         coverage, 0.3, 0.2,
@@ -19,7 +18,8 @@ cinematic "knowledge-depth" {
   }
 
   layer ridges {
-    warp(6.0, 0.12) | simplex(3.5)
+    warp(scale: 6.0, octaves: 3, strength: 0.12)
+    | simplex(3.5)
     | palette(
         0.02, 0.02, 0.04,
         0.15, 0.12, 0.1,
@@ -30,14 +30,17 @@ cinematic "knowledge-depth" {
 
   layer glow_center {
     circle(0.6) | glow(depth_val)
-    | tint(1.0, 0.9, 0.7, 0.15)
+    | tint(1.0, 0.9, 0.7, 0.2)
   }
 
   layer config {
     coverage: 0.5
-    gap_count: 0.3
-    radar_score: 0.6
     depth_val: 0.4
+  }
+
+  resonate {
+    coverage -> terrain.brightness * 0.5
+    depth_val -> glow_center.brightness * 0.6
   }
 
   pass edge {

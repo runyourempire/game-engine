@@ -3,13 +3,13 @@
 //
 // Uniforms:
 //   progress      (0-1)  — overall completion percentage
-//   active_module (0-1)  — position of current module (0=first, 1=last)
 //   streak        (0-1)  — learning streak intensity
 //   momentum      (0-1)  — recent activity level
 
 cinematic "playbook-pathway" {
   layer river memory: 0.90 {
-    warp(5.0, 0.12) | fbm(3, 0.45)
+    warp(scale: 5.0, octaves: 3, strength: 0.12)
+    | fbm(scale: 4.0, octaves: 3, persistence: 0.45)
     | palette(
         0.06, 0.06, 0.06,
         progress, 0.2, 0.15,
@@ -19,7 +19,8 @@ cinematic "playbook-pathway" {
   }
 
   layer path {
-    warp(2.0, 0.08) | simplex(1.5)
+    warp(scale: 2.0, octaves: 2, strength: 0.08)
+    | simplex(1.5)
     | palette(
         0.0, 0.0, 0.0,
         0.2, 0.15, 0.1,
@@ -35,9 +36,13 @@ cinematic "playbook-pathway" {
 
   layer config {
     progress: 0.3
-    active_module: 0.3
     streak: 0.5
     momentum: 0.6
+  }
+
+  resonate {
+    progress -> river.brightness * 0.5
+    streak -> active_pulse.brightness * 0.4
   }
 
   arc {

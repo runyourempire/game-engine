@@ -5,16 +5,16 @@
 //   health_avg    (0-1)  — average source health across all sources
 //   active_ratio  (0-1)  — fraction of sources currently active
 //   error_rate    (0-1)  — normalized error rate (0=healthy, 1=failing)
-//   fetch_age     (0-1)  — staleness (0=just fetched, 1=stale)
 
 cinematic "source-vitals" {
   layer cells memory: 0.85 {
-    hex(12.0) | glow(0.6)
+    hex(0.35) | glow(0.6)
     | tint(health_avg, health_avg, health_avg, 0.4)
   }
 
   layer vitality {
-    warp(3.0, 0.2) | fbm(3, 0.5)
+    warp(scale: 3.0, octaves: 3, strength: 0.2)
+    | fbm(scale: 4.0, octaves: 3, persistence: 0.5)
     | palette(
         0.08, 0.1, 0.08,
         active_ratio, 0.3, 0.15,
@@ -24,7 +24,8 @@ cinematic "source-vitals" {
   }
 
   layer error_signal {
-    warp(2.0, 0.3) | simplex(1.5)
+    warp(scale: 2.0, octaves: 2, strength: 0.3)
+    | simplex(1.5)
     | palette(
         error_rate, 0.02, 0.02,
         0.5, 0.1, 0.05,
@@ -42,7 +43,11 @@ cinematic "source-vitals" {
     health_avg: 0.8
     active_ratio: 0.6
     error_rate: 0.0
-    fetch_age: 0.3
+  }
+
+  resonate {
+    health_avg -> cells.brightness * 0.5
+    error_rate -> error_signal.brightness * 0.8
   }
 
   pass edge {

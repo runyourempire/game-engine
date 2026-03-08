@@ -5,11 +5,11 @@
 //   signal_count  (0-1)  — normalized item count (0=empty, 1=saturated)
 //   relevance_avg (0-1)  — mean relevance score across results
 //   freshness     (0-1)  — how recent the latest fetch is
-//   active        (0-1)  — 1 during analysis, 0.3 at rest
 
 cinematic "signal-waveform" {
   layer base {
-    warp(3.0, 0.15) | fbm(3, 0.4)
+    warp(scale: 3.0, octaves: 3, strength: 0.15)
+    | fbm(scale: 4.0, octaves: 3, persistence: 0.4)
     | palette(
         0.15, 0.15, 0.15,
         0.25, 0.25, 0.25,
@@ -19,7 +19,8 @@ cinematic "signal-waveform" {
   }
 
   layer pulse {
-    warp(1.5, 0.08) | simplex(2.0)
+    warp(scale: 1.5, octaves: 2, strength: 0.08)
+    | simplex(2.0)
     | palette(
         signal_count, signal_count, signal_count,
         0.3, 0.3, 0.4,
@@ -29,7 +30,7 @@ cinematic "signal-waveform" {
   }
 
   layer accent {
-    ring(0.5, 0.003) | glow(relevance_avg)
+    ring(0.5, 0.006) | glow(relevance_avg)
     | tint(1.0, 0.95, 0.85, freshness)
   }
 
@@ -37,11 +38,10 @@ cinematic "signal-waveform" {
     signal_count: 0.5
     relevance_avg: 0.6
     freshness: 0.8
-    active: 0.3
   }
 
-  arc {
-    active: 0.3 -> 0.6 over 4s ease-in-out
+  resonate {
+    signal_count -> accent.brightness * 0.4
   }
 
   pass edge {
