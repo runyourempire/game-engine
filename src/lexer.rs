@@ -108,6 +108,10 @@ enum LexToken {
     #[regex(r#""[^"]*""#)]
     StringLit,
 
+    // ── Hex colors ───────────────────────────────────────
+    #[regex(r"#[0-9a-fA-F]{6}", priority = 8)]
+    HexColor,
+
     // ── Identifiers ──────────────────────────────────────
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 1)]
     Ident,
@@ -278,6 +282,15 @@ fn convert(lt: LexToken, slice: &str) -> Result<Token, CompileError> {
         // String
         LexToken::StringLit => Token::StringLit(slice[1..slice.len() - 1].to_string()),
 
+        // Hex color
+        LexToken::HexColor => {
+            let hex = &slice[1..]; // strip #
+            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f64 / 255.0;
+            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f64 / 255.0;
+            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f64 / 255.0;
+            Token::HexColor(r, g, b)
+        }
+
         // Ident
         LexToken::Ident => Token::Ident(slice.to_string()),
 
@@ -402,6 +415,26 @@ mod tests {
             tokens("foo // comment\nbar"),
             vec![Token::Ident("foo".into()), Token::Ident("bar".into()),]
         );
+    }
+
+    #[test]
+    fn lex_hex_color() {
+        let toks = tokens("#FF6B35");
+        assert_eq!(toks.len(), 1);
+        match &toks[0] {
+            Token::HexColor(r, g, b) => {
+                assert!((r - 1.0).abs() < 0.01);
+                assert!((g - 0.42).abs() < 0.01);
+                assert!((b - 0.21).abs() < 0.01);
+            }
+            _ => panic!("expected HexColor"),
+        }
+    }
+
+    #[test]
+    fn lex_hex_color_in_pipeline() {
+        let toks = tokens("tint(#D4AF37)");
+        assert!(toks.iter().any(|t| matches!(t, Token::HexColor(_, _, _))));
     }
 
     #[test]

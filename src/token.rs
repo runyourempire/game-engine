@@ -75,6 +75,8 @@ pub enum Token {
     Integer(i64),
     StringLit(String),
     Ident(String),
+    /// Pre-parsed hex color #RRGGBB as normalized RGB (0.0-1.0)
+    HexColor(f64, f64, f64),
 
     // --- units (number already embedded) ---
     Seconds(f64),
@@ -156,6 +158,7 @@ impl std::fmt::Display for Token {
             Token::Integer(v) => write!(f, "{v}"),
             Token::StringLit(s) => write!(f, "\"{s}\""),
             Token::Ident(s) => write!(f, "{s}"),
+            Token::HexColor(r, g, b) => write!(f, "#{:02X}{:02X}{:02X}", (r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8),
             Token::Seconds(v) => write!(f, "{v}s"),
             Token::Millis(v) => write!(f, "{v}ms"),
             Token::Bars(v) => write!(f, "{v}bars"),

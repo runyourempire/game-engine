@@ -1684,6 +1684,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::String(s))
             }
+            Some(Token::HexColor(r, g, b)) => {
+                self.advance();
+                Ok(Expr::Color(r, g, b))
+            }
             Some(Token::Ident(name)) => {
                 self.advance();
                 // call: IDENT '(' args ')'

@@ -197,6 +197,8 @@ pub enum Expr {
     Number(f64),
     String(String),
     Ident(String),
+    /// RGB color from hex literal (0.0-1.0 each)
+    Color(f64, f64, f64),
     DottedIdent {
         object: String,
         field: String,

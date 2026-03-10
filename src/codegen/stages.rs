@@ -1,6 +1,76 @@
 //! Stage pipeline state machine for shader codegen.
 
 use crate::ast::{Arg, Expr, FnDef, Stage};
+
+/// Auto-insert bridge stages (glow) when SDF→Color gap is detected.
+/// Returns the augmented pipeline and any compiler notes.
+pub fn auto_bridge_pipeline(stages: &[Stage], fns: &[FnDef]) -> (Vec<Stage>, Vec<String>) {
+    let mut result = Vec::new();
+    let mut notes = Vec::new();
+    let mut state = ShaderState::Position;
+
+    for stage in stages {
+        if let Some(builtin) = builtins::lookup(&stage.name) {
+            if state == ShaderState::Sdf && builtin.input == ShaderState::Color {
+                // Auto-insert glow(1.5) as bridge
+                result.push(Stage {
+                    name: "glow".to_string(),
+                    args: vec![Arg {
+                        name: None,
+                        value: Expr::Number(1.5),
+                    }],
+                });
+                notes.push(format!(
+                    "auto-inserted glow(1.5) before '{}' (SDF→Color bridge)",
+                    stage.name
+                ));
+                state = ShaderState::Color;
+            }
+            if builtin.input == state {
+                state = builtin.output;
+            }
+        } else if let Some(fn_def) = fns.iter().find(|f| f.name == stage.name) {
+            let fn_input = fn_def
+                .body
+                .first()
+                .and_then(|s| builtins::lookup(&s.name))
+                .map(|b| b.input)
+                .unwrap_or(ShaderState::Position);
+            if state == ShaderState::Sdf && fn_input == ShaderState::Color {
+                result.push(Stage {
+                    name: "glow".to_string(),
+                    args: vec![Arg {
+                        name: None,
+                        value: Expr::Number(1.5),
+                    }],
+                });
+                notes.push(format!(
+                    "auto-inserted glow(1.5) before '{}' (SDF→Color bridge)",
+                    stage.name
+                ));
+                state = ShaderState::Color;
+            }
+            if let Ok(fn_output) = validate_pipeline_with_fns(&fn_def.body, fns) {
+                state = fn_output;
+            }
+        }
+        result.push(stage.clone());
+    }
+
+    // Auto-bridge at end if pipeline ends in Sdf state
+    if state == ShaderState::Sdf {
+        result.push(Stage {
+            name: "glow".to_string(),
+            args: vec![Arg {
+                name: None,
+                value: Expr::Number(1.5),
+            }],
+        });
+        notes.push("auto-inserted glow(1.5) at end of pipeline (SDF→Color bridge)".to_string());
+    }
+
+    (result, notes)
+}
 use crate::builtins::{self, ShaderState};
 use crate::error::CompileError;
 
@@ -65,6 +135,14 @@ fn suggest_bridge(stage_name: &str, state: ShaderState) -> Option<String> {
 pub fn resolve_arg(arg: &Arg, idx: usize, builtin_name: &str) -> String {
     match &arg.value {
         Expr::Number(v) => format!("{v:.6}"),
+        Expr::Color(r, g, b) => {
+            // When a hex color is used as a single arg, return component by idx
+            match idx % 3 {
+                0 => format!("{r:.6}"),
+                1 => format!("{g:.6}"),
+                _ => format!("{b:.6}"),
+            }
+        }
         Expr::Ident(name) => name.clone(),
         Expr::DottedIdent { object, field } => format!("{object}_{field}"),
         _ => {
@@ -84,6 +162,17 @@ pub fn get_arg(args: &[Arg], name: &str, pos: usize, stage_name: &str) -> String
     for arg in args {
         if arg.name.as_deref() == Some(name) {
             return resolve_arg(arg, pos, stage_name);
+        }
+    }
+    // Hex color expansion: tint(#RRGGBB) distributes r/g/b across pos 0/1/2
+    if pos > 0 && !args.is_empty() {
+        if let Expr::Color(r, g, b) = &args[0].value {
+            return match pos {
+                0 => format!("{r:.6}"),
+                1 => format!("{g:.6}"),
+                2 => format!("{b:.6}"),
+                _ => "0.0".to_string(),
+            };
         }
     }
     // Try positional
@@ -146,6 +235,19 @@ pub fn validate_pipeline_with_fns(
             let mut msg = format!("unknown stage function: '{}'", stage.name);
             if let Some(suggestion) = suggest_name(&stage.name, fns) {
                 msg.push_str(&format!(". Did you mean '{suggestion}'?"));
+            }
+            // Add valid alternatives for current state
+            let valid = builtins::valid_next_stages(state);
+            if !valid.is_empty() {
+                let shown: Vec<&str> = valid.iter().take(8).copied().collect();
+                msg.push_str(&format!(
+                    "\n  Valid stages for {:?} state: {}",
+                    state,
+                    shown.join(", ")
+                ));
+                if valid.len() > 8 {
+                    msg.push_str(&format!(" (and {} more)", valid.len() - 8));
+                }
             }
             return Err(CompileError::validation(msg));
         }
@@ -436,6 +538,44 @@ mod tests {
             !err.contains("Did you mean"),
             "should not suggest for very different name: {err}"
         );
+    }
+
+    // ── Auto-bridge tests ─────────────────────────────────
+
+    #[test]
+    fn auto_bridge_inserts_glow() {
+        let stages = vec![stage("circle"), stage("tint")];
+        let (bridged, notes) = auto_bridge_pipeline(&stages, &[]);
+        assert_eq!(bridged.len(), 3);
+        assert_eq!(bridged[1].name, "glow");
+        assert!(!notes.is_empty());
+        let result = validate_pipeline(&bridged);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn auto_bridge_end_of_pipeline() {
+        let stages = vec![stage("circle")];
+        let (bridged, notes) = auto_bridge_pipeline(&stages, &[]);
+        assert_eq!(bridged.len(), 2);
+        assert_eq!(bridged[1].name, "glow");
+        assert!(!notes.is_empty());
+    }
+
+    #[test]
+    fn auto_bridge_not_needed() {
+        let stages = vec![stage("circle"), stage("glow"), stage("tint")];
+        let (bridged, notes) = auto_bridge_pipeline(&stages, &[]);
+        assert_eq!(bridged.len(), 3);
+        assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn auto_bridge_with_transforms() {
+        let stages = vec![stage("warp"), stage("circle"), stage("bloom")];
+        let (bridged, _notes) = auto_bridge_pipeline(&stages, &[]);
+        assert_eq!(bridged.len(), 4);
+        assert_eq!(bridged[2].name, "glow");
     }
 
     #[test]
