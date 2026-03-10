@@ -1,0 +1,96 @@
+{
+  "name": "game-language",
+  "displayName": "GAME Language",
+  "description": "Syntax highlighting and language server for GAME DSL (.game files) — Generative Animation Matrix Engine",
+  "version": "0.1.0",
+  "publisher": "4da-systems",
+  "license": "FSL-1.1-Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/runyourempire/game-engine"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "game",
+    "shader",
+    "wgsl",
+    "glsl",
+    "dsl",
+    "animation",
+    "generative",
+    "4da"
+  ],
+  "icon": "icon.png",
+  "activationEvents": [
+    "onLanguage:game"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "game",
+        "aliases": [
+          "GAME",
+          "game"
+        ],
+        "extensions": [
+          ".game"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "game",
+        "scopeName": "source.game",
+        "path": "./syntaxes/game.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "game",
+        "path": "./snippets/game.json"
+      }
+    ],
+    "configuration": {
+      "title": "GAME Language",
+      "properties": {
+        "game.serverPath": {
+          "type": "string",
+          "default": "game",
+          "description": "Path to the game compiler binary. If not absolute, searches PATH."
+        },
+        "game.trace.server": {
+          "type": "string",
+          "default": "off",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "description": "Traces the communication between VS Code and the GAME language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}

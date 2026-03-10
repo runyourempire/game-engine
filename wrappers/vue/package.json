@@ -1,0 +1,17 @@
+{
+  "name": "@game-engine/vue",
+  "version": "0.1.0",
+  "description": "Vue 3 integration for GAME Web Components",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.mjs",
+  "files": ["dist"],
+  "peerDependencies": {
+    "vue": ">=3.3.0"
+  },
+  "devDependencies": {
+    "vue": "^3.4.0",
+    "typescript": "^5.3.0"
+  },
+  "license": "FSL-1.1-Apache-2.0"
+}

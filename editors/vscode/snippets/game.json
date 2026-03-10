@@ -1,0 +1,192 @@
+{
+  "Cinematic": {
+    "prefix": "cinematic",
+    "body": [
+      "cinematic \"${1:component-name}\" {",
+      "\tlayer ${2:main} {",
+      "\t\t${3:circle(0.5)} | ${4:glow(2.0)} | ${5:tint(1.0, 1.0, 1.0)}",
+      "\t}",
+      "}"
+    ],
+    "description": "Create a cinematic block with a layer and pipeline"
+  },
+  "Layer": {
+    "prefix": "layer",
+    "body": [
+      "layer ${1:name} {",
+      "\t${2:circle(0.5)} | ${3:glow(2.0)} | ${4:tint(1.0, 1.0, 1.0)}",
+      "}"
+    ],
+    "description": "Create a layer with a rendering pipeline"
+  },
+  "Layer with Blend": {
+    "prefix": "layer-blend",
+    "body": [
+      "layer ${1:name} [${2|add,screen,multiply,overlay|}] {",
+      "\t${3:circle(0.5)} | ${4:glow(2.0)} | ${5:tint(1.0, 1.0, 1.0)}",
+      "}"
+    ],
+    "description": "Create a layer with a blend mode"
+  },
+  "Layer with Memory": {
+    "prefix": "layer-memory",
+    "body": [
+      "layer ${1:trail} memory ${2:0.95} {",
+      "\t${3:circle(0.1)} | ${4:glow(2.0)} | ${5:tint(1.0, 1.0, 1.0)}",
+      "}"
+    ],
+    "description": "Create a layer with persistence memory (0.0-1.0)"
+  },
+  "Function Definition": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:param1, param2}) {",
+      "\t${3:circle($2)} | ${4:glow(2.0)}",
+      "}"
+    ],
+    "description": "Define a reusable function"
+  },
+  "Listen Block": {
+    "prefix": "listen",
+    "body": [
+      "listen {",
+      "\t${1:bass}: energy(range: [${2:20}, ${3:200}])",
+      "\t${4:mid}: energy(range: [${5:200}, ${6:2000}])",
+      "\t${7:high}: energy(range: [${8:2000}, ${9:20000}])",
+      "}"
+    ],
+    "description": "Create an audio listener block with frequency bands"
+  },
+  "Arc Block": {
+    "prefix": "arc",
+    "body": [
+      "arc {",
+      "\t${1:layer_name}.${2:param}: ${3:0.1} -> ${4:0.4} over ${5:2}s ${6|ease_in_out,ease_in,ease_out,linear|}",
+      "}"
+    ],
+    "description": "Create an animation arc for parameter transitions"
+  },
+  "Resonate Block": {
+    "prefix": "resonate",
+    "body": [
+      "resonate {",
+      "\taudio.${1:bass} -> ${2:ring}.${3:radius} * ${4:0.2}",
+      "}"
+    ],
+    "description": "Create a parameter coupling (audio-reactive binding)"
+  },
+  "Glowing Orb": {
+    "prefix": "glow-orb",
+    "body": [
+      "cinematic \"${1:glow-orb}\" {",
+      "\tlayer orb {",
+      "\t\tcircle(${2:0.3}) | glow(${3:3.0}) | tint(${4:0.2}, ${5:0.6}, ${6:1.0})",
+      "\t}",
+      "}"
+    ],
+    "description": "Glowing orb pattern - simple circle with glow effect"
+  },
+  "Neon Ring": {
+    "prefix": "neon-ring",
+    "body": [
+      "cinematic \"${1:neon-ring}\" {",
+      "\tlayer ring_layer {",
+      "\t\tring(${2:0.4}, ${3:0.02}) | glow(${4:4.0}) | palette(${5|neon,plasma,aurora,fire|})",
+      "\t}",
+      "}"
+    ],
+    "description": "Neon ring pattern with palette coloring"
+  },
+  "Loading Spinner": {
+    "prefix": "loading",
+    "body": [
+      "cinematic \"${1:loading}\" {",
+      "\tlayer spinner {",
+      "\t\tarc_sdf(${2:0.3}, ${3:0.02}, ${4:0.0}, ${5:4.71})",
+      "\t\t| rotate(time * ${6:2.0})",
+      "\t\t| glow(${7:2.0})",
+      "\t\t| tint(${8:1.0}, ${9:1.0}, ${10:1.0})",
+      "\t}",
+      "}"
+    ],
+    "description": "Loading spinner animation pattern"
+  },
+  "Organic Texture": {
+    "prefix": "organic",
+    "body": [
+      "cinematic \"${1:organic}\" {",
+      "\tlayer texture {",
+      "\t\twarp(${2:0.3}, ${3:1.5})",
+      "\t\t| fbm(${4:4.0}, ${5:3})",
+      "\t\t| glow(${6:1.5})",
+      "\t\t| palette(${7|fire,ember,ocean,aurora,plasma|})",
+      "\t}",
+      "}"
+    ],
+    "description": "Organic texture pattern using warp + fbm + palette"
+  },
+  "Scene": {
+    "prefix": "scene",
+    "body": [
+      "scene \"${1:demo}\" {",
+      "\tplay \"${2:intro}\" for ${3:5}s",
+      "\ttransition ${4|dissolve,fade,cut,wipe|} over ${5:1}s",
+      "\tplay \"${6:main}\" for ${7:10}s",
+      "}"
+    ],
+    "description": "Create a scene with transitions between cinematics"
+  },
+  "Import Standard Library": {
+    "prefix": "import",
+    "body": [
+      "import \"std:${1|shapes,palettes,effects,transforms|}\""
+    ],
+    "description": "Import a standard library module"
+  },
+  "Use Standard Library": {
+    "prefix": "use",
+    "body": [
+      "use \"std:${1|shapes,palettes,effects,transforms|}\""
+    ],
+    "description": "Use a standard library module"
+  },
+  "Matrix Block": {
+    "prefix": "matrix",
+    "body": [
+      "matrix {",
+      "\t${1:layer1}.${2:param} <-> ${3:layer2}.${4:param} * ${5:0.5}",
+      "}"
+    ],
+    "description": "Create a coupling matrix between layers"
+  },
+  "Full Component": {
+    "prefix": "game-full",
+    "body": [
+      "// ${1:Component description}",
+      "",
+      "cinematic \"${2:component-name}\" {",
+      "\tlisten {",
+      "\t\tbass: energy(range: [20, 200])",
+      "\t\tmid: energy(range: [200, 2000])",
+      "\t}",
+      "",
+      "\tlayer ${3:bg} {",
+      "\t\twarp(0.2, 1.0) | fbm(3.0, 3) | glow(1.0) | palette(${4|fire,ocean,neon,plasma|})",
+      "\t}",
+      "",
+      "\tlayer ${5:fg} [add] {",
+      "\t\t${6:circle(0.3)} | glow(3.0) | tint(1.0, 1.0, 1.0)",
+      "\t}",
+      "",
+      "\tresonate {",
+      "\t\taudio.bass -> $5.${7:radius} * 0.2",
+      "\t}",
+      "",
+      "\tarc {",
+      "\t\t$3.opacity: 0.0 -> 1.0 over 2s ease_in_out",
+      "\t}",
+      "}"
+    ],
+    "description": "Full GAME component with listen, layers, resonate, and arc"
+  }
+}

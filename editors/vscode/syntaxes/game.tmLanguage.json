@@ -1,0 +1,316 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "GAME",
+  "scopeName": "source.game",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#hex-colors" },
+    { "include": "#numbers" },
+    { "include": "#import-use" },
+    { "include": "#function-definition" },
+    { "include": "#cinematic-declaration" },
+    { "include": "#scene-declaration" },
+    { "include": "#block-keywords" },
+    { "include": "#layer-line" },
+    { "include": "#scene-keywords" },
+    { "include": "#easing-functions" },
+    { "include": "#transition-types" },
+    { "include": "#blend-modes" },
+    { "include": "#palette-names" },
+    { "include": "#listen-keywords" },
+    { "include": "#builtins" },
+    { "include": "#operators" },
+    { "include": "#time-literals" },
+    { "include": "#punctuation" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.game",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.game",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.game" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.game" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.game",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "hex-colors": {
+      "patterns": [
+        {
+          "name": "constant.other.hex-color.game",
+          "match": "#[0-9a-fA-F]{6}\\b"
+        },
+        {
+          "name": "constant.other.hex-color.game",
+          "match": "#[0-9a-fA-F]{3}\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.game",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.game",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "time-literals": {
+      "patterns": [
+        {
+          "name": "constant.numeric.time.game",
+          "match": "\\b[0-9]+(\\.[0-9]+)?s\\b"
+        }
+      ]
+    },
+    "import-use": {
+      "patterns": [
+        {
+          "match": "\\b(import|use)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.control.import.game" },
+            "2": { "name": "string.quoted.double.game" }
+          }
+        }
+      ]
+    },
+    "function-definition": {
+      "patterns": [
+        {
+          "begin": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+          "end": "\\)",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.function.game" },
+            "2": { "name": "entity.name.function.game" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.parameters.end.game" }
+          },
+          "patterns": [
+            {
+              "name": "variable.parameter.game",
+              "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+            },
+            {
+              "name": "punctuation.separator.parameter.game",
+              "match": ","
+            }
+          ]
+        }
+      ]
+    },
+    "cinematic-declaration": {
+      "patterns": [
+        {
+          "match": "\\b(cinematic)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.control.cinematic.game" },
+            "2": { "name": "entity.name.type.game" }
+          }
+        }
+      ]
+    },
+    "scene-declaration": {
+      "patterns": [
+        {
+          "match": "\\b(scene)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.control.scene.game" },
+            "2": { "name": "entity.name.type.game" }
+          }
+        }
+      ]
+    },
+    "block-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.game",
+          "match": "\\b(cinematic|scene|fn|import|use|layer|listen|arc|resonate|blend|memory|breed|flow|react|swarm|gravity|matrix)\\b"
+        }
+      ]
+    },
+    "layer-line": {
+      "patterns": [
+        {
+          "match": "\\b(layer)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(memory)\\s+([0-9]+\\.?[0-9]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.game" },
+            "2": { "name": "entity.name.tag.layer.game" },
+            "3": { "name": "keyword.control.game" },
+            "4": { "name": "constant.numeric.game" }
+          }
+        }
+      ]
+    },
+    "scene-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.scene.game",
+          "match": "\\b(play|transition|for|over)\\b"
+        }
+      ]
+    },
+    "easing-functions": {
+      "patterns": [
+        {
+          "name": "support.constant.easing.game",
+          "match": "\\b(ease_in_out|ease_in|ease_out|linear)\\b"
+        }
+      ]
+    },
+    "transition-types": {
+      "patterns": [
+        {
+          "name": "support.constant.transition.game",
+          "match": "\\b(dissolve|fade|cut|wipe)\\b"
+        }
+      ]
+    },
+    "blend-modes": {
+      "patterns": [
+        {
+          "name": "support.constant.blend-mode.game",
+          "match": "\\b(add|screen|multiply|overlay)\\b"
+        }
+      ]
+    },
+    "palette-names": {
+      "patterns": [
+        {
+          "name": "support.constant.palette.game",
+          "match": "\\b(fire|ember|ocean|ice|neon|plasma|aurora|sunset|midnight|forest|candy|rainbow|copper|gold|silver|lava|toxic|void|dream|crystal)\\b"
+        }
+      ]
+    },
+    "listen-keywords": {
+      "patterns": [
+        {
+          "name": "support.function.listen.game",
+          "match": "\\b(energy|peak|centroid|attack|range)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "comment": "Position -> SDF builtins",
+          "name": "support.function.game",
+          "match": "\\b(circle|ring|star|box|hex|triangle|line|capsule|arc_sdf|cross|heart|egg|spiral|grid|fbm|simplex|voronoi|radial_fade|union|subtract|intersect|smooth_union|smooth_subtract|smooth_intersect|xor|morph)\\b"
+        },
+        {
+          "comment": "Position -> Position builtins",
+          "name": "support.function.game",
+          "match": "\\b(translate|rotate|scale|warp|distort|polar|repeat|mirror|radial)\\b"
+        },
+        {
+          "comment": "SDF -> Color builtins",
+          "name": "support.function.game",
+          "match": "\\b(glow|shade|emissive|palette)\\b"
+        },
+        {
+          "comment": "Color -> Color builtins",
+          "name": "support.function.game",
+          "match": "\\b(tint|bloom|grain|outline)\\b"
+        },
+        {
+          "comment": "SDF -> SDF builtins",
+          "name": "support.function.game",
+          "match": "\\b(round|shell|onion|mask_arc)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.pipe.game",
+          "match": "\\|"
+        },
+        {
+          "name": "keyword.operator.arrow.game",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.arithmetic.game",
+          "match": "[+\\-*/]"
+        },
+        {
+          "name": "keyword.operator.assignment.game",
+          "match": ":"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.block.begin.game",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.block.end.game",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.definition.parameters.begin.game",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.definition.parameters.end.game",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.definition.array.begin.game",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.definition.array.end.game",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.separator.game",
+          "match": ","
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.call.game" }
+          }
+        },
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "variable.other.object.game" },
+            "2": { "name": "variable.other.property.game" }
+          }
+        }
+      ]
+    }
+  }
+}
