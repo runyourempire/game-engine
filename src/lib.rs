@@ -1792,4 +1792,43 @@ mod tests {
         }"#;
         assert!(compile(source, &default_config()).is_ok());
     }
+
+    #[test]
+    fn ai_palette_not_extracted_as_uniform() {
+        // palette(aurora) should NOT create an "aurora" uniform
+        let source = r#"cinematic "t" {
+            layer config { pulse: 0.5 }
+            layer bg {
+                warp(scale: 2.0, octaves: 4, strength: 0.2)
+                | fbm(scale: 3.0, octaves: 5) | palette(aurora)
+            }
+            layer main {
+                circle(0.1 + pulse * 0.2) | glow(2.0) | tint(1.0, 0.5, 0.2)
+            }
+        }"#;
+        let results = compile(source, &default_config()).unwrap();
+        let js = &results[0].js;
+        // Should have pulse but NOT aurora in UNIFORMS
+        assert!(js.contains("name:'pulse'"), "should have pulse uniform");
+        assert!(
+            !js.contains("name:'aurora'"),
+            "aurora should not be a uniform"
+        );
+    }
+
+    #[test]
+    fn ai_time_variable_in_expressions() {
+        let source = r#"cinematic "t" {
+            layer main {
+                translate(sin(time * 0.7) * 0.2, cos(time * 0.5) * 0.15)
+                | ring(0.25, 0.012) | glow(2.0) | tint(0.8, 0.6, 1.0)
+            }
+        }"#;
+        let results = compile(source, &default_config()).unwrap();
+        let js = &results[0].js;
+        // time should NOT be extracted as a uniform
+        assert!(!js.contains("name:'time'"), "time should not be a uniform");
+        // Should reference time in shader
+        assert!(js.contains("time"), "shader should reference time");
+    }
 }

@@ -69,6 +69,59 @@ pub struct ShaderOutput {
     pub has_coupling_matrix: bool,
 }
 
+/// Returns true if the name is a built-in shader variable (time, mouse, audio).
+fn is_builtin_variable(name: &str) -> bool {
+    matches!(
+        name,
+        "time"
+            | "mouse_x"
+            | "mouse_y"
+            | "mouse_down"
+            | "bass"
+            | "mid"
+            | "treble"
+            | "energy"
+            | "beat"
+    )
+}
+
+/// Returns true if the name is a named palette (fire, ocean, aurora, etc.).
+fn is_palette_name(name: &str) -> bool {
+    matches!(
+        name,
+        "fire"
+            | "ocean"
+            | "neon"
+            | "aurora"
+            | "sunset"
+            | "ice"
+            | "ember"
+            | "lava"
+            | "magma"
+            | "inferno"
+            | "plasma"
+            | "electric"
+            | "cyber"
+            | "matrix"
+            | "forest"
+            | "moss"
+            | "earth"
+            | "desert"
+            | "blood"
+            | "rose"
+            | "candy"
+            | "royal"
+            | "deep_sea"
+            | "coral"
+            | "arctic"
+            | "twilight"
+            | "vapor"
+            | "gold"
+            | "silver"
+            | "monochrome"
+    )
+}
+
 /// Extract user-defined uniform parameters from a cinematic's layers.
 ///
 /// Any layer with `LayerBody::Params` contributes named uniforms.
@@ -94,7 +147,7 @@ fn extract_uniforms(cinematic: &Cinematic) -> Vec<UniformInfo> {
             }
         }
 
-        // Pipeline stages: ident args that aren't builtins are user uniforms
+        // Pipeline stages: ident args that aren't builtins/palettes/built-in vars are user uniforms
         let stages_to_scan: Vec<&crate::ast::Stage> = match &layer.body {
             LayerBody::Pipeline(stages) => stages.iter().collect(),
             LayerBody::Conditional {
@@ -107,7 +160,11 @@ fn extract_uniforms(cinematic: &Cinematic) -> Vec<UniformInfo> {
         for stage in stages_to_scan {
             for arg in &stage.args {
                 if let Expr::Ident(name) = &arg.value {
-                    if builtins::lookup(name).is_none() && seen.insert(name.clone()) {
+                    if builtins::lookup(name).is_none()
+                        && !is_builtin_variable(name)
+                        && !is_palette_name(name)
+                        && seen.insert(name.clone())
+                    {
                         uniforms.push(UniformInfo {
                             name: name.clone(),
                             default: 0.0,
