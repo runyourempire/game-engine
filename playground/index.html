@@ -1173,9 +1173,19 @@ Operators: + - * / ^ (power)
 OUTPUT ONLY THE GAME CODE. No explanation, no markdown fences, no comments about what it does. Just the raw .game source code.`;
 
 function cleanGameCode(raw) {
+  // 1. Extract from markdown code fences
   const fenceMatch = raw.match(/```(?:game)?\s*\n([\s\S]*?)```/);
-  if (fenceMatch) return fenceMatch[1].trim();
-  return raw.replace(/^```(?:game)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+  if (fenceMatch) raw = fenceMatch[1];
+  else raw = raw.replace(/^```(?:game)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '');
+
+  // 2. Strip preamble/postamble — extract from first 'cinematic' to last '}'
+  raw = raw.trim();
+  const cinIdx = raw.indexOf('cinematic');
+  if (cinIdx > 0) raw = raw.substring(cinIdx);
+  const lastBrace = raw.lastIndexOf('}');
+  if (lastBrace > 0) raw = raw.substring(0, lastBrace + 1);
+
+  return raw.trim();
 }
 
 function tryValidate(code) {

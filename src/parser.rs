@@ -954,7 +954,7 @@ impl Parser {
     }
 
     fn parse_dotted_ident(&mut self) -> Result<String, CompileError> {
-        let mut s = self.expect_ident()?;
+        let mut s = self.expect_ident_or_keyword()?;
         while matches!(self.peek(), Some(Token::Dot)) {
             self.advance();
             let part = self.expect_ident_or_keyword()?;
@@ -1014,9 +1014,9 @@ impl Parser {
 
     fn parse_resonate_entry(&mut self) -> Result<ResonateEntry, CompileError> {
         // source -> target.field * weight
-        let source = self.expect_ident()?;
+        let source = self.expect_ident_or_keyword()?;
         self.expect(&Token::Arrow)?;
-        let target = self.expect_ident()?;
+        let target = self.expect_ident_or_keyword()?;
         self.expect(&Token::Dot)?;
         let field = self.expect_ident_or_keyword()?;
         self.expect(&Token::Star)?;

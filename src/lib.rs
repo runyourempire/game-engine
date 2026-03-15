@@ -1622,4 +1622,174 @@ mod tests {
             );
         }
     }
+
+    // =================================================================
+    // AI-resilience tests — patterns that AI models commonly generate
+    // =================================================================
+
+    #[test]
+    fn ai_semicolons_in_config() {
+        let source = r#"cinematic "t" {
+            layer config { pulse: 0.5; intensity: 1.0; speed: 0.3; }
+            layer main { circle(0.2) | glow(2.0) | tint(1.0, 0.5, 0.2) }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_keyword_as_layer_name() {
+        for keyword in ["flow", "react", "score", "matrix", "feedback", "play"] {
+            let source = format!(
+                r#"cinematic "t" {{
+                    layer {} memory: 0.92 {{
+                        circle(0.3) | glow(2.0) | tint(1.0, 0.5, 0.2)
+                    }}
+                }}"#,
+                keyword
+            );
+            assert!(
+                compile(&source, &default_config()).is_ok(),
+                "'{}' as layer name should compile",
+                keyword
+            );
+        }
+    }
+
+    #[test]
+    fn ai_complex_expressions() {
+        let source = r#"cinematic "t" {
+            layer config { pulse: 0.0 }
+            layer main {
+                circle(0.1 + sin(pulse * 6.28) * 0.05)
+                | glow(2.0 + pulse * 1.5)
+                | tint(1.0, 0.5 + cos(pulse * 3.14) * 0.3, 0.2)
+            }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_negative_numbers() {
+        let source = r#"cinematic "t" {
+            layer main {
+                translate(-0.5, -0.3) | circle(0.3) | glow(2.0) | tint(1.0, 0.5, 0.2)
+            }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_comments_inline() {
+        let source = r#"// A beautiful scene
+        cinematic "t" {
+            // Background layer
+            layer bg memory: 0.92 {
+                warp(scale: 2.0, octaves: 4, strength: 0.2) // organic
+                | fbm(scale: 3.0, octaves: 5) | palette(aurora)
+            }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_multiple_cinematics() {
+        let source = r#"
+        cinematic "a" { layer x { circle(0.3) | glow(2.0) | tint(1.0, 0.5, 0.2) } }
+        cinematic "b" { layer y { ring(0.4, 0.02) | glow(1.5) | tint(0.5, 0.8, 1.0) } }
+        "#;
+        let results = compile(source, &default_config()).unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn ai_missing_bridge_auto_glow() {
+        // AI forgets bridge — compiler auto-inserts glow(1.5)
+        let source = r#"cinematic "t" {
+            layer main { circle(0.3) }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_unknown_builtin_error() {
+        let source = r#"cinematic "t" {
+            layer main { ripple(0.3) | glow(2.0) | tint(1.0, 0.5, 0.2) }
+        }"#;
+        let err = compile(source, &default_config()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown stage function"), "error: {}", msg);
+        assert!(
+            msg.contains("ripple"),
+            "error should mention 'ripple': {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn ai_wrong_pipeline_order_error() {
+        let source = r#"cinematic "t" {
+            layer main { tint(1.0, 0.5, 0.2) | circle(0.3) | glow(2.0) }
+        }"#;
+        assert!(compile(source, &default_config()).is_err());
+    }
+
+    #[test]
+    fn ai_extra_args_tolerated() {
+        // AI passes extra args — should not crash
+        let source = r#"cinematic "t" {
+            layer main { circle(0.3, 0.5) | glow(2.0, 1.0) | tint(1.0, 0.5, 0.2) }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_full_composition() {
+        // Realistic AI-generated multi-layer composition
+        let source = r#"cinematic "floating-rings" {
+            layer config { pulse: 0.0  intensity: 0.5 }
+            layer field memory: 0.92 {
+                warp(scale: 2.5, octaves: 4, strength: 0.15)
+                | fbm(scale: 3.0, octaves: 5) | palette(aurora)
+            }
+            layer ring_1 memory: 0.88 {
+                distort(scale: 2.0, speed: 0.5, strength: 0.03)
+                | ring(0.3, 0.015) | glow(2.0) | tint(0.8, 0.7, 0.3)
+            }
+            layer core memory: 0.95 {
+                circle(0.1) | glow(3.5) | tint(1.0, 0.6, 0.2)
+            }
+            layer edge { ring(0.45, 0.003) | glow(0.8) | tint(0.3, 0.3, 0.35) }
+            arc { pulse: 0.0 -> 1.0 over 5s ease-in-out  intensity: 0.5 -> 1.0 over 8s ease-in-out }
+            resonate { pulse -> ring_1.scale * 0.2  intensity -> core.brightness * 0.5 }
+            pass glow_pass { blur(1.5) }
+            pass frame { vignette(0.4) }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_mouse_interaction() {
+        let source = r#"cinematic "interactive" {
+            layer core memory: 0.95 {
+                translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+                | circle(0.08 + mouse_down * 0.12)
+                | glow(2.0 + mouse_down * 2.5)
+                | tint(1.0, 0.6 + mouse_down * 0.3, 0.2)
+            }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
+
+    #[test]
+    fn ai_keyword_in_resonate_target() {
+        let source = r#"cinematic "t" {
+            layer config { pulse: 0.0 }
+            layer flow memory: 0.92 {
+                warp(scale: 2.0, octaves: 4, strength: 0.2)
+                | fbm(scale: 3.0, octaves: 5) | palette(ocean)
+            }
+            resonate { pulse -> flow.scale * 0.3 }
+        }"#;
+        assert!(compile(source, &default_config()).is_ok());
+    }
 }
