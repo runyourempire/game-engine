@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAME Playground</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg2: #141414;
+    --bg3: #1f1f1f;
+    --border: #2a2a2a;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --accent: #d4af37;
+    --error: #ef4444;
+    --success: #22c55e;
+    --font: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; }
+
+  #app {
+    display: grid;
+    grid-template-rows: 48px 1fr 32px;
+    height: 100vh;
+  }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg2);
+  }
+  header h1 { font-size: 14px; font-weight: 600; letter-spacing: 1px; color: var(--accent); }
+  header h1 span { color: var(--text-dim); font-weight: 400; }
+  .header-controls { display: flex; gap: 8px; align-items: center; }
+  .header-controls select, .header-controls button {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 10px; border-radius: 4px; font-family: var(--font); font-size: 12px; cursor: pointer;
+  }
+  .header-controls button:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary { background: var(--accent) !important; color: #000 !important; font-weight: 600; border-color: var(--accent) !important; }
+  .btn-primary:hover { opacity: 0.9; }
+
+  /* Main */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+  }
+
+  /* Editor panel */
+  .editor-panel {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px;
+  }
+  #editor {
+    flex: 1; overflow: auto; padding: 0;
+    font-size: 13px; line-height: 1.6;
+  }
+  #editor textarea {
+    width: 100%; height: 100%; background: var(--bg); color: var(--text);
+    border: none; padding: 12px 16px; font-family: var(--font); font-size: 13px;
+    line-height: 1.6; resize: none; outline: none; tab-size: 2;
+  }
+
+  /* Preview panel */
+  .preview-panel {
+    display: flex; flex-direction: column;
+    overflow: hidden; background: #000;
+  }
+  #preview-container {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  #preview-container canvas {
+    max-width: 100%; max-height: 100%;
+  }
+  #preview-container .placeholder {
+    color: var(--text-dim); font-size: 13px; text-align: center; line-height: 1.8;
+  }
+
+  /* Errors */
+  #error-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(239, 68, 68, 0.12); border-top: 1px solid var(--error);
+    padding: 8px 12px; font-size: 12px; color: var(--error);
+    max-height: 120px; overflow: auto; display: none;
+    backdrop-filter: blur(8px);
+  }
+
+  /* Status bar */
+  footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; background: var(--bg2); border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text-dim);
+  }
+  #status-text { display: flex; gap: 16px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .dot-ok { background: var(--success); }
+  .dot-err { background: var(--error); }
+  .dot-loading { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+
+  /* Reference sidebar toggle */
+  .ref-toggle { position: absolute; top: 8px; right: 8px; z-index: 10; }
+  .ref-toggle button {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 3px 8px; border-radius: 4px; font-family: var(--font); font-size: 11px; cursor: pointer;
+  }
+  #reference-panel {
+    position: absolute; top: 0; right: 0; width: 320px; height: 100%;
+    background: var(--bg2); border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 12px; font-size: 11px; line-height: 1.6;
+    display: none; z-index: 20;
+  }
+  #reference-panel h3 { color: var(--accent); margin: 12px 0 4px; font-size: 12px; }
+  #reference-panel h3:first-child { margin-top: 0; }
+  #reference-panel code { color: var(--accent); background: var(--bg3); padding: 1px 4px; border-radius: 2px; font-size: 10px; }
+  #reference-panel .close-ref {
+    position: sticky; top: 0; float: right;
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 2px 8px; border-radius: 4px; cursor: pointer; font-family: var(--font); font-size: 11px;
+  }
+
+  /* Parameter Controls */
+  #controls-panel {
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  #controls-panel:empty { display: none; }
+  #controls-panel .controls-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; font-size: 10px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: var(--bg2);
+  }
+  #controls-panel .controls-header button {
+    background: none; border: none; color: var(--text-dim); cursor: pointer;
+    font-family: var(--font); font-size: 10px;
+  }
+  #controls-panel .controls-header button:hover { color: var(--accent); }
+  .control-row {
+    display: grid; grid-template-columns: 100px 1fr 50px;
+    align-items: center; gap: 8px; padding: 4px 12px;
+  }
+  .control-row:hover { background: rgba(212, 175, 55, 0.04); }
+  .control-row label { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .control-row input[type="range"] {
+    width: 100%; height: 4px; -webkit-appearance: none; appearance: none;
+    background: var(--border); border-radius: 2px; outline: none;
+  }
+  .control-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+  }
+  .control-row .control-value {
+    font-size: 10px; color: var(--accent); text-align: right; font-variant-numeric: tabular-nums;
+  }
+
+  /* Output panel (hidden by default, toggled) */
+  #output-panel {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: var(--bg2); border-top: 1px solid var(--border);
+    max-height: 50%; overflow: auto; padding: 12px; font-size: 11px;
+    display: none; z-index: 15;
+  }
+  #output-panel pre { white-space: pre-wrap; word-break: break-all; color: var(--text-dim); }
+
+  /* AI Generation Panel */
+  #ai-panel {
+    border-bottom: 1px solid var(--border); background: var(--bg2);
+    display: none;
+  }
+  #ai-panel.open { display: block; }
+  .ai-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; font-size: 10px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ai-header button {
+    background: none; border: none; color: var(--text-dim); cursor: pointer;
+    font-family: var(--font); font-size: 10px;
+  }
+  .ai-header button:hover { color: var(--accent); }
+  .ai-body { padding: 8px 12px; }
+  .ai-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .ai-row:last-child { margin-bottom: 0; }
+  #ai-prompt {
+    flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 4px; font-family: var(--font); font-size: 12px;
+    outline: none; resize: none; height: 36px;
+  }
+  #ai-prompt:focus { border-color: var(--accent); }
+  #ai-prompt::placeholder { color: var(--text-dim); }
+  #btn-generate {
+    background: var(--accent); color: #000; border: 1px solid var(--accent);
+    padding: 6px 14px; border-radius: 4px; font-family: var(--font); font-size: 12px;
+    font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  #btn-generate:hover { opacity: 0.9; }
+  #btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ai-config { display: flex; gap: 8px; align-items: center; }
+  .ai-config select, .ai-config input {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 3px 8px; border-radius: 4px; font-family: var(--font); font-size: 11px;
+  }
+  .ai-config input[type="password"] { width: 200px; }
+  .ai-config input::placeholder { color: var(--text-dim); }
+  .ai-config label { font-size: 10px; color: var(--text-dim); }
+  #ai-status { font-size: 10px; color: var(--text-dim); padding: 0 12px 6px; }
+  #ai-status.generating { color: var(--accent); }
+  #ai-status.error { color: var(--error); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .editor-panel { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>GAME <span>Playground v0.7.0</span></h1>
+    <div class="header-controls">
+      <select id="template-select">
+        <option value="">Load Example...</option>
+        <option value="hello">Hello Glow</option>
+        <option value="organism">Living Organism</option>
+        <option value="mandala">Mandala Bloom</option>
+        <option value="cosmos">Cosmos</option>
+        <option value="portal">Deep Portal</option>
+        <option value="interactive">Interactive Pulse (Mouse)</option>
+        <option value="turing">Turing Patterns (Compute)</option>
+        <option value="physarum">Physarum Network (Compute)</option>
+      </select>
+      <select id="target-select">
+        <option value="both">WebGPU + WebGL2</option>
+        <option value="webgpu">WebGPU only</option>
+        <option value="webgl2">WebGL2 only</option>
+      </select>
+      <button id="btn-ai">AI Generate</button>
+      <button id="btn-compile" class="btn-primary">Compile (Ctrl+Enter)</button>
+      <button id="btn-screenshot">Screenshot</button>
+      <button id="btn-export">Export JS</button>
+      <button id="btn-share">Share</button>
+      <button id="btn-ref">Reference</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="editor-panel">
+      <div id="ai-panel">
+        <div class="ai-header">
+          <span>AI Visual Generator</span>
+          <button id="btn-ai-close">Close</button>
+        </div>
+        <div class="ai-body">
+          <div class="ai-row">
+            <textarea id="ai-prompt" placeholder="Describe the visual you want... e.g. 'a pulsing golden nebula with orbiting rings'"></textarea>
+            <button id="btn-generate">Generate</button>
+          </div>
+          <div class="ai-row ai-config">
+            <label>Provider:</label>
+            <select id="ai-provider">
+              <option value="anthropic">Claude</option>
+              <option value="openai">OpenAI</option>
+            </select>
+            <label>Key:</label>
+            <input type="password" id="ai-key" placeholder="API key (stored locally)">
+          </div>
+        </div>
+        <div id="ai-status"></div>
+      </div>
+      <div class="panel-header">
+        <span>Editor</span>
+        <span id="validation-status"></span>
+      </div>
+      <div id="editor">
+        <textarea id="source" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+      </div>
+    </div>
+    <div class="preview-panel">
+      <div class="panel-header">
+        <span>Preview</span>
+        <span id="preview-info"></span>
+      </div>
+      <div id="preview-container">
+        <div class="placeholder" id="placeholder">
+          Press <strong>Ctrl+Enter</strong> to compile<br>
+          or select an example above
+        </div>
+      </div>
+      <div id="error-overlay"></div>
+      <div id="controls-panel"></div>
+      <div id="output-panel"><pre id="output-code"></pre></div>
+      <div id="reference-panel"></div>
+    </div>
+  </main>
+
+  <footer>
+    <div id="status-text">
+      <span><span class="status-dot dot-loading" id="wasm-dot"></span>WASM: Loading...</span>
+      <span id="compile-time"></span>
+    </div>
+    <span>GAME Compiler &middot; Rust &rarr; WASM &middot; In-Browser</span>
+  </footer>
+</div>
+
+<script type="module">
+import init, { compileGame, validateGame, getBuiltins, getPaletteNames } from '../pkg/game_compiler.js';
+
+// ── Templates ──
+const TEMPLATES = {
+  hello: `cinematic "hello-glow" {
+  layer main {
+    circle(0.3) | glow(2.0) | tint(0.831, 0.686, 0.216)
+  }
+}`,
+  organism: `// Living Organism — arc + resonate + memory = visual creature
+cinematic "organism" {
+  layer config {
+    pulse: 0.0
+    growth: 0.0
+    breath: 0.0
+  }
+
+  layer nucleus memory: 0.96 {
+    circle(0.2) | glow(3.0) | tint(1.0, 0.4, 0.1)
+  }
+
+  layer membrane memory: 0.88 {
+    ring(0.35, 0.02) | glow(1.5) | tint(0.8, 0.7, 0.3)
+  }
+
+  layer cilia {
+    fbm(5.0, 5, 0.4, 2.0) | glow(1.0) | tint(0.3, 0.9, 0.5)
+  }
+
+  arc {
+    growth: 0.0 -> 1.0 over 8s ease-in-out
+    pulse: 0.0 -> 0.6 over 3s ease-out
+  }
+
+  resonate {
+    growth -> nucleus.scale * 0.4
+    growth -> membrane.scale * 0.6
+    pulse -> cilia.intensity * 0.5
+    pulse -> nucleus.brightness * 0.3
+  }
+}`,
+  mandala: `// Mandala Bloom — radial symmetry + SDF booleans + memory + passes
+cinematic "mandala" {
+  layer config {
+    bloom_amount: 0.0
+    spin: 0.2
+    breath: 0.0
+  }
+
+  layer jewel {
+    subtract(circle(0.12), box(0.05, 0.05))
+    | glow(3.0) | tint(0.83, 0.69, 0.22)
+  }
+
+  layer inner_ring memory: 0.93 {
+    ring(0.2, 0.015) | glow(2.0) | tint(1.0, 0.5, 0.3)
+  }
+
+  layer middle {
+    smooth_union(
+      ring(0.3, 0.01),
+      star(6, 0.32, 0.28),
+      0.04
+    ) | glow(1.5) | tint(0.5, 0.3, 0.9)
+  }
+
+  layer corona memory: 0.85 {
+    polar | simplex(10.0) | glow(1.0) | tint(0.2, 0.6, 0.8)
+  }
+
+  layer edge {
+    ring(0.45, 0.003) | glow(0.8) | tint(0.3, 0.3, 0.35)
+  }
+
+  arc {
+    bloom_amount: 0.0 -> 0.6 over 8s ease-in-out
+    spin: 0.2 -> 0.6 over 6s ease-out
+    breath: 0.0 -> 0.5 over 4s ease-in-out
+  }
+
+  resonate {
+    bloom_amount -> jewel.brightness * 0.5
+    bloom_amount -> middle.brightness * 0.3
+    spin -> inner_ring.scale * 0.2
+    breath -> corona.intensity * 0.4
+    breath -> jewel.scale * 0.15
+  }
+
+  pass bloom { blur(2.0) }
+  pass vignette { vignette(0.5) }
+}`,
+  cosmos: `// Cosmos — every major GAME feature in one composition
+cinematic "cosmos" {
+  layer config {
+    expansion: 0.0
+    energy: 0.0
+    rotation: 0.3
+  }
+
+  layer deep_field {
+    warp(scale: 2.0, octaves: 5, persistence: 0.5, strength: 0.3)
+    | voronoi(12.0) | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 1.0,
+        d_r: 0.0, d_g: 0.1, d_b: 0.2
+      )
+  }
+
+  layer star memory: 0.94 {
+    smooth_union(circle(0.1), ring(0.18, 0.03), 0.06)
+    | glow(3.5) | tint(1.0, 0.85, 0.5)
+  }
+
+  layer accretion memory: 0.88 {
+    distort(scale: 6.0, speed: 0.4, strength: 0.15)
+    | ring(0.3, 0.02) | glow(2.0) | tint(0.9, 0.4, 0.2)
+  }
+
+  layer halo {
+    polar | simplex(4.0) | glow(1.0) | tint(0.2, 0.15, 0.4)
+  }
+
+  layer particles {
+    ring(0.35, 0.008) | glow(1.5) | tint(0.5, 0.8, 1.0)
+  }
+
+  arc {
+    expansion: 0.0 -> 1.0 over 12s ease-in-out
+    energy: 0.0 -> 0.8 over 6s ease-out
+    rotation: 0.3 -> 0.8 over 8s ease-in-out
+  }
+
+  resonate {
+    expansion -> star.scale * 0.4
+    expansion -> accretion.scale * 0.6
+    expansion -> halo.scale * 0.3
+    energy -> star.brightness * 0.5
+    energy -> particles.brightness * 0.7
+    rotation -> accretion.brightness * 0.2
+  }
+
+  pass glow { blur(2.0) }
+  pass frame { vignette(0.4) }
+}`,
+  portal: `// Deep Space Portal — swirling energy with bright pulsing core
+cinematic "deep-portal" {
+  layer config {
+    intensity: 0.5
+    pulse: 0.0
+  }
+
+  layer vortex memory: 0.91 {
+    polar
+    | warp(scale: 4.0, octaves: 5, persistence: 0.5, strength: 0.35)
+    | fbm(scale: 3.0, octaves: 5)
+    | palette(
+        a_r: 0.02, a_g: 0.01, a_b: 0.08,
+        b_r: 0.15, b_g: 0.08, b_b: 0.2,
+        c_r: 0.8, c_g: 0.5, c_b: 1.0,
+        d_r: 0.0, d_g: 0.15, d_b: 0.4
+      )
+  }
+
+  layer core memory: 0.96 {
+    circle(0.08) | glow(4.5) | tint(0.9, 0.7, 1.0)
+  }
+
+  layer inner_ring memory: 0.88 {
+    distort(scale: 3.0, speed: 0.8, strength: 0.04)
+    | ring(0.2, 0.015) | glow(2.5) | tint(0.6, 0.3, 0.9)
+  }
+
+  layer outer_ring memory: 0.85 {
+    distort(scale: 2.0, speed: 0.5, strength: 0.03)
+    | ring(0.35, 0.01) | glow(1.8) | tint(0.3, 0.5, 0.8)
+  }
+
+  layer boundary {
+    ring(0.45, 0.003) | glow(0.8) | tint(0.2, 0.2, 0.35)
+  }
+
+  arc {
+    intensity: 0.5 -> 1.0 over 8s ease-in-out
+    pulse: 0.0 -> 0.7 over 5s ease-out
+  }
+
+  resonate {
+    intensity -> core.brightness * 0.5
+    intensity -> vortex.brightness * 0.3
+    pulse -> inner_ring.scale * 0.15
+    pulse -> outer_ring.scale * 0.1
+  }
+
+  matrix color {
+    [
+      1.0, -0.02, 0.08,
+      0.0,  1.0, -0.02,
+      0.05, 0.0,  1.1
+    ]
+  }
+
+  pass edge { vignette(0.45) }
+}`,
+  interactive: `// Interactive Pulse — click/touch to interact!
+// Shapes follow your cursor, click to pulse & intensify
+cinematic "interactive-pulse" {
+  layer config {
+    intensity: 0.5
+  }
+
+  layer field memory: 0.92 {
+    warp(scale: 2.5, octaves: 4, strength: 0.15)
+    | fbm(scale: 3.0, octaves: 5) | palette(twilight)
+  }
+
+  layer core memory: 0.95 {
+    translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+    | circle(0.08 + mouse_down * 0.12)
+    | glow(2.0 + mouse_down * 2.5)
+    | tint(1.0, 0.6 + mouse_down * 0.3, 0.2)
+  }
+
+  layer ring memory: 0.88 {
+    translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+    | ring(0.2 + mouse_down * 0.15, 0.015)
+    | glow(1.5 + mouse_down * 1.0)
+    | tint(0.8, 0.5, 1.0)
+  }
+
+  layer edge {
+    ring(0.45, 0.003) | glow(0.8) | tint(0.3, 0.3, 0.35)
+  }
+
+  arc {
+    intensity: 0.5 -> 1.0 over 8s ease-in-out
+  }
+
+  resonate {
+    intensity -> core.brightness * 0.3
+    intensity -> ring.scale * 0.2
+  }
+
+  pass glow_pass { blur(1.5) }
+  pass frame { vignette(0.4) }
+}`,
+  turing: `// Reaction-Diffusion — Gray-Scott model GPU compute
+cinematic "turing-patterns" {
+  layer bg {
+    circle(0.5) | glow(1.5) | tint(0.02, 0.02, 0.05)
+  }
+
+  react {
+    feed: 0.055
+    kill: 0.062
+    diffuse_a: 1.0
+    diffuse_b: 0.5
+    seed: center(0.15)
+  }
+}`,
+  physarum: `// Physarum Slime Mold — stigmergy compute simulation
+cinematic "physarum-network" {
+  layer bg {
+    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0)
+  }
+
+  swarm {
+    agents: 100000
+    sensor_angle: 45
+    sensor_dist: 9.0
+    turn_angle: 45
+    step: 1.0
+    deposit: 5.0
+    decay: 0.95
+    diffuse: 1
+    bounds: wrap
+  }
+}`
+};
+
+// ── Reference Panel Content ──
+const REFERENCE_HTML = `
+<button class="close-ref" onclick="document.getElementById('reference-panel').style.display='none'">Close</button>
+<h3>SDF Generators</h3>
+<code>circle(r)</code> <code>ring(r,w)</code> <code>star(pts,r,inner)</code> <code>box(w,h)</code> <code>hex(r)</code>
+<code>fbm(scale,oct,pers,lac)</code> <code>simplex(scale)</code> <code>voronoi(scale)</code>
+<code>line(x1,y1,x2,y2,w)</code> <code>capsule(len,r)</code> <code>triangle(size)</code>
+<code>arc_sdf(r,angle,w)</code> <code>cross(size,arm_w)</code> <code>heart(size)</code>
+<code>egg(r,k)</code> <code>spiral(turns,w)</code> <code>grid(spacing,w)</code>
+<code>radial_fade(inner,outer)</code>
+
+<h3>Boolean Ops</h3>
+<code>union(a,b)</code> <code>subtract(a,b)</code> <code>intersect(a,b)</code>
+<code>smooth_union(a,b,k)</code> <code>smooth_subtract(a,b,k)</code> <code>smooth_intersect(a,b,k)</code>
+<code>xor(a,b)</code> <code>morph(a,b,t)</code>
+
+<h3>SDF Modifiers</h3>
+<code>mask_arc(angle)</code> <code>round(r)</code> <code>shell(w)</code> <code>onion(count,w)</code>
+
+<h3>Bridges (SDF &rarr; Color)</h3>
+<code>glow(intensity)</code> <code>shade(r,g,b)</code> <code>emissive(intensity)</code>
+<code>palette(name)</code> or <code>palette(a_r,a_g,a_b,...)</code>
+
+<h3>Color Processors</h3>
+<code>tint(r,g,b)</code> <code>bloom(threshold,strength)</code> <code>grain(amount)</code> <code>outline(width)</code>
+
+<h3>Transforms</h3>
+<code>translate(x,y)</code> <code>rotate(speed)</code> <code>scale(s)</code>
+<code>warp(scale,oct,pers,lac,strength)</code> <code>distort(scale,speed,strength)</code>
+<code>polar</code> <code>repeat(sx,sy)</code> <code>mirror</code> <code>radial(count)</code>
+
+<h3>Palettes (30)</h3>
+<code>fire</code> <code>ocean</code> <code>neon</code> <code>aurora</code> <code>sunset</code>
+<code>ice</code> <code>ember</code> <code>lava</code> <code>magma</code> <code>inferno</code>
+<code>plasma</code> <code>electric</code> <code>cyber</code> <code>matrix</code> <code>forest</code>
+<code>moss</code> <code>earth</code> <code>desert</code> <code>blood</code> <code>rose</code>
+<code>candy</code> <code>royal</code> <code>deep_sea</code> <code>coral</code> <code>arctic</code>
+<code>twilight</code> <code>vapor</code> <code>gold</code> <code>silver</code> <code>monochrome</code>
+
+<h3>Memory</h3>
+<code>layer name memory: 0.93 { ... }</code><br>
+Ping-pong framebuffer persistence (0.0–1.0 = decay factor)
+
+<h3>Arc (Timeline)</h3>
+<code>arc { param: start -> end over Ns ease-in-out }</code><br>
+Easing: linear, ease-in, ease-out, ease-in-out
+
+<h3>Resonate (Cross-layer coupling)</h3>
+<code>resonate { source -> target.property * factor }</code><br>
+Properties: scale, brightness, intensity, speed
+
+<h3>Post-processing Passes (8 effects)</h3>
+<code>pass name { blur(radius) }</code> — gaussian blur<br>
+<code>pass name { vignette(strength) }</code> — edge darkening<br>
+<code>pass name { chromatic(offset) }</code> — chromatic aberration<br>
+<code>pass name { sharpen(strength) }</code> — unsharp mask<br>
+<code>pass name { film_grain(amount) }</code> — film grain noise<br>
+<code>pass name { bloom(threshold, strength) }</code><br>
+<code>pass name { grain(amount) }</code><br>
+<code>pass name { tint(r, g, b) }</code><br>
+Note: do NOT use "blend" as a pass name (reserved keyword)
+
+<h3>Interaction (Built-in)</h3>
+<code>mouse_x</code> <code>mouse_y</code> — cursor position (0.0–1.0)<br>
+<code>mouse_down</code> — 1.0 when pressed, 0.0 when released<br>
+Use in expressions: <code>circle(0.1 + mouse_down * 0.2)</code><br>
+Follow cursor: <code>translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)</code><br>
+Touch supported on mobile.
+
+<h3>Audio (Built-in)</h3>
+<code>bass</code> <code>mid</code> <code>treble</code> <code>energy</code> <code>beat</code><br>
+Use in expressions for audio-reactive visuals.
+
+<h3>Matrix</h3>
+<code>matrix coupling { [9 floats] }</code> — parameter coupling<br>
+<code>matrix color { [9 floats] }</code> — color grading (3x3)
+
+<h3>Quality (Automatic)</h3>
+ACES tonemapping + dithering applied automatically to all output.
+No manual setup needed — the compiler handles it.
+`;
+
+// ── State ──
+let wasmReady = false;
+let lastCompiledJs = null;
+let activeComponent = null;
+let activeUniforms = [];
+let debounceTimer = null;
+
+// ── DOM ──
+const sourceEl = document.getElementById('source');
+const previewContainer = document.getElementById('preview-container');
+const placeholder = document.getElementById('placeholder');
+const errorOverlay = document.getElementById('error-overlay');
+const validationStatus = document.getElementById('validation-status');
+const previewInfo = document.getElementById('preview-info');
+const compileTimeEl = document.getElementById('compile-time');
+const wasmDot = document.getElementById('wasm-dot');
+const outputPanel = document.getElementById('output-panel');
+const outputCode = document.getElementById('output-code');
+const referencePanel = document.getElementById('reference-panel');
+const controlsPanel = document.getElementById('controls-panel');
+
+// ── Init WASM ──
+async function initWasm() {
+  try {
+    await init();
+    wasmReady = true;
+    wasmDot.className = 'status-dot dot-ok';
+    wasmDot.parentElement.innerHTML = '<span class="status-dot dot-ok"></span>WASM: Ready';
+
+    // Load builtins for validation
+    const builtins = JSON.parse(getBuiltins());
+    const palettes = JSON.parse(getPaletteNames());
+    console.log(`GAME Compiler loaded: ${builtins.length} builtins, ${palettes.length} palettes`);
+
+    // Load from URL hash or default example
+    const hashSrc = location.hash.match(/src=([A-Za-z0-9+/=]+)/);
+    if (hashSrc) {
+      try {
+        sourceEl.value = decodeURIComponent(escape(atob(hashSrc[1])));
+        validateSource();
+        compile();
+      } catch { sourceEl.value = TEMPLATES.hello; }
+    } else {
+      sourceEl.value = TEMPLATES.hello;
+      validateSource();
+    }
+  } catch (e) {
+    wasmDot.className = 'status-dot dot-err';
+    wasmDot.parentElement.innerHTML = `<span class="status-dot dot-err"></span>WASM: Failed — ${e.message}`;
+    console.error('WASM init failed:', e);
+  }
+}
+
+// ── Validate (real-time, debounced) ──
+function validateSource() {
+  if (!wasmReady) return;
+  const source = sourceEl.value;
+  if (!source.trim()) {
+    validationStatus.textContent = '';
+    return;
+  }
+  const result = validateGame(source);
+  if (result === 'ok') {
+    validationStatus.innerHTML = '<span style="color: var(--success)">Valid</span>';
+  } else {
+    validationStatus.innerHTML = `<span style="color: var(--error)">Error</span>`;
+  }
+}
+
+// ── Parameter Controls ──
+function buildControls(uniforms) {
+  controlsPanel.innerHTML = '';
+  if (!uniforms || uniforms.length === 0) return;
+
+  const header = document.createElement('div');
+  header.className = 'controls-header';
+  header.innerHTML = `<span>Parameters (${uniforms.length})</span><button id="btn-reset-params">Reset</button>`;
+  controlsPanel.appendChild(header);
+
+  const rows = [];
+  for (const u of uniforms) {
+    const row = document.createElement('div');
+    row.className = 'control-row';
+
+    const label = document.createElement('label');
+    label.textContent = u.name;
+    label.title = u.name;
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = 0;
+    slider.max = Math.max(2, u.default * 3, 1);
+    slider.step = 0.01;
+    slider.value = u.default;
+    slider.dataset.name = u.name;
+    slider.dataset.defaultVal = u.default;
+
+    const val = document.createElement('span');
+    val.className = 'control-value';
+    val.textContent = u.default.toFixed(2);
+
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      val.textContent = v.toFixed(2);
+      if (activeComponent) {
+        activeComponent[u.name] = v;
+      }
+    });
+
+    row.appendChild(label);
+    row.appendChild(slider);
+    row.appendChild(val);
+    controlsPanel.appendChild(row);
+    rows.push({ slider, val, u });
+  }
+
+  header.querySelector('#btn-reset-params').addEventListener('click', () => {
+    for (const { slider, val, u } of rows) {
+      slider.value = u.default;
+      val.textContent = u.default.toFixed(2);
+      if (activeComponent) {
+        activeComponent[u.name] = u.default;
+      }
+    }
+  });
+}
+
+// ── Compile ──
+function compile() {
+  if (!wasmReady) return;
+  const source = sourceEl.value;
+  if (!source.trim()) return;
+
+  const target = document.getElementById('target-select').value;
+  const t0 = performance.now();
+
+  try {
+    const resultJson = compileGame(source, target);
+    const elapsed = (performance.now() - t0).toFixed(1);
+    compileTimeEl.textContent = `Compiled in ${elapsed}ms`;
+
+    // Check if result is an error string (not JSON)
+    let results;
+    try {
+      results = JSON.parse(resultJson);
+    } catch {
+      showError(resultJson);
+      return;
+    }
+
+    if (!Array.isArray(results) || results.length === 0) {
+      showError('Compilation returned no output');
+      return;
+    }
+
+    hideError();
+    const compiled = results[0];
+    lastCompiledJs = compiled.js;
+    activeUniforms = compiled.uniforms || [];
+
+    previewInfo.textContent = `${compiled.name} · ${(compiled.js.length / 1024).toFixed(1)}KB`;
+
+    // Execute the compiled Web Component
+    renderPreview(compiled);
+
+  } catch (e) {
+    compileTimeEl.textContent = '';
+    showError(e.message || String(e));
+  }
+}
+
+// ── Render Preview ──
+let compileCounter = 0;
+
+function renderPreview(compiled) {
+  // Clean up previous — destroy GPU resources
+  if (activeComponent) {
+    // Try to call cleanup methods if they exist
+    try {
+      if (activeComponent._renderer) {
+        activeComponent._renderer.destroy?.();
+      }
+      if (activeComponent._animFrame) {
+        cancelAnimationFrame(activeComponent._animFrame);
+      }
+    } catch (e) { /* ignore cleanup errors */ }
+    activeComponent.remove();
+    activeComponent = null;
+  }
+  controlsPanel.innerHTML = '';
+
+  // Also remove any stale script tags from previous compiles
+  document.querySelectorAll('script[data-game-playground]').forEach(s => s.remove());
+
+  placeholder.style.display = 'none';
+
+  const tagName = `game-${compiled.name}`;
+  compileCounter++;
+
+  // Always use a unique tag to avoid customElements re-registration issues
+  const actualTag = `${tagName}-p${compileCounter}`;
+
+  // Replace the customElements.define call with our unique tag
+  let js = compiled.js.replace(
+    /customElements\.define\(['"][^'"]+['"]/,
+    `customElements.define('${actualTag}'`
+  );
+
+  // Also replace the class name reference if needed (the IIFE captures it locally, so this is safe)
+
+  // Use <script> tag injection instead of import() — the compiled JS is an IIFE, not an ES module
+  const script = document.createElement('script');
+  script.setAttribute('data-game-playground', 'true');
+  script.textContent = js;
+
+  // Listen for errors during script execution
+  const errorHandler = (e) => {
+    showError(`Runtime: ${e.message || e.error?.message || 'Unknown error'}`);
+  };
+  window.addEventListener('error', errorHandler);
+
+  try {
+    document.head.appendChild(script);
+
+    // Give the custom element a moment to register, then create it
+    requestAnimationFrame(() => {
+      window.removeEventListener('error', errorHandler);
+
+      if (!customElements.get(actualTag)) {
+        showError(`Component '${actualTag}' failed to register. Check console for WebGPU errors.`);
+        return;
+      }
+
+      const el = document.createElement(actualTag);
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.style.display = 'block';
+      previewContainer.appendChild(el);
+      activeComponent = el;
+      buildControls(activeUniforms);
+    });
+  } catch (e) {
+    window.removeEventListener('error', errorHandler);
+    showError(`Script: ${e.message}`);
+  }
+}
+
+// ── Error handling ──
+function showError(msg) {
+  errorOverlay.textContent = msg;
+  errorOverlay.style.display = 'block';
+  validationStatus.innerHTML = '<span style="color: var(--error)">Error</span>';
+}
+function hideError() {
+  errorOverlay.style.display = 'none';
+}
+
+// ── Event Handlers ──
+sourceEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(validateSource, 300);
+});
+
+sourceEl.addEventListener('keydown', (e) => {
+  // Ctrl+Enter to compile
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    compile();
+    return;
+  }
+  // Tab inserts 2 spaces
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = sourceEl.selectionStart;
+    const end = sourceEl.selectionEnd;
+    sourceEl.value = sourceEl.value.substring(0, start) + '  ' + sourceEl.value.substring(end);
+    sourceEl.selectionStart = sourceEl.selectionEnd = start + 2;
+  }
+});
+
+// Template selector
+document.getElementById('template-select').addEventListener('change', (e) => {
+  const key = e.target.value;
+  if (key && TEMPLATES[key]) {
+    sourceEl.value = TEMPLATES[key];
+    validateSource();
+    e.target.value = '';
+    compile();
+  }
+});
+
+// Compile button
+document.getElementById('btn-compile').addEventListener('click', compile);
+
+// Export button
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (!lastCompiledJs) {
+    showError('Nothing compiled yet. Press Ctrl+Enter first.');
+    return;
+  }
+  // Toggle output panel
+  if (outputPanel.style.display === 'block') {
+    outputPanel.style.display = 'none';
+  } else {
+    outputCode.textContent = lastCompiledJs;
+    outputPanel.style.display = 'block';
+    referencePanel.style.display = 'none';
+  }
+});
+
+// Reference button
+document.getElementById('btn-ref').addEventListener('click', () => {
+  if (referencePanel.style.display === 'block') {
+    referencePanel.style.display = 'none';
+  } else {
+    referencePanel.innerHTML = REFERENCE_HTML;
+    referencePanel.style.display = 'block';
+    outputPanel.style.display = 'none';
+  }
+});
+
+// Screenshot button — capture current frame as PNG
+document.getElementById('btn-screenshot').addEventListener('click', () => {
+  if (!activeComponent) {
+    showError('Nothing rendered. Compile first.');
+    return;
+  }
+  try {
+    const dataUrl = activeComponent.getFrameDataURL?.('image/png');
+    if (dataUrl) {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `game-${Date.now()}.png`;
+      a.click();
+    } else {
+      // Fallback: grab canvas from shadow root
+      const canvas = activeComponent.shadowRoot?.querySelector('canvas');
+      if (canvas) {
+        canvas.toBlob(blob => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `game-${Date.now()}.png`;
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      } else {
+        showError('No canvas found for screenshot');
+      }
+    }
+  } catch (e) {
+    showError(`Screenshot failed: ${e.message}`);
+  }
+});
+
+// Share button — encode source in URL hash
+document.getElementById('btn-share').addEventListener('click', () => {
+  const source = sourceEl.value.trim();
+  if (!source) {
+    showError('Nothing to share. Write some GAME code first.');
+    return;
+  }
+  const encoded = btoa(unescape(encodeURIComponent(source)));
+  const url = `${location.origin}${location.pathname}#src=${encoded}`;
+  navigator.clipboard.writeText(url).then(() => {
+    previewInfo.textContent = 'Share URL copied to clipboard!';
+    setTimeout(() => { previewInfo.textContent = ''; }, 3000);
+  }).catch(() => {
+    // Fallback: show URL in prompt
+    prompt('Share this URL:', url);
+  });
+});
+
+// Close panels on click outside
+previewContainer.addEventListener('click', (e) => {
+  if (e.target === previewContainer) {
+    outputPanel.style.display = 'none';
+    referencePanel.style.display = 'none';
+  }
+});
+
+// ── AI Generation ──
+const aiPanel = document.getElementById('ai-panel');
+const aiPromptEl = document.getElementById('ai-prompt');
+const aiKeyEl = document.getElementById('ai-key');
+const aiProviderEl = document.getElementById('ai-provider');
+const aiStatusEl = document.getElementById('ai-status');
+const btnGenerate = document.getElementById('btn-generate');
+
+// Restore saved API key and provider
+aiKeyEl.value = localStorage.getItem('game-ai-key') || '';
+aiProviderEl.value = localStorage.getItem('game-ai-provider') || 'anthropic';
+aiKeyEl.addEventListener('change', () => localStorage.setItem('game-ai-key', aiKeyEl.value));
+aiProviderEl.addEventListener('change', () => localStorage.setItem('game-ai-provider', aiProviderEl.value));
+
+// Toggle AI panel
+document.getElementById('btn-ai').addEventListener('click', () => {
+  aiPanel.classList.toggle('open');
+  if (aiPanel.classList.contains('open')) aiPromptEl.focus();
+});
+document.getElementById('btn-ai-close').addEventListener('click', () => {
+  aiPanel.classList.remove('open');
+});
+
+// Enter to generate in AI prompt
+aiPromptEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    generateFromAI();
+  }
+});
+btnGenerate.addEventListener('click', generateFromAI);
+
+const GAME_SYSTEM_PROMPT = `You are a visual artist working in the GAME language. You produce .game code that compiles to living, GPU-accelerated Web Components.
+
+Your output should be HYPER QUALITY -- not basic demos, but visuals that make people stop and stare.
+
+## Core Syntax
+cinematic "name" {
+  layer config { param: default_value }
+  layer name [memory: 0.0-1.0] [opacity: 0.0-1.0] [blend: add|screen|multiply|overlay] {
+    stage1(args) | stage2(args) | bridge(args) | color_op(args)
+  }
+  arc { param: start -> end over Ns easing }
+  resonate { param -> layer.property * weight }
+  matrix color { [9 floats] }
+  pass name { effect(args) }
+}
+
+Pipeline states: Position -> Sdf -> Color (every layer MUST reach Color).
+Stages chain with |.
+
+## Builtins
+Position->Position: translate(x,y), rotate(speed), scale(s), warp(scale,oct,pers,lac,strength), distort(scale,speed,strength), polar, repeat(sx,sy), mirror, radial(count)
+Position->Sdf: circle(r), ring(r,w), star(pts,r,inner), box(w,h), hex(r), triangle(size), line(x1,y1,x2,y2,w), capsule(len,r), arc_sdf(r,angle,w), cross(size,arm), heart(size), egg(r,k), spiral(turns,w), grid(spacing,w), fbm(scale,oct,pers,lac), simplex(scale), voronoi(scale), radial_fade(inner,outer)
+Boolean: union(a,b), subtract(a,b), intersect(a,b), smooth_union(a,b,k), smooth_subtract(a,b,k), smooth_intersect(a,b,k), xor(a,b), morph(a,b,t)
+Sdf->Sdf: round(r), shell(w), onion(count,w), mask_arc(angle)
+Sdf->Color: glow(intensity), shade(r,g,b), emissive(intensity), palette(name)
+Color->Color: tint(r,g,b), bloom(threshold,strength), grain(amount), outline(width)
+
+## 30 Palettes
+fire, ocean, neon, aurora, sunset, ice, ember, lava, magma, inferno, plasma, electric, cyber, matrix, forest, moss, earth, desert, blood, rose, candy, royal, deep_sea, coral, arctic, twilight, vapor, gold, silver, monochrome
+
+## Pass effects: blur(radius), vignette(strength), chromatic(offset), sharpen(strength), film_grain(amount)
+
+## Built-in Inputs (use in any expression)
+Interaction: mouse_x (0-1), mouse_y (0-1), mouse_down (0 or 1)
+Audio: bass, mid, treble, energy, beat
+Example: translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0) | circle(0.1 + mouse_down * 0.15) | glow(2.0 + mouse_down * 2.0)
+
+## Resonate properties: .scale, .brightness, .intensity, .opacity
+## Easing: linear, ease-in, ease-out, ease-in-out, elastic, bounce
+## Config params use NEWLINES not semicolons
+## Parameters used in arc/resonate MUST be declared in config layer
+## Compiler auto-applies ACES tonemapping + dithering
+
+## Rules
+1. glow() is the primary bridge -- best results 90% of the time
+2. warp() before noise for organic textures
+3. memory: 0.85-0.95 for alive flowing layers
+4. 3-6 layers sweet spot
+5. Always add pass frame { vignette(0.4) }
+6. Use resonate for emergent behavior
+7. cinematic names: kebab-case, layer names: snake_case
+
+OUTPUT ONLY THE GAME CODE. No explanation, no markdown fences, no comments about what it does. Just the raw .game source code.`;
+
+async function generateFromAI() {
+  const prompt = aiPromptEl.value.trim();
+  if (!prompt) return;
+
+  const apiKey = aiKeyEl.value.trim();
+  if (!apiKey) {
+    aiStatusEl.textContent = 'Enter an API key first';
+    aiStatusEl.className = 'error';
+    return;
+  }
+
+  const provider = aiProviderEl.value;
+  btnGenerate.disabled = true;
+  aiStatusEl.textContent = 'Generating...';
+  aiStatusEl.className = 'generating';
+
+  try {
+    let gameCode;
+    if (provider === 'anthropic') {
+      gameCode = await callAnthropic(apiKey, prompt);
+    } else {
+      gameCode = await callOpenAI(apiKey, prompt);
+    }
+
+    // Clean up response -- strip markdown fences, explanatory text, etc.
+    // Extract content between first ```game/``` block if present
+    const fenceMatch = gameCode.match(/```(?:game)?\s*\n([\s\S]*?)```/);
+    if (fenceMatch) {
+      gameCode = fenceMatch[1].trim();
+    } else {
+      // Strip any standalone fence markers
+      gameCode = gameCode.replace(/^```(?:game)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+    }
+
+    sourceEl.value = gameCode;
+    validateSource();
+    aiStatusEl.textContent = 'Generated. Compiling...';
+    aiStatusEl.className = 'generating';
+
+    // Auto-compile
+    setTimeout(() => {
+      compile();
+      aiStatusEl.textContent = 'Done';
+      aiStatusEl.className = '';
+    }, 100);
+
+  } catch (e) {
+    aiStatusEl.textContent = `Error: ${e.message}`;
+    aiStatusEl.className = 'error';
+  } finally {
+    btnGenerate.disabled = false;
+  }
+}
+
+async function callAnthropic(apiKey, userPrompt) {
+  // Proxy through local server to avoid CORS issues
+  const resp = await fetch('/api/anthropic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: GAME_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Anthropic API ${resp.status}: ${err.substring(0, 200)}`);
+  }
+  const data = await resp.json();
+  return data.content[0].text;
+}
+
+async function callOpenAI(apiKey, userPrompt) {
+  // Proxy through local server to avoid CORS issues
+  const resp = await fetch('/api/openai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey,
+      model: 'gpt-4o',
+      max_tokens: 4096,
+      messages: [
+        { role: 'system', content: GAME_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`API ${resp.status}: ${err.substring(0, 200)}`);
+  }
+  const data = await resp.json();
+  return data.choices[0].message.content;
+}
+
+// ── Boot ──
+initWasm();
+</script>
+</body>
+</html>

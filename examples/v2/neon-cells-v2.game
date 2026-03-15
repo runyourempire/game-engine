@@ -1,0 +1,79 @@
+// neon-cells-v2 — Bioluminescent organisms in a living membrane.
+// Voronoi cells pulse independently, boundaries shimmer with energy,
+// memory creates afterglow as cells divide and merge.
+
+cinematic "neon-cells" {
+  layer config {
+    pulse: 0.0
+    division: 0.0
+    glow_energy: 0.0
+  }
+
+  // Deep substrate — warped voronoi at large scale for organic background
+  layer substrate memory: 0.92 {
+    warp(scale: 1.5, octaves: 5, persistence: 0.5, strength: 0.35)
+    | voronoi(4.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 1.0,
+        d_r: 0.0, d_g: 0.1, d_b: 0.2
+      )
+  }
+
+  // Primary cell layer — medium scale voronoi with distortion for movement
+  layer cells memory: 0.86 {
+    distort(scale: 3.0, speed: 0.4, strength: 0.15)
+    | voronoi(8.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 2.0, c_g: 1.0, c_b: 0.0,
+        d_r: 0.5, d_g: 0.2, d_b: 0.0
+      )
+  }
+
+  // Fine membrane detail — high frequency cells for texture
+  layer membrane memory: 0.80 {
+    warp(scale: 4.0, octaves: 3, strength: 0.2)
+    | voronoi(16.0)
+    | glow(2.0)
+    | tint(0.2, 0.8, 1.0)
+  }
+
+  // Nuclei — small bright dots at cell centers via boolean subtraction
+  layer nuclei memory: 0.90 {
+    distort(scale: 3.0, speed: 0.3, strength: 0.12)
+    | circle(0.02)
+    | glow(3.5)
+    | tint(1.0, 0.4, 0.8)
+  }
+
+  // Energy flow through cell boundaries — polar noise creating circulation
+  layer circulation opacity: 0.5 {
+    polar
+    | warp(scale: 2.0, octaves: 4, strength: 0.3)
+    | simplex(6.0)
+    | glow(1.0)
+    | tint(0.3, 1.0, 0.5)
+  }
+
+  arc {
+    pulse: 0.0 -> 0.8 over 5s ease-in-out
+    division: 0.0 -> 0.6 over 8s ease-out
+    glow_energy: 0.0 -> 1.0 over 3s ease-in-out
+  }
+
+  resonate {
+    pulse -> cells.brightness * 0.5
+    pulse -> nuclei.brightness * 0.7
+    division -> membrane.intensity * 0.4
+    division -> substrate.intensity * 0.3
+    glow_energy -> circulation.brightness * 0.6
+    glow_energy -> cells.scale * 0.1
+    pulse -> membrane.scale * 0.08
+  }
+
+  pass bloom { blur(2.0) }
+  pass depth { vignette(0.35) }
+}

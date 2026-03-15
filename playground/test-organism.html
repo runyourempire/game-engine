@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>GAME GPU Debug - Organism</title>
+<style>
+  body { margin: 0; background: #000; display: flex; flex-direction: column; height: 100vh; }
+  #log { color: #0f0; background: #111; font-family: monospace; font-size: 11px; padding: 8px; max-height: 300px; overflow: auto; border-top: 1px solid #333; }
+  .err { color: #f44; }
+  .warn { color: #fa0; }
+  .ok { color: #0f0; }
+</style>
+</head>
+<body>
+<canvas id="canvas" style="flex:1;width:100%;"></canvas>
+<pre id="log"></pre>
+
+<script>
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `[${(performance.now()/1000).toFixed(3)}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+window.addEventListener('error', e => log(`GLOBAL ERROR: ${e.message}`, 'err'));
+window.addEventListener('unhandledrejection', e => log(`UNHANDLED REJECTION: ${e.reason}`, 'err'));
+
+async function run() {
+  const canvas = document.getElementById('canvas');
+  // Set canvas size
+  canvas.width = 800;
+  canvas.height = 600;
+  log(`Canvas: ${canvas.width}x${canvas.height}`);
+
+  // ── Check WebGPU ──
+  if (!navigator.gpu) {
+    log('No WebGPU support', 'err');
+    return;
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { log('No adapter', 'err'); return; }
+  log(`Adapter: ${JSON.stringify(adapter.info)}`, 'ok');
+
+  const device = await adapter.requestDevice();
+  log('Device created', 'ok');
+
+  // Listen for ALL uncaptured errors
+  device.addEventListener('uncapturederror', (e) => {
+    log(`GPU UNCAPTURED ERROR: ${e.error.message}`, 'err');
+  });
+  device.lost.then(info => {
+    log(`DEVICE LOST: ${info.reason} - ${info.message}`, 'err');
+  });
+
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  log(`Format: ${format}`);
+
+  const ctx = canvas.getContext('webgpu');
+  ctx.configure({ device, format, alphaMode: 'premultiplied', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST });
+  log('Context configured');
+
+  // ── Load and compile ──
+  log('Loading WASM...');
+  const { default: init, compileGame } = await import('../pkg/game_compiler.js');
+  await init();
+  log('WASM ready', 'ok');
+
+  const source = `cinematic "organism" {
+  layer config {
+    pulse: 0.0
+    growth: 0.0
+  }
+
+  layer nucleus memory: 0.96 {
+    circle(0.2) | glow(3.0) | tint(1.0, 0.4, 0.1)
+  }
+
+  layer membrane memory: 0.88 {
+    ring(0.35, 0.02) | glow(1.5) | tint(0.8, 0.7, 0.3)
+  }
+
+  layer cilia {
+    fbm(5.0, 5, 0.4, 2.0) | glow(1.0) | tint(0.3, 0.9, 0.5)
+  }
+
+  arc {
+    growth: 0.0 -> 1.0 over 8s ease-in-out
+    pulse: 0.0 -> 0.6 over 3s ease-out
+  }
+
+  resonate {
+    growth -> nucleus.scale * 0.4
+    growth -> membrane.scale * 0.6
+    pulse -> cilia.intensity * 0.5
+    pulse -> nucleus.brightness * 0.3
+  }
+}`;
+
+  let resultJson;
+  try {
+    resultJson = compileGame(source, 'webgpu');
+  } catch (e) {
+    log(`compileGame threw: ${e}`, 'err');
+    log(`Error type: ${typeof e}, keys: ${e ? Object.keys(e) : 'N/A'}`, 'err');
+    log(`String: ${String(e)}`, 'err');
+    return;
+  }
+  log(`Raw result (first 200): ${resultJson.substring(0, 200)}`);
+  let results;
+  try {
+    results = JSON.parse(resultJson);
+  } catch {
+    log(`Compile error (not JSON): ${resultJson}`, 'err');
+    return;
+  }
+  if (!Array.isArray(results)) { log(`Compile error: ${resultJson}`, 'err'); return; }
+  const compiled = results[0];
+  log(`Compiled: ${compiled.name}, ${(compiled.js.length/1024).toFixed(1)}KB`, 'ok');
+
+  // ── Extract shaders from compiled JS ──
+  const wgslVMatch = compiled.js.match(/const WGSL_V = `([\s\S]*?)`;/);
+  const wgslFMatch = compiled.js.match(/const WGSL_F = `([\s\S]*?)`;/);
+  if (!wgslVMatch || !wgslFMatch) { log('Could not extract shaders', 'err'); return; }
+
+  const wgslV = wgslVMatch[1];
+  const wgslF = wgslFMatch[1];
+  log(`Vertex shader: ${wgslV.length} chars`);
+  log(`Fragment shader: ${wgslF.length} chars`);
+
+  // ── Compile shaders with error checking ──
+  log('Compiling vertex shader...');
+  device.pushErrorScope('validation');
+  const vMod = device.createShaderModule({ code: wgslV });
+  const vInfo = await vMod.getCompilationInfo();
+  for (const msg of vInfo.messages) {
+    log(`  VS ${msg.type}: ${msg.message} (line ${msg.lineNum})`, msg.type === 'error' ? 'err' : 'warn');
+  }
+  const vErr = await device.popErrorScope();
+  if (vErr) log(`VS validation error: ${vErr.message}`, 'err');
+  else log('Vertex shader OK', 'ok');
+
+  log('Compiling fragment shader...');
+  device.pushErrorScope('validation');
+  const fMod = device.createShaderModule({ code: wgslF });
+  const fInfo = await fMod.getCompilationInfo();
+  for (const msg of fInfo.messages) {
+    log(`  FS ${msg.type}: ${msg.message} (line ${msg.lineNum})`, msg.type === 'error' ? 'err' : 'warn');
+  }
+  const fErr = await device.popErrorScope();
+  if (fErr) log(`FS validation error: ${fErr.message}`, 'err');
+  else log('Fragment shader OK', 'ok');
+
+  // ── Uniform buffer ──
+  const uniformsMatch = compiled.js.match(/const UNIFORMS = (\[[\s\S]*?\]);/);
+  if (!uniformsMatch) { log('Could not extract UNIFORMS', 'err'); return; }
+  const UNIFORMS = eval(uniformsMatch[1]);
+  log(`Uniforms: ${UNIFORMS.map(u=>u.name).join(', ')}`);
+
+  const floatCount = 8 + 2 + 2 + UNIFORMS.length;
+  const bufSize = Math.ceil(floatCount * 4 / 16) * 16;
+
+  device.pushErrorScope('validation');
+  const uniformBuffer = device.createBuffer({
+    size: bufSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+  const ubErr = await device.popErrorScope();
+  if (ubErr) log(`UB error: ${ubErr.message}`, 'err');
+  else log(`Uniform buffer: ${bufSize} bytes`, 'ok');
+
+  // ── Bind group layout 0 (uniforms) ──
+  const bindGroupLayout = device.createBindGroupLayout({
+    entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }]
+  });
+  const bindGroup = device.createBindGroup({
+    layout: bindGroupLayout,
+    entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+  });
+  log('Bind group 0 (uniforms) created', 'ok');
+
+  // ── Memory textures (bind group 1) ──
+  log(`Creating memory textures with format: ${format}`);
+  device.pushErrorScope('validation');
+  const memDesc = {
+    size: { width: canvas.width, height: canvas.height },
+    format: format,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST
+  };
+  const memTex0 = device.createTexture(memDesc);
+  const memTex1 = device.createTexture(memDesc);
+  const memErr = await device.popErrorScope();
+  if (memErr) log(`Memory texture error: ${memErr.message}`, 'err');
+  else log('Memory textures created', 'ok');
+
+  const memSampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+  const memBindGroupLayout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }
+    ]
+  });
+
+  device.pushErrorScope('validation');
+  let memBindGroup = device.createBindGroup({
+    layout: memBindGroupLayout,
+    entries: [
+      { binding: 0, resource: memTex0.createView() },
+      { binding: 1, resource: memSampler }
+    ]
+  });
+  const mbgErr = await device.popErrorScope();
+  if (mbgErr) log(`Memory bind group error: ${mbgErr.message}`, 'err');
+  else log('Memory bind group created', 'ok');
+
+  // ── Pipeline ──
+  log('Creating render pipeline...');
+  device.pushErrorScope('validation');
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout, memBindGroupLayout]
+  });
+  const pipeline = device.createRenderPipeline({
+    layout: pipelineLayout,
+    vertex: { module: vMod, entryPoint: 'vs_main' },
+    fragment: {
+      module: fMod, entryPoint: 'fs_main',
+      targets: [{
+        format,
+        blend: {
+          color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+          alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }
+        }
+      }]
+    },
+    primitive: { topology: 'triangle-list' }
+  });
+  const pErr = await device.popErrorScope();
+  if (pErr) log(`Pipeline error: ${pErr.message}`, 'err');
+  else log('Pipeline created', 'ok');
+
+  // ── Render one frame ──
+  log('Rendering frame...');
+  const data = new Float32Array(floatCount);
+  data[0] = 0.5; // time
+  data[6] = canvas.width; data[7] = canvas.height;
+  data[8] = 0.5; data[9] = 0.5; // mouse center
+  let i = 10;
+  for (const u of UNIFORMS) data[i++] = u.default;
+  device.queue.writeBuffer(uniformBuffer, 0, data);
+
+  // Render to memory write texture (NOT canvas — canvas lacks CopySrc)
+  device.pushErrorScope('validation');
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: memTex1.createView(),
+      loadOp: 'clear', storeOp: 'store',
+      clearValue: { r: 0, g: 0, b: 0, a: 0 }
+    }]
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.setBindGroup(1, memBindGroup);
+  pass.draw(3);
+  pass.end();
+
+  // Copy memory texture → canvas for display (memTex has CopySrc, canvas accepts CopyDst)
+  encoder.copyTextureToTexture(
+    { texture: memTex1 },
+    { texture: ctx.getCurrentTexture() },
+    { width: canvas.width, height: canvas.height }
+  );
+
+  device.queue.submit([encoder.finish()]);
+  const rErr = await device.popErrorScope();
+  if (rErr) log(`RENDER ERROR: ${rErr.message}`, 'err');
+  else log('Frame rendered', 'ok');
+
+  // Wait for GPU and check pixel
+  await device.queue.onSubmittedWorkDone();
+  log('GPU work done');
+
+  // Read pixel via 2d canvas
+  setTimeout(() => {
+    try {
+      const tmp = document.createElement('canvas');
+      tmp.width = canvas.width; tmp.height = canvas.height;
+      const ctx2d = tmp.getContext('2d');
+      ctx2d.drawImage(canvas, 0, 0);
+      const cx = Math.floor(canvas.width/2), cy = Math.floor(canvas.height/2);
+      const pixel = ctx2d.getImageData(cx, cy, 1, 1).data;
+      log(`Center pixel at (${cx},${cy}): rgba(${pixel[0]}, ${pixel[1]}, ${pixel[2]}, ${pixel[3]})`);
+      if (pixel[0] + pixel[1] + pixel[2] + pixel[3] > 0) {
+        log('RENDERING WORKS!', 'ok');
+      } else {
+        log('Still black - checking edge pixel...');
+        const ep = ctx2d.getImageData(0, 0, 1, 1).data;
+        log(`Edge pixel: rgba(${ep[0]}, ${ep[1]}, ${ep[2]}, ${ep[3]})`);
+      }
+    } catch(e) {
+      log(`Pixel read: ${e.message}`, 'err');
+    }
+  }, 500);
+}
+
+run().catch(e => log(`FATAL: ${e.message}\n${e.stack}`, 'err'));
+</script>
+</body>
+</html>

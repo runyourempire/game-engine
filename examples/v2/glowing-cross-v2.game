@@ -1,0 +1,90 @@
+// glowing-cross-v2 — Sacred geometry radiating power. The cross breathes,
+// surrounded by boolean-carved intricate patterns, radiating energy rings,
+// memory trails creating a halo of accumulated light.
+
+cinematic "glowing-cross" {
+  layer config {
+    power: 0.0
+    breath: 0.0
+    sanctity: 0.0
+  }
+
+  // Background field — deep, slow-moving warped noise
+  layer field memory: 0.92 {
+    warp(scale: 1.5, octaves: 5, persistence: 0.5, strength: 0.3)
+    | simplex(3.0)
+    | palette(
+        a_r: 0.2, a_g: 0.1, a_b: 0.3,
+        b_r: 0.2, b_g: 0.1, b_b: 0.3,
+        c_r: 0.8, c_g: 0.4, c_b: 1.0,
+        d_r: 0.0, d_g: 0.1, d_b: 0.2
+      )
+  }
+
+  // Core cross — smooth morphing between cross and star
+  layer cross_core memory: 0.88 {
+    smooth_union(
+      cross(0.25, 0.035),
+      star(4, 0.2, 0.08),
+      0.05
+    )
+    | glow(3.5)
+    | tint(1.0, 0.3, 0.3)
+  }
+
+  // Inner halo — boolean subtraction creating carved ring around cross
+  layer inner_halo memory: 0.90 {
+    subtract(
+      ring(0.22, 0.025),
+      cross(0.18, 0.03)
+    )
+    | glow(2.5)
+    | tint(1.0, 0.5, 0.2)
+  }
+
+  // Radiating rings — concentric energy rings expanding outward
+  layer rings memory: 0.85 {
+    circle(0.35)
+    | onion(4, 0.008)
+    | glow(2.0)
+    | tint(0.8, 0.2, 0.4)
+  }
+
+  // Polar rays — radial beams of light emanating from center
+  layer rays memory: 0.86 {
+    polar
+    | warp(scale: 2.0, octaves: 3, strength: 0.15)
+    | simplex(12.0)
+    | glow(1.5)
+    | tint(1.0, 0.6, 0.3)
+  }
+
+  // Dust motes — tiny particles caught in the light
+  layer dust memory: 0.75 {
+    distort(scale: 6.0, speed: 0.5, strength: 0.2)
+    | warp(scale: 4.0, octaves: 3, strength: 0.3)
+    | fbm(scale: 14.0, octaves: 2)
+    | glow(3.0)
+    | tint(1.0, 0.8, 0.5)
+  }
+
+  arc {
+    power: 0.0 -> 1.0 over 6s ease-in-out
+    breath: 0.0 -> 0.7 over 4s ease-in-out
+    sanctity: 0.0 -> 0.8 over 10s ease-out
+  }
+
+  resonate {
+    power -> cross_core.brightness * 0.6
+    power -> inner_halo.brightness * 0.5
+    power -> rings.brightness * 0.4
+    breath -> cross_core.scale * 0.12
+    breath -> inner_halo.scale * 0.08
+    sanctity -> rays.brightness * 0.5
+    sanctity -> dust.brightness * 0.4
+    sanctity -> field.intensity * 0.3
+  }
+
+  pass radiance { blur(2.0) }
+  pass focus { vignette(0.35) }
+}

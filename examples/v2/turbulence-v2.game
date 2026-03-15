@@ -1,0 +1,87 @@
+// turbulence-v2 — The fury of a digital storm. Aggressive domain warping,
+// multiple noise octaves fighting each other, intensity bursts like lightning,
+// deep darks with searing bright edges. Controlled chaos.
+
+cinematic "turbulence" {
+  layer config {
+    storm: 0.0
+    fury: 0.0
+    lightning: 0.0
+  }
+
+  // Storm foundation — heavy 6-octave warp creating roiling clouds
+  layer storm_base memory: 0.90 {
+    warp(scale: 1.5, octaves: 6, persistence: 0.65, strength: 0.6)
+    | fbm(scale: 3.0, octaves: 5)
+    | palette(
+        a_r: 0.2, a_g: 0.2, a_b: 0.3,
+        b_r: 0.3, b_g: 0.2, b_b: 0.4,
+        c_r: 1.0, c_g: 0.8, c_b: 0.6,
+        d_r: 0.0, d_g: 0.05, d_b: 0.15
+      )
+  }
+
+  // Turbulent mid-layer — fast distortion creating shearing forces
+  layer shear memory: 0.84 {
+    distort(scale: 5.0, speed: 0.9, strength: 0.35)
+    | warp(scale: 3.0, octaves: 4, strength: 0.4)
+    | simplex(6.0)
+    | glow(2.0)
+    | tint(0.9, 0.3, 0.1)
+  }
+
+  // Vortex cores — polar-warped structures creating eye-of-storm patterns
+  layer vortex memory: 0.88 {
+    polar
+    | distort(scale: 3.0, speed: 0.5, strength: 0.2)
+    | warp(scale: 2.0, octaves: 5, strength: 0.3)
+    | voronoi(5.0)
+    | glow(1.5)
+    | tint(0.6, 0.2, 0.8)
+  }
+
+  // Lightning veins — high-frequency noise creating bright fracture lines
+  layer veins memory: 0.78 {
+    warp(scale: 5.0, octaves: 4, persistence: 0.7, strength: 0.5)
+    | fbm(scale: 12.0, octaves: 3)
+    | glow(3.5)
+    | tint(1.0, 0.95, 0.85)
+  }
+
+  // Dark undertow — slow, deep noise adding weight and menace
+  layer undertow opacity: 0.6 {
+    warp(scale: 0.8, octaves: 4, persistence: 0.5, strength: 0.3)
+    | simplex(2.0)
+    | glow(0.8)
+    | tint(0.1, 0.05, 0.15)
+  }
+
+  // Ember particles — bright hot spots torn off by the wind
+  layer embers memory: 0.70 {
+    distort(scale: 8.0, speed: 1.2, strength: 0.3)
+    | warp(scale: 4.0, octaves: 3, strength: 0.35)
+    | fbm(scale: 15.0, octaves: 2)
+    | glow(4.0)
+    | tint(1.0, 0.6, 0.1)
+  }
+
+  arc {
+    storm: 0.0 -> 1.0 over 8s ease-in-out
+    fury: 0.0 -> 0.9 over 5s ease-out
+    lightning: 0.0 -> 0.7 over 3s ease-in-out
+  }
+
+  resonate {
+    storm -> storm_base.intensity * 0.5
+    storm -> undertow.intensity * 0.4
+    fury -> shear.intensity * 0.7
+    fury -> vortex.intensity * 0.5
+    fury -> embers.brightness * 0.6
+    lightning -> veins.brightness * 0.8
+    lightning -> shear.brightness * 0.3
+    storm -> vortex.scale * 0.12
+  }
+
+  pass storm_glow { blur(2.0) }
+  pass depth { vignette(0.4) }
+}

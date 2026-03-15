@@ -1,0 +1,97 @@
+// crystal-vortex-v2 — Looking into a crystalline whirlpool.
+// Polar-space voronoi creating faceted crystal structure,
+// rotating with memory persistence creating spiral trails,
+// prismatic color splitting across facets.
+
+cinematic "crystal-vortex" {
+  layer config {
+    spin: 0.0
+    refraction: 0.0
+    depth: 0.0
+  }
+
+  // Deep vortex — large-scale polar noise creating the whirlpool structure
+  layer vortex_core memory: 0.93 {
+    polar
+    | warp(scale: 2.0, octaves: 5, persistence: 0.55, strength: 0.35)
+    | voronoi(6.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 0.5,
+        d_r: 0.8, d_g: 0.9, d_b: 0.3
+      )
+  }
+
+  // Crystal facets — high-frequency voronoi for gem-like structure
+  layer facets memory: 0.86 {
+    distort(scale: 3.0, speed: 0.3, strength: 0.12)
+    | polar
+    | voronoi(14.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 2.0, c_g: 1.0, c_b: 0.5,
+        d_r: 0.0, d_g: 0.25, d_b: 0.5
+      )
+  }
+
+  // Prismatic edges — color-shifted noise along crystal boundaries
+  layer prismatic memory: 0.82 {
+    polar
+    | warp(scale: 4.0, octaves: 3, strength: 0.25)
+    | simplex(10.0)
+    | glow(2.0)
+    | tint(0.3, 0.8, 1.0)
+  }
+
+  // Central eye — the calm center of the vortex
+  layer eye memory: 0.90 {
+    smooth_union(
+      circle(0.06),
+      ring(0.1, 0.01),
+      0.03
+    )
+    | glow(3.5)
+    | tint(1.0, 0.9, 0.7)
+  }
+
+  // Spiral arms — rotating structures pulled into the vortex
+  layer spirals memory: 0.88 {
+    polar
+    | distort(scale: 2.0, speed: 0.4, strength: 0.2)
+    | warp(scale: 1.5, octaves: 4, strength: 0.3)
+    | fbm(scale: 4.0, octaves: 3)
+    | glow(1.5)
+    | tint(0.9, 0.5, 1.0)
+  }
+
+  // Outer crystalline ring
+  layer outer_ring memory: 0.85 {
+    distort(scale: 2.0, speed: 0.2, strength: 0.08)
+    | ring(0.42, 0.015)
+    | glow(2.0)
+    | tint(0.7, 0.8, 1.0)
+  }
+
+  arc {
+    spin: 0.0 -> 0.8 over 10s ease-in-out
+    refraction: 0.0 -> 0.7 over 6s ease-out
+    depth: 0.0 -> 1.0 over 8s ease-in-out
+  }
+
+  resonate {
+    spin -> vortex_core.intensity * 0.4
+    spin -> spirals.intensity * 0.6
+    spin -> facets.intensity * 0.3
+    refraction -> prismatic.brightness * 0.6
+    refraction -> facets.brightness * 0.4
+    depth -> eye.brightness * 0.5
+    depth -> vortex_core.scale * 0.1
+    depth -> outer_ring.brightness * 0.3
+    spin -> eye.scale * 0.08
+  }
+
+  pass shimmer { blur(1.5) }
+  pass focus { vignette(0.35) }
+}

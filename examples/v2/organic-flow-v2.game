@@ -1,0 +1,82 @@
+// organic-flow-v2 — A living river of energy. Aurora borealis up close.
+// Curl noise flow fields with layered depth, iridescent color shifts,
+// memory persistence creating luminous trails that fade like afterglow.
+
+cinematic "organic-flow" {
+  layer config {
+    current: 0.0
+    luminance: 0.0
+    depth: 0.0
+  }
+
+  // Deep flow — slow, large-scale warped noise as the base current
+  layer deep_current memory: 0.94 {
+    warp(scale: 1.0, octaves: 6, persistence: 0.6, strength: 0.5)
+    | fbm(scale: 2.0, octaves: 5)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 1.0,
+        d_r: 0.0, d_g: 0.33, d_b: 0.67
+      )
+  }
+
+  // Mid flow — medium speed, domain-warped voronoi for cellular structure
+  layer mid_flow memory: 0.88 {
+    distort(scale: 4.0, speed: 0.5, strength: 0.25)
+    | warp(scale: 2.5, octaves: 4, strength: 0.3)
+    | voronoi(6.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 0.7, c_b: 0.4,
+        d_r: 0.8, d_g: 0.15, d_b: 0.3
+      )
+  }
+
+  // Surface flow — fast-moving, high-frequency detail
+  layer surface memory: 0.82 {
+    warp(scale: 3.0, octaves: 5, persistence: 0.5, strength: 0.35)
+    | simplex(8.0)
+    | glow(2.0)
+    | tint(0.4, 0.9, 1.0)
+  }
+
+  // Luminous filaments — thin bright structures flowing through the field
+  layer filaments memory: 0.90 {
+    distort(scale: 5.0, speed: 0.6, strength: 0.18)
+    | polar
+    | warp(scale: 2.0, octaves: 3, strength: 0.2)
+    | simplex(12.0)
+    | glow(2.5)
+    | tint(1.0, 0.7, 0.3)
+  }
+
+  // Sparkle layer — occasional bright points emerging and fading
+  layer sparkles memory: 0.75 {
+    warp(scale: 6.0, octaves: 3, strength: 0.4)
+    | fbm(scale: 10.0, octaves: 2)
+    | glow(3.0)
+    | tint(1.0, 1.0, 0.9)
+  }
+
+  arc {
+    current: 0.0 -> 1.0 over 10s ease-in-out
+    luminance: 0.0 -> 0.8 over 6s ease-out
+    depth: 0.0 -> 0.7 over 8s ease-in-out
+  }
+
+  resonate {
+    current -> deep_current.intensity * 0.4
+    current -> mid_flow.intensity * 0.5
+    current -> surface.intensity * 0.6
+    luminance -> filaments.brightness * 0.6
+    luminance -> sparkles.brightness * 0.5
+    depth -> deep_current.scale * 0.15
+    depth -> mid_flow.scale * 0.1
+    current -> filaments.scale * 0.08
+  }
+
+  pass glow { blur(1.5) }
+  pass atmosphere { vignette(0.25) }
+}

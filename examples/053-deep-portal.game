@@ -1,0 +1,66 @@
+// Deep Space Portal -- swirling energy with bright pulsing core
+// Generated from: "A deep space portal with swirling energy tendrils, a bright core, and concentric rings that pulse"
+
+cinematic "deep-portal" {
+  layer config {
+    intensity: 0.5
+    pulse: 0.0
+  }
+
+  // Swirling energy field background
+  layer vortex memory: 0.91 {
+    polar
+    | warp(scale: 4.0, octaves: 5, persistence: 0.5, strength: 0.35)
+    | fbm(scale: 3.0, octaves: 5)
+    | palette(
+        a_r: 0.02, a_g: 0.01, a_b: 0.08,
+        b_r: 0.15, b_g: 0.08, b_b: 0.2,
+        c_r: 0.8, c_g: 0.5, c_b: 1.0,
+        d_r: 0.0, d_g: 0.15, d_b: 0.4
+      )
+  }
+
+  // Bright portal core
+  layer core memory: 0.96 {
+    circle(0.08) | glow(4.5) | tint(0.9, 0.7, 1.0)
+  }
+
+  // Inner energy ring
+  layer inner_ring memory: 0.88 {
+    distort(scale: 3.0, speed: 0.8, strength: 0.04)
+    | ring(0.2, 0.015) | glow(2.5) | tint(0.6, 0.3, 0.9)
+  }
+
+  // Outer containment ring
+  layer outer_ring memory: 0.85 {
+    distort(scale: 2.0, speed: 0.5, strength: 0.03)
+    | ring(0.35, 0.01) | glow(1.8) | tint(0.3, 0.5, 0.8)
+  }
+
+  // Faint boundary
+  layer boundary {
+    ring(0.45, 0.003) | glow(0.8) | tint(0.2, 0.2, 0.35)
+  }
+
+  arc {
+    intensity: 0.5 -> 1.0 over 8s ease-in-out
+    pulse: 0.0 -> 0.7 over 5s ease-out
+  }
+
+  resonate {
+    intensity -> core.brightness * 0.5
+    intensity -> vortex.brightness * 0.3
+    pulse -> inner_ring.scale * 0.15
+    pulse -> outer_ring.scale * 0.1
+  }
+
+  matrix color {
+    [
+      1.0, -0.02, 0.08,
+      0.0,  1.0, -0.02,
+      0.05, 0.0,  1.1
+    ]
+  }
+
+  pass edge { vignette(0.45) }
+}

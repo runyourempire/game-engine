@@ -1,0 +1,101 @@
+// dawn-v2 — The sun rises. Multi-layered atmospheric composition:
+// horizon gradient transitioning through warm tones, the sun emerging
+// with corona and god rays, cloud-like noise layers catching light,
+// expanding warmth that fills the frame over time.
+
+cinematic "dawn" {
+  layer config {
+    emergence: 0.0
+    warmth: 0.0
+    sky_glow: 0.0
+  }
+
+  // Sky gradient — deep blue to warm peach transition
+  layer sky {
+    radial_fade(inner: 0.0, outer: 0.9)
+    | palette(
+        a_r: 0.5, a_g: 0.3, a_b: 0.2,
+        b_r: 0.5, b_g: 0.3, b_b: 0.4,
+        c_r: 1.0, c_g: 0.8, c_b: 0.5,
+        d_r: 0.0, d_g: 0.1, d_b: 0.3
+      )
+  }
+
+  // Cloud layer — warped noise creating atmospheric volume
+  layer clouds memory: 0.91 {
+    warp(scale: 1.5, octaves: 6, persistence: 0.55, strength: 0.35)
+    | fbm(scale: 3.0, octaves: 4)
+    | palette(
+        a_r: 0.5, a_g: 0.4, a_b: 0.35,
+        b_r: 0.5, b_g: 0.3, b_b: 0.25,
+        c_r: 1.0, c_g: 0.8, c_b: 0.5,
+        d_r: 0.0, d_g: 0.15, d_b: 0.25
+      )
+  }
+
+  // Upper atmosphere wisps — thin, fast-moving streaks
+  layer wisps memory: 0.84 {
+    distort(scale: 6.0, speed: 0.4, strength: 0.15)
+    | warp(scale: 3.0, octaves: 3, strength: 0.2)
+    | simplex(10.0)
+    | glow(1.5)
+    | tint(1.0, 0.7, 0.5)
+  }
+
+  // Sun — morphing luminous core
+  layer sun memory: 0.92 {
+    smooth_union(
+      circle(0.06),
+      star(6, 0.09, 0.04),
+      0.03
+    )
+    | glow(4.5)
+    | tint(1.0, 0.9, 0.6)
+  }
+
+  // Solar corona — expanding ring of fire
+  layer corona memory: 0.87 {
+    distort(scale: 3.0, speed: 0.3, strength: 0.1)
+    | ring(0.14, 0.012)
+    | glow(3.0)
+    | tint(1.0, 0.6, 0.2)
+  }
+
+  // God rays — radial beams through cloud gaps
+  layer god_rays memory: 0.88 {
+    polar
+    | distort(scale: 2.0, speed: 0.2, strength: 0.12)
+    | warp(scale: 1.5, octaves: 4, strength: 0.2)
+    | simplex(6.0)
+    | glow(1.5)
+    | tint(1.0, 0.85, 0.5)
+  }
+
+  // Horizon warmth — warm glow pooling at the base
+  layer horizon_glow {
+    radial_fade(inner: 0.1, outer: 0.6)
+    | glow(1.0)
+    | tint(1.0, 0.5, 0.2)
+  }
+
+  arc {
+    emergence: 0.0 -> 1.0 over 12s ease-in-out
+    warmth: 0.0 -> 0.8 over 8s ease-out
+    sky_glow: 0.0 -> 0.9 over 10s ease-in-out
+  }
+
+  resonate {
+    emergence -> sun.brightness * 0.6
+    emergence -> corona.brightness * 0.5
+    emergence -> god_rays.brightness * 0.4
+    warmth -> clouds.brightness * 0.3
+    warmth -> horizon_glow.brightness * 0.5
+    warmth -> wisps.brightness * 0.3
+    sky_glow -> sky.brightness * 0.2
+    sky_glow -> clouds.intensity * 0.3
+    emergence -> sun.scale * 0.15
+  }
+
+  pass bloom { blur(2.0) }
+  pass frame { vignette(0.3) }
+}

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>GAME - Test All Examples</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; color: #e0e0e0; font-family: 'JetBrains Mono', monospace; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; }
+  .cell { background: #000; border: 1px solid #2a2a2a; border-radius: 4px; overflow: hidden; }
+  .cell-header { padding: 6px 10px; font-size: 11px; background: #141414; border-bottom: 1px solid #2a2a2a; display: flex; justify-content: space-between; }
+  .cell-header .name { color: #d4af37; font-weight: 600; }
+  .cell-header .status { font-size: 10px; }
+  .ok { color: #22c55e; }
+  .err { color: #ef4444; }
+  .pending { color: #888; }
+  .cell-body { height: 280px; position: relative; }
+  #log { padding: 8px; font-size: 11px; max-height: 150px; overflow: auto; background: #111; border-top: 1px solid #2a2a2a; }
+  #log div { padding: 1px 0; }
+  h1 { padding: 12px 16px; font-size: 14px; color: #d4af37; border-bottom: 1px solid #2a2a2a; background: #141414; }
+  h1 span { color: #888; font-weight: 400; }
+</style>
+</head>
+<body>
+<h1>GAME <span>All Examples Test</span></h1>
+<div class="grid" id="grid"></div>
+<pre id="log"></pre>
+
+<script type="module">
+import init, { compileGame } from '../pkg/game_compiler.js';
+
+const EXAMPLES = {
+  'hello-glow': `cinematic "hello-glow" {
+  layer main {
+    circle(0.3) | glow(2.0) | tint(0.831, 0.686, 0.216)
+  }
+}`,
+  'organism': `cinematic "organism" {
+  layer config {
+    pulse: 0.0
+    growth: 0.0
+  }
+  layer nucleus memory: 0.96 {
+    circle(0.2) | glow(3.0) | tint(1.0, 0.4, 0.1)
+  }
+  layer membrane memory: 0.88 {
+    ring(0.35, 0.02) | glow(1.5) | tint(0.8, 0.7, 0.3)
+  }
+  layer cilia {
+    fbm(5.0, 5, 0.4, 2.0) | glow(1.0) | tint(0.3, 0.9, 0.5)
+  }
+  arc {
+    growth: 0.0 -> 1.0 over 8s ease-in-out
+    pulse: 0.0 -> 0.6 over 3s ease-out
+  }
+  resonate {
+    growth -> nucleus.scale * 0.4
+    growth -> membrane.scale * 0.6
+    pulse -> cilia.intensity * 0.5
+    pulse -> nucleus.brightness * 0.3
+  }
+}`,
+  'mandala': `cinematic "mandala" {
+  layer config {
+    bloom_amount: 0.0
+    spin: 0.2
+    breath: 0.0
+  }
+  layer jewel {
+    subtract(circle(0.12), box(0.05, 0.05))
+    | glow(3.0) | tint(0.83, 0.69, 0.22)
+  }
+  layer inner_ring memory: 0.93 {
+    ring(0.2, 0.015) | glow(2.0) | tint(1.0, 0.5, 0.3)
+  }
+  layer middle {
+    smooth_union(
+      ring(0.3, 0.01),
+      star(6, 0.32, 0.28),
+      0.04
+    ) | glow(1.5) | tint(0.5, 0.3, 0.9)
+  }
+  layer corona memory: 0.85 {
+    polar | simplex(10.0) | glow(1.0) | tint(0.2, 0.6, 0.8)
+  }
+  layer edge {
+    ring(0.45, 0.003) | glow(0.8) | tint(0.3, 0.3, 0.35)
+  }
+  arc {
+    bloom_amount: 0.0 -> 0.6 over 8s ease-in-out
+    spin: 0.2 -> 0.6 over 6s ease-out
+    breath: 0.0 -> 0.5 over 4s ease-in-out
+  }
+  resonate {
+    bloom_amount -> jewel.brightness * 0.5
+    bloom_amount -> middle.brightness * 0.3
+    spin -> inner_ring.scale * 0.2
+    breath -> corona.intensity * 0.4
+    breath -> jewel.scale * 0.15
+  }
+  pass bloom { blur(2.0) }
+  pass vignette { vignette(0.5) }
+}`,
+  'cosmos': `cinematic "cosmos" {
+  layer config {
+    expansion: 0.0
+    energy: 0.0
+    rotation: 0.3
+  }
+  layer deep_field {
+    warp(scale: 2.0, octaves: 5, persistence: 0.5, strength: 0.3)
+    | voronoi(12.0) | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 1.0, c_b: 1.0,
+        d_r: 0.0, d_g: 0.1, d_b: 0.2
+      )
+  }
+  layer star memory: 0.94 {
+    smooth_union(circle(0.1), ring(0.18, 0.03), 0.06)
+    | glow(3.5) | tint(1.0, 0.85, 0.5)
+  }
+  layer accretion memory: 0.88 {
+    distort(scale: 6.0, speed: 0.4, strength: 0.15)
+    | ring(0.3, 0.02) | glow(2.0) | tint(0.9, 0.4, 0.2)
+  }
+  layer halo {
+    polar | simplex(4.0) | glow(1.0) | tint(0.2, 0.15, 0.4)
+  }
+  layer particles {
+    ring(0.35, 0.008) | glow(1.5) | tint(0.5, 0.8, 1.0)
+  }
+  arc {
+    expansion: 0.0 -> 1.0 over 12s ease-in-out
+    energy: 0.0 -> 0.8 over 6s ease-out
+    rotation: 0.3 -> 0.8 over 8s ease-in-out
+  }
+  resonate {
+    expansion -> star.scale * 0.4
+    expansion -> accretion.scale * 0.6
+    expansion -> halo.scale * 0.3
+    energy -> star.brightness * 0.5
+    energy -> particles.brightness * 0.7
+    rotation -> accretion.brightness * 0.2
+  }
+  pass glow { blur(2.0) }
+  pass frame { vignette(0.4) }
+}`,
+  'deep-portal': `cinematic "deep-portal" {
+  layer config {
+    intensity: 0.5
+    pulse: 0.0
+  }
+  layer vortex memory: 0.91 {
+    polar
+    | warp(scale: 4.0, octaves: 5, persistence: 0.5, strength: 0.35)
+    | fbm(scale: 3.0, octaves: 5)
+    | palette(
+        a_r: 0.02, a_g: 0.01, a_b: 0.08,
+        b_r: 0.15, b_g: 0.08, b_b: 0.2,
+        c_r: 0.8, c_g: 0.5, c_b: 1.0,
+        d_r: 0.0, d_g: 0.15, d_b: 0.4
+      )
+  }
+  layer core memory: 0.96 {
+    circle(0.08) | glow(4.5) | tint(0.9, 0.7, 1.0)
+  }
+  layer inner_ring memory: 0.88 {
+    distort(scale: 3.0, speed: 0.8, strength: 0.04)
+    | ring(0.2, 0.015) | glow(2.5) | tint(0.6, 0.3, 0.9)
+  }
+  layer outer_ring memory: 0.85 {
+    distort(scale: 2.0, speed: 0.5, strength: 0.03)
+    | ring(0.35, 0.01) | glow(1.8) | tint(0.3, 0.5, 0.8)
+  }
+  layer boundary {
+    ring(0.45, 0.003) | glow(0.8) | tint(0.2, 0.2, 0.35)
+  }
+  arc {
+    intensity: 0.5 -> 1.0 over 8s ease-in-out
+    pulse: 0.0 -> 0.7 over 5s ease-out
+  }
+  resonate {
+    intensity -> core.brightness * 0.5
+    intensity -> vortex.brightness * 0.3
+    pulse -> inner_ring.scale * 0.15
+    pulse -> outer_ring.scale * 0.1
+  }
+  matrix color {
+    [
+      1.0, -0.02, 0.08,
+      0.0,  1.0, -0.02,
+      0.05, 0.0,  1.1
+    ]
+  }
+  pass edge { vignette(0.45) }
+}`
+};
+
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+const grid = document.getElementById('grid');
+let counter = 0;
+
+async function testExample(name, source) {
+  counter++;
+  const id = `cell-${counter}`;
+
+  // Create grid cell
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+  cell.innerHTML = `
+    <div class="cell-header">
+      <span class="name">${name}</span>
+      <span class="status pending" id="${id}-status">compiling...</span>
+    </div>
+    <div class="cell-body" id="${id}-body"></div>`;
+  grid.appendChild(cell);
+
+  const statusEl = document.getElementById(`${id}-status`);
+  const bodyEl = document.getElementById(`${id}-body`);
+
+  try {
+    // Compile
+    const t0 = performance.now();
+    const resultJson = compileGame(source, 'both');
+    const elapsed = (performance.now() - t0).toFixed(1);
+
+    let results;
+    try { results = JSON.parse(resultJson); } catch {
+      throw new Error(`Parse error: ${resultJson.substring(0, 100)}`);
+    }
+    if (!Array.isArray(results) || !results.length) throw new Error('No output');
+
+    const compiled = results[0];
+    log(`${name}: compiled ${(compiled.js.length/1024).toFixed(1)}KB in ${elapsed}ms`);
+
+    // Register unique tag
+    const tag = `game-${compiled.name}-t${counter}`;
+    const js = compiled.js.replace(
+      /customElements\.define\(['"][^'"]+['"]/,
+      `customElements.define('${tag}'`
+    );
+
+    // Inject
+    const script = document.createElement('script');
+    script.textContent = js;
+    document.head.appendChild(script);
+
+    if (!customElements.get(tag)) throw new Error('Element not registered');
+
+    // Mount
+    const el = document.createElement(tag);
+    el.style.width = '100%';
+    el.style.height = '100%';
+    el.style.display = 'block';
+    bodyEl.appendChild(el);
+
+    // Check rendering after 2 seconds
+    await new Promise(r => setTimeout(r, 2000));
+    const canvas = el.shadowRoot?.querySelector('canvas');
+    if (!canvas) throw new Error('No canvas in shadow root');
+
+    const tmp = document.createElement('canvas');
+    tmp.width = canvas.width; tmp.height = canvas.height;
+    const ctx2d = tmp.getContext('2d');
+    ctx2d.drawImage(canvas, 0, 0);
+    const cx = Math.floor(canvas.width / 2), cy = Math.floor(canvas.height / 2);
+    const p = ctx2d.getImageData(cx, cy, 1, 1).data;
+
+    if (p[0] + p[1] + p[2] + p[3] > 0) {
+      statusEl.textContent = `OK (${elapsed}ms)`;
+      statusEl.className = 'status ok';
+      log(`${name}: PASS — pixel rgba(${p[0]},${p[1]},${p[2]},${p[3]})`, 'ok');
+    } else {
+      // Check a few more pixels before declaring failure
+      let found = false;
+      for (const [sx, sy] of [[0.25, 0.25], [0.75, 0.75], [0.5, 0.25], [0.25, 0.5]]) {
+        const px = Math.floor(canvas.width * sx), py = Math.floor(canvas.height * sy);
+        const q = ctx2d.getImageData(px, py, 1, 1).data;
+        if (q[0] + q[1] + q[2] + q[3] > 0) {
+          found = true;
+          statusEl.textContent = `OK (${elapsed}ms)`;
+          statusEl.className = 'status ok';
+          log(`${name}: PASS — pixel at (${px},${py}) rgba(${q[0]},${q[1]},${q[2]},${q[3]})`, 'ok');
+          break;
+        }
+      }
+      if (!found) {
+        statusEl.textContent = 'BLACK';
+        statusEl.className = 'status err';
+        log(`${name}: FAIL — all sampled pixels black`, 'err');
+      }
+    }
+  } catch (e) {
+    statusEl.textContent = 'ERROR';
+    statusEl.className = 'status err';
+    log(`${name}: ${e.message}`, 'err');
+  }
+}
+
+// Boot
+log('Initializing WASM compiler...');
+await init();
+log('WASM ready. Testing all examples...');
+
+for (const [name, source] of Object.entries(EXAMPLES)) {
+  await testExample(name, source);
+}
+log('All tests complete.');
+</script>
+</body>
+</html>

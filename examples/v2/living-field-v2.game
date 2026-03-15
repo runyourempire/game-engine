@@ -1,0 +1,89 @@
+// living-field-v2 — A meadow of light. Countless luminous organisms
+// drifting through a warm field, leaving fading trails, interacting
+// through memory feedback. Organic, warm, alive.
+
+cinematic "living-field" {
+  layer config {
+    life: 0.0
+    warmth: 0.0
+    density: 0.0
+  }
+
+  // Ground plane — warm, slow-moving substrate
+  layer ground memory: 0.93 {
+    warp(scale: 1.0, octaves: 5, persistence: 0.5, strength: 0.3)
+    | fbm(scale: 2.0, octaves: 4)
+    | palette(
+        a_r: 0.5, a_g: 0.4, a_b: 0.3,
+        b_r: 0.3, b_g: 0.3, b_b: 0.2,
+        c_r: 0.8, c_g: 0.6, c_b: 0.3,
+        d_r: 0.1, d_g: 0.15, d_b: 0.05
+      )
+  }
+
+  // Organism layer — many distorted circles creating a field of beings
+  layer organisms memory: 0.87 {
+    distort(scale: 4.0, speed: 0.4, strength: 0.2)
+    | repeat(0.15, 0.15)
+    | circle(0.03)
+    | glow(3.0)
+    | tint(1.0, 0.7, 0.3)
+  }
+
+  // Trail vapor — organisms leave glowing trails through memory persistence
+  layer trails memory: 0.96 {
+    distort(scale: 3.0, speed: 0.3, strength: 0.15)
+    | warp(scale: 2.0, octaves: 4, strength: 0.25)
+    | simplex(6.0)
+    | glow(1.5)
+    | tint(0.8, 0.5, 0.2)
+  }
+
+  // Pollen drift — fine particles floating upward
+  layer pollen memory: 0.80 {
+    warp(scale: 5.0, octaves: 3, strength: 0.3)
+    | fbm(scale: 12.0, octaves: 3)
+    | glow(2.5)
+    | tint(1.0, 0.9, 0.5)
+  }
+
+  // Warm light wash — ambient glow from below
+  layer warmth_glow {
+    radial_fade(inner: 0.0, outer: 0.7)
+    | palette(
+        a_r: 0.5, a_g: 0.4, a_b: 0.2,
+        b_r: 0.4, b_g: 0.3, b_b: 0.2,
+        c_r: 0.8, c_g: 0.5, c_b: 0.2,
+        d_r: 0.0, d_g: 0.1, d_b: 0.0
+      )
+  }
+
+  // Firefly sparkles — rare bright flashes
+  layer fireflies memory: 0.72 {
+    distort(scale: 7.0, speed: 0.8, strength: 0.25)
+    | warp(scale: 3.0, octaves: 3, strength: 0.35)
+    | fbm(scale: 18.0, octaves: 2)
+    | glow(4.0)
+    | tint(1.0, 1.0, 0.7)
+  }
+
+  arc {
+    life: 0.0 -> 1.0 over 8s ease-in-out
+    warmth: 0.0 -> 0.8 over 6s ease-out
+    density: 0.0 -> 0.7 over 10s ease-in-out
+  }
+
+  resonate {
+    life -> organisms.brightness * 0.6
+    life -> trails.intensity * 0.4
+    life -> fireflies.brightness * 0.5
+    warmth -> ground.brightness * 0.3
+    warmth -> warmth_glow.brightness * 0.5
+    density -> pollen.brightness * 0.4
+    density -> organisms.scale * 0.1
+    life -> pollen.intensity * 0.3
+  }
+
+  pass bloom { blur(1.5) }
+  pass atmosphere { vignette(0.3) }
+}

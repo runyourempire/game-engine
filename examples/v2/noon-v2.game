@@ -1,0 +1,90 @@
+// noon-v2 — Midday heat shimmer. Brilliant light warping the air itself.
+// Layered atmospheric haze, depth through multiple noise octaves,
+// a sun that radiates energy into the surrounding field.
+
+cinematic "noon" {
+  layer config {
+    intensity: 0.0
+    shimmer: 0.0
+    radiance: 0.0
+  }
+
+  // Deep atmospheric haze — double-warped simplex creates heat distortion
+  layer atmosphere memory: 0.88 {
+    warp(scale: 1.5, octaves: 6, persistence: 0.55, strength: 0.4)
+    | simplex(3.0)
+    | palette(
+        a_r: 0.5, a_g: 0.5, a_b: 0.5,
+        b_r: 0.5, b_g: 0.5, b_b: 0.5,
+        c_r: 1.0, c_g: 0.7, c_b: 0.4,
+        d_r: 0.0, d_g: 0.15, d_b: 0.2
+      )
+  }
+
+  // Mid-layer shimmer — fast-moving distorted noise for heat ripple
+  layer shimmer_field memory: 0.82 {
+    distort(scale: 6.0, speed: 0.8, strength: 0.2)
+    | warp(scale: 3.0, octaves: 4, strength: 0.25)
+    | fbm(scale: 5.0, octaves: 4)
+    | glow(1.5)
+    | tint(1.0, 0.95, 0.7)
+  }
+
+  // Central sun — morphing between circle and star, breathing
+  layer sun memory: 0.90 {
+    smooth_union(
+      circle(0.08),
+      star(8, 0.12, 0.06),
+      0.04
+    )
+    | glow(4.0)
+    | tint(1.0, 0.95, 0.75)
+  }
+
+  // Solar corona — ring that warps and pulses
+  layer corona memory: 0.85 {
+    distort(scale: 4.0, speed: 0.3, strength: 0.1)
+    | ring(0.18, 0.015)
+    | glow(2.5)
+    | tint(1.0, 0.8, 0.4)
+  }
+
+  // Radiant rays — polar-space noise creating god rays
+  layer rays {
+    polar
+    | warp(scale: 2.0, octaves: 3, strength: 0.15)
+    | simplex(8.0)
+    | glow(1.0)
+    | tint(1.0, 0.9, 0.6)
+  }
+
+  // Outer vignette haze
+  layer haze {
+    radial_fade(inner: 0.3, outer: 0.9)
+    | palette(
+        a_r: 0.5, a_g: 0.4, a_b: 0.3,
+        b_r: 0.5, b_g: 0.4, b_b: 0.3,
+        c_r: 0.8, c_g: 0.7, c_b: 0.4,
+        d_r: 0.2, d_g: 0.1, d_b: 0.0
+      )
+  }
+
+  arc {
+    intensity: 0.0 -> 1.0 over 6s ease-in-out
+    shimmer: 0.0 -> 0.7 over 4s ease-out
+    radiance: 0.0 -> 0.9 over 8s ease-in-out
+  }
+
+  resonate {
+    intensity -> sun.brightness * 0.5
+    intensity -> corona.brightness * 0.4
+    shimmer -> shimmer_field.intensity * 0.6
+    shimmer -> atmosphere.intensity * 0.3
+    radiance -> rays.brightness * 0.5
+    radiance -> sun.scale * 0.15
+    intensity -> haze.brightness * 0.2
+  }
+
+  pass glow { blur(1.5) }
+  pass frame { vignette(0.3) }
+}
