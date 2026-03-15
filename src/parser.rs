@@ -73,34 +73,37 @@ impl Parser {
     /// Convert a keyword token to its string name. Returns None for non-keyword tokens.
     /// Used to allow keywords as identifiers in contexts like layer names, param names, etc.
     fn token_to_name(tok: &Token) -> Option<String> {
-        Some(match tok {
-            Token::Opacity => "opacity",
-            Token::Blend => "blend",
-            Token::Memory => "memory",
-            Token::Cast => "cast",
-            Token::Score => "score",
-            Token::Flow => "flow",
-            Token::React => "react",
-            Token::Swarm => "swarm",
-            Token::Gravity => "gravity",
-            Token::Voice => "voice",
-            Token::Listen => "listen",
-            Token::Feedback => "feedback",
-            Token::Play => "play",
-            Token::Pass => "pass",
-            Token::Matrix => "matrix",
-            Token::Arc => "arc",
-            Token::Resonate => "resonate",
-            Token::Over => "over",
-            Token::Breed => "breed",
-            Token::From => "from",
-            Token::Inherit => "inherit",
-            Token::Mutate => "mutate",
-            Token::Project => "project",
-            Token::Scene => "scene",
-            Token::Transition => "transition",
-            _ => return None,
-        }.into())
+        Some(
+            match tok {
+                Token::Opacity => "opacity",
+                Token::Blend => "blend",
+                Token::Memory => "memory",
+                Token::Cast => "cast",
+                Token::Score => "score",
+                Token::Flow => "flow",
+                Token::React => "react",
+                Token::Swarm => "swarm",
+                Token::Gravity => "gravity",
+                Token::Voice => "voice",
+                Token::Listen => "listen",
+                Token::Feedback => "feedback",
+                Token::Play => "play",
+                Token::Pass => "pass",
+                Token::Matrix => "matrix",
+                Token::Arc => "arc",
+                Token::Resonate => "resonate",
+                Token::Over => "over",
+                Token::Breed => "breed",
+                Token::From => "from",
+                Token::Inherit => "inherit",
+                Token::Mutate => "mutate",
+                Token::Project => "project",
+                Token::Scene => "scene",
+                Token::Transition => "transition",
+                _ => return None,
+            }
+            .into(),
+        )
     }
 
     /// Check if the token at `pos` is a name-like token (Ident or keyword usable as name).

@@ -19,6 +19,7 @@
     { "include": "#blend-modes" },
     { "include": "#palette-names" },
     { "include": "#listen-keywords" },
+    { "include": "#builtin-variables" },
     { "include": "#builtins" },
     { "include": "#operators" },
     { "include": "#time-literals" },
@@ -211,6 +212,25 @@
         {
           "name": "support.function.listen.game",
           "match": "\\b(energy|peak|centroid|attack|range)\\b"
+        }
+      ]
+    },
+    "builtin-variables": {
+      "patterns": [
+        {
+          "comment": "Built-in time variable",
+          "name": "variable.language.builtin.game",
+          "match": "\\btime\\b"
+        },
+        {
+          "comment": "Built-in mouse/touch input variables",
+          "name": "variable.language.builtin.game",
+          "match": "\\b(mouse_x|mouse_y|mouse_down)\\b"
+        },
+        {
+          "comment": "Built-in audio input variables",
+          "name": "variable.language.builtin.game",
+          "match": "\\b(bass|mid|treble|energy|beat)\\b"
         }
       ]
     },

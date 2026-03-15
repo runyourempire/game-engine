@@ -159,6 +159,20 @@
     ],
     "description": "Create a coupling matrix between layers"
   },
+  "Mouse Follow": {
+    "prefix": "mouse-follow",
+    "body": [
+      "translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)"
+    ],
+    "description": "Translate shape to follow mouse/touch position (maps 0-1 input to -1 to 1 range)"
+  },
+  "Mouse Grow": {
+    "prefix": "mouse-grow",
+    "body": [
+      "circle(${1:0.1} + mouse_down * ${2:0.15})"
+    ],
+    "description": "Circle that grows when mouse is pressed/touch is active"
+  },
   "Full Component": {
     "prefix": "game-full",
     "body": [

@@ -213,6 +213,19 @@ A hyper-quality GAME visual follows this structure:
       pass frame { vignette(0.4) }  // 10. Edge framing
     }
 
+## Expressions in Arguments
+
+Stage arguments support full arithmetic expressions with config params and built-in inputs:
+
+    circle(0.1 + pulse * 0.15)
+    glow(2.0 + mouse_down * 2.0)
+    translate(sin(pulse * 6.28) * 0.3, cos(pulse * 6.28) * 0.3)
+    warp(scale: 2.0, octaves: 4, strength: 0.1 + energy * 0.2)
+
+Available math functions in expressions: sin, cos, abs, min, max, pow, floor, ceil, fract, clamp, mix, step, smoothstep, length, dot, atan2
+
+Operators: + - * / ^ (power)
+
 ## Generation Rules
 
 1. Every pipeline MUST reach Color state (Position -> Sdf -> Color)
@@ -224,9 +237,12 @@ A hyper-quality GAME visual follows this structure:
 7. Add resonate blocks for emergent inter-layer behavior
 8. 3-6 layers is the sweet spot -- under 3 feels empty, over 8 gets muddy
 9. Cinematic names: kebab-case. Layer names: snake_case
-10. Config params use newlines, NOT semicolons
+10. Config params use newlines (semicolons are tolerated but not idiomatic)
 11. Parameters used in arc/resonate MUST be declared in a config layer
 12. When using glow, values 2.0-4.0 give soft luminous feel, 0.5-1.0 give tight defined edges
 13. Combine polar + warp + noise for rotational/vortex effects
 14. For living/organic feel: memory + distort + resonate together
 15. Always add a thin edge ring for structural grounding
+16. DO NOT use `blend` as a pass name -- it is a reserved keyword
+17. DO NOT invent new builtins -- only use the functions listed above
+18. DO NOT wrap output in markdown code fences -- output raw .game code only

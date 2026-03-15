@@ -626,4 +626,69 @@ mod tests {
         assert_eq!(edit_distance("circle", "circl"), 1);
         assert_eq!(edit_distance("voronoi", "voronei"), 1);
     }
+
+    // ── emit_expr / resolve_arg expression tests ─────────────
+
+    #[test]
+    fn emit_expr_binop() {
+        let expr = Expr::BinOp {
+            op: BinOp::Mul,
+            left: Box::new(Expr::Ident("mouse_x".into())),
+            right: Box::new(Expr::Number(2.0)),
+        };
+        let result = emit_expr(&expr);
+        assert!(result.contains("mouse_x"), "left operand emitted");
+        assert!(result.contains("*"), "mul operator emitted");
+        assert!(result.contains("2.0"), "right operand emitted");
+    }
+
+    #[test]
+    fn emit_expr_nested() {
+        // (a * 2.0) + b
+        let expr = Expr::BinOp {
+            op: BinOp::Add,
+            left: Box::new(Expr::BinOp {
+                op: BinOp::Mul,
+                left: Box::new(Expr::Ident("a".into())),
+                right: Box::new(Expr::Number(2.0)),
+            }),
+            right: Box::new(Expr::Ident("b".into())),
+        };
+        let result = emit_expr(&expr);
+        assert!(result.contains("(a * 2.0"), "nested mul sub-expression");
+        assert!(result.contains("+ b"), "outer add with ident");
+    }
+
+    #[test]
+    fn emit_expr_call() {
+        let expr = Expr::Call {
+            name: "sin".into(),
+            args: vec![Arg {
+                name: None,
+                value: Expr::Ident("time".into()),
+            }],
+        };
+        let result = emit_expr(&expr);
+        assert_eq!(result, "sin(time)");
+    }
+
+    #[test]
+    fn resolve_arg_complex_expr() {
+        let arg = Arg {
+            name: None,
+            value: Expr::BinOp {
+                op: BinOp::Sub,
+                left: Box::new(Expr::BinOp {
+                    op: BinOp::Mul,
+                    left: Box::new(Expr::Ident("mouse_x".into())),
+                    right: Box::new(Expr::Number(2.0)),
+                }),
+                right: Box::new(Expr::Number(1.0)),
+            },
+        };
+        let result = resolve_arg(&arg, 0, "translate");
+        assert!(result.contains("mouse_x"), "ident preserved in expression");
+        assert!(result.contains("*"), "mul operator preserved");
+        assert!(result.contains("-"), "sub operator preserved");
+    }
 }

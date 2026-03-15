@@ -194,7 +194,9 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
             s.push_str("        await sim.init();\n");
             s.push_str("        this._swarmSim = sim;\n");
             if compute_type == Some(super::helpers::ComputeType::Swarm) {
-                s.push_str("        this._renderer.setComputeBuffer(sim.trailBuffer, sim._w, sim._h);\n");
+                s.push_str(
+                    "        this._renderer.setComputeBuffer(sim.trailBuffer, sim._w, sim._h);\n",
+                );
             }
             s.push_str("      }\n");
         }

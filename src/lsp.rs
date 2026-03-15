@@ -26,8 +26,8 @@ pub fn run_lsp() {
 
     let (connection, io_threads) = Connection::stdio();
 
-    let server_capabilities = serde_json::to_value(make_server_capabilities())
-        .expect("serialize server capabilities");
+    let server_capabilities =
+        serde_json::to_value(make_server_capabilities()).expect("serialize server capabilities");
 
     let init_params = match connection.initialize(server_capabilities) {
         Ok(params) => params,
@@ -37,8 +37,8 @@ pub fn run_lsp() {
         }
     };
 
-    let _init_params: InitializeParams = serde_json::from_value(init_params)
-        .unwrap_or_else(|_| InitializeParams::default());
+    let _init_params: InitializeParams =
+        serde_json::from_value(init_params).unwrap_or_else(|_| InitializeParams::default());
 
     eprintln!("[game-lsp] initialized, entering main loop");
 
@@ -52,15 +52,9 @@ pub fn run_lsp() {
 
 fn make_server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
-        text_document_sync: Some(TextDocumentSyncCapability::Kind(
-            TextDocumentSyncKind::FULL,
-        )),
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         completion_provider: Some(CompletionOptions {
-            trigger_characters: Some(vec![
-                "|".to_string(),
-                "(".to_string(),
-                " ".to_string(),
-            ]),
+            trigger_characters: Some(vec!["|".to_string(), "(".to_string(), " ".to_string()]),
             resolve_provider: Some(false),
             ..Default::default()
         }),
@@ -371,9 +365,13 @@ fn detect_pipeline_state(source: &str, pos: Position) -> ShaderState {
     let mut pipeline_text = String::new();
     for i in (0..line_idx).rev() {
         let l = lines[i].trim();
-        if l.is_empty() || l.ends_with('{') || l.starts_with("layer ")
-            || l.starts_with("cinematic ") || l.starts_with("fn ")
-            || l.starts_with("pass ") || l == "}"
+        if l.is_empty()
+            || l.ends_with('{')
+            || l.starts_with("layer ")
+            || l.starts_with("cinematic ")
+            || l.starts_with("fn ")
+            || l.starts_with("pass ")
+            || l == "}"
         {
             break;
         }
@@ -614,42 +612,78 @@ mod tests {
 
     #[test]
     fn detect_state_empty_returns_position() {
-        let state = detect_pipeline_state("", Position { line: 0, character: 0 });
+        let state = detect_pipeline_state(
+            "",
+            Position {
+                line: 0,
+                character: 0,
+            },
+        );
         assert_eq!(state, ShaderState::Position);
     }
 
     #[test]
     fn detect_state_after_circle() {
         let source = "circle(0.3) | ";
-        let state = detect_pipeline_state(source, Position { line: 0, character: 14 });
+        let state = detect_pipeline_state(
+            source,
+            Position {
+                line: 0,
+                character: 14,
+            },
+        );
         assert_eq!(state, ShaderState::Sdf);
     }
 
     #[test]
     fn detect_state_after_glow() {
         let source = "circle(0.3) | glow(2.0) | ";
-        let state = detect_pipeline_state(source, Position { line: 0, character: 26 });
+        let state = detect_pipeline_state(
+            source,
+            Position {
+                line: 0,
+                character: 26,
+            },
+        );
         assert_eq!(state, ShaderState::Color);
     }
 
     #[test]
     fn detect_state_after_transform() {
         let source = "rotate(1.0) | ";
-        let state = detect_pipeline_state(source, Position { line: 0, character: 14 });
+        let state = detect_pipeline_state(
+            source,
+            Position {
+                line: 0,
+                character: 14,
+            },
+        );
         assert_eq!(state, ShaderState::Position);
     }
 
     #[test]
     fn word_at_position_finds_word() {
         let source = "circle(0.3) | glow(2.0)";
-        let word = word_at_position(source, Position { line: 0, character: 3 });
+        let word = word_at_position(
+            source,
+            Position {
+                line: 0,
+                character: 3,
+            },
+        );
         assert_eq!(word, Some("circle".to_string()));
     }
 
     #[test]
     fn word_at_position_finds_second_word() {
         let source = "circle(0.3) | glow(2.0)";
-        let word = word_at_position(source, Position { line: 0, character: 16 });
+        let word = word_at_position(
+            source,
+            Position {
+                line: 0,
+                character: 16,
+            },
+        );
         assert_eq!(word, Some("glow".to_string()));
     }
 
@@ -657,7 +691,13 @@ mod tests {
     fn find_fn_def_basic() {
         let source = "fn myEffect(intensity) {\n  circle(0.3) | glow(intensity)\n}";
         let pos = find_fn_definition(source, "myEffect");
-        assert_eq!(pos, Some(Position { line: 0, character: 3 }));
+        assert_eq!(
+            pos,
+            Some(Position {
+                line: 0,
+                character: 3
+            })
+        );
     }
 
     #[test]
@@ -672,7 +712,13 @@ mod tests {
         let source = "fn myEffect(a) {}\nfn myEffectExtra(b) {}";
         let pos = find_fn_definition(source, "myEffect");
         // Should find the first one, not confuse with myEffectExtra
-        assert_eq!(pos, Some(Position { line: 0, character: 3 }));
+        assert_eq!(
+            pos,
+            Some(Position {
+                line: 0,
+                character: 3
+            })
+        );
     }
 
     #[test]

@@ -2088,3 +2088,137 @@ fn parse_mixed_parameterless_and_normal_stages() {
         _ => panic!("expected Pipeline"),
     }
 }
+
+// ===================================================================
+// AI-resilient parsing — semicolons, keywords as names, expressions
+// ===================================================================
+
+#[test]
+fn parse_semicolons_in_config() {
+    let source = r#"
+        cinematic "test" {
+            layer config {
+                pulse: 0.5;
+                drift: 0.3;
+            }
+            layer bg { circle(0.3) | glow(2.0) }
+        }
+    "#;
+    let prog = crate::compile_to_ast(source).expect("semicolons in config should parse");
+    assert_eq!(prog.cinematics.len(), 1);
+    assert_eq!(prog.cinematics[0].layers.len(), 2);
+    assert_eq!(prog.cinematics[0].layers[0].name, "config");
+    match &prog.cinematics[0].layers[0].body {
+        LayerBody::Params(params) => {
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "pulse");
+            assert_eq!(params[1].name, "drift");
+        }
+        _ => panic!("expected Params body for config layer"),
+    }
+}
+
+#[test]
+fn parse_keyword_as_layer_name() {
+    let source = r#"
+        cinematic "test" {
+            layer flow memory: 0.92 { circle(0.3) | glow(2.0) }
+            layer matrix { ring(0.4, 0.02) | glow(1.5) }
+            layer blend opacity: 0.5 { fbm(scale: 3.0, octaves: 5) | palette(fire) }
+        }
+    "#;
+    let prog = crate::compile_to_ast(source).expect("keywords as layer names should parse");
+    assert_eq!(prog.cinematics[0].layers.len(), 3);
+    assert_eq!(prog.cinematics[0].layers[0].name, "flow");
+    assert_eq!(prog.cinematics[0].layers[1].name, "matrix");
+    assert_eq!(prog.cinematics[0].layers[2].name, "blend");
+}
+
+#[test]
+fn parse_keyword_as_config_param() {
+    let source = r#"
+        cinematic "test" {
+            layer config {
+                flow: 1.0
+                gravity: 0.5
+                score: 0.8
+            }
+            layer bg { circle(0.3) | glow(2.0) }
+        }
+    "#;
+    let prog = crate::compile_to_ast(source).expect("keywords as config params should parse");
+    let config = &prog.cinematics[0].layers[0];
+    assert_eq!(config.name, "config");
+    match &config.body {
+        LayerBody::Params(params) => {
+            assert_eq!(params.len(), 3);
+            assert_eq!(params[0].name, "flow");
+            assert_eq!(params[1].name, "gravity");
+            assert_eq!(params[2].name, "score");
+        }
+        _ => panic!("expected Params body for config layer"),
+    }
+}
+
+#[test]
+fn parse_expressions_in_stage_args() {
+    let source = r#"
+        cinematic "test" {
+            layer config { pulse: 0.5 }
+            layer core {
+                translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+                | circle(0.08 + mouse_down * 0.12)
+                | glow(3.2 + pulse * 1.5)
+                | tint(1.0, 0.6, 0.2)
+            }
+        }
+    "#;
+    let prog = crate::compile_to_ast(source).expect("expressions in stage args should parse");
+    assert_eq!(prog.cinematics[0].layers.len(), 2);
+    let core = &prog.cinematics[0].layers[1];
+    assert_eq!(core.name, "core");
+    match &core.body {
+        LayerBody::Pipeline(stages) => {
+            assert_eq!(stages.len(), 4);
+            assert_eq!(stages[0].name, "translate");
+            assert_eq!(stages[0].args.len(), 2);
+            assert_eq!(stages[1].name, "circle");
+            assert_eq!(stages[1].args.len(), 1);
+            assert_eq!(stages[2].name, "glow");
+            assert_eq!(stages[2].args.len(), 1);
+            assert_eq!(stages[3].name, "tint");
+            assert_eq!(stages[3].args.len(), 3);
+        }
+        _ => panic!("expected Pipeline body for core layer"),
+    }
+}
+
+#[test]
+fn parse_keyword_in_expression() {
+    let source = r#"
+        cinematic "test" {
+            layer config { flow: 1.0 }
+            layer core { circle(flow * 0.1) | glow(2.0) }
+        }
+    "#;
+    let prog = crate::compile_to_ast(source).expect("keyword in expression should parse");
+    assert_eq!(prog.cinematics[0].layers.len(), 2);
+    let core = &prog.cinematics[0].layers[1];
+    assert_eq!(core.name, "core");
+    match &core.body {
+        LayerBody::Pipeline(stages) => {
+            assert_eq!(stages.len(), 2);
+            assert_eq!(stages[0].name, "circle");
+            assert_eq!(stages[0].args.len(), 1);
+            // The first arg should contain a BinOp with 'flow' as an ident
+            match &stages[0].args[0].value {
+                Expr::BinOp { op, left, .. } => {
+                    assert_eq!(*op, BinOp::Mul);
+                    assert!(matches!(left.as_ref(), Expr::Ident(name) if name == "flow"));
+                }
+                other => panic!("expected BinOp, got {:?}", other),
+            }
+        }
+        _ => panic!("expected Pipeline body for core layer"),
+    }
+}

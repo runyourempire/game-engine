@@ -80,8 +80,12 @@ pub fn webgpu_renderer(
     s.push_str("    this.canvas.addEventListener('mousemove', this._onMouseMove);\n");
     s.push_str("    this.canvas.addEventListener('mousedown', this._onMouseDown);\n");
     s.push_str("    this.canvas.addEventListener('mouseup', this._onMouseUp);\n");
-    s.push_str("    this.canvas.addEventListener('touchstart', this._onTouchStart, {passive: true});\n");
-    s.push_str("    this.canvas.addEventListener('touchmove', this._onTouchMove, {passive: true});\n");
+    s.push_str(
+        "    this.canvas.addEventListener('touchstart', this._onTouchStart, {passive: true});\n",
+    );
+    s.push_str(
+        "    this.canvas.addEventListener('touchmove', this._onTouchMove, {passive: true});\n",
+    );
     s.push_str("    this.canvas.addEventListener('touchend', this._onTouchEnd);\n");
     s.push_str("  }\n\n");
 
@@ -96,7 +100,9 @@ pub fn webgpu_renderer(
     if needs_prev_frame {
         s.push_str("    ctx.configure({ device: this.device, format, alphaMode: 'premultiplied', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST });\n");
     } else {
-        s.push_str("    ctx.configure({ device: this.device, format, alphaMode: 'premultiplied' });\n");
+        s.push_str(
+            "    ctx.configure({ device: this.device, format, alphaMode: 'premultiplied' });\n",
+        );
     }
     s.push_str("    this.ctx = ctx;\n");
     s.push_str("    this.format = format;\n\n");
@@ -486,8 +492,12 @@ pub fn webgl2_renderer(needs_prev_frame: bool) -> String {
     s.push_str("    this.canvas.addEventListener('mousemove', this._onMouseMove);\n");
     s.push_str("    this.canvas.addEventListener('mousedown', this._onMouseDown);\n");
     s.push_str("    this.canvas.addEventListener('mouseup', this._onMouseUp);\n");
-    s.push_str("    this.canvas.addEventListener('touchstart', this._onTouchStart, {passive: true});\n");
-    s.push_str("    this.canvas.addEventListener('touchmove', this._onTouchMove, {passive: true});\n");
+    s.push_str(
+        "    this.canvas.addEventListener('touchstart', this._onTouchStart, {passive: true});\n",
+    );
+    s.push_str(
+        "    this.canvas.addEventListener('touchmove', this._onTouchMove, {passive: true});\n",
+    );
     s.push_str("    this.canvas.addEventListener('touchend', this._onTouchEnd);\n");
     s.push_str("  }\n\n");
 

@@ -42,8 +42,7 @@ pub fn compile_game(source: &str, target: &str) -> Result<String, String> {
         .enumerate()
         .map(|(i, r)| {
             let uniforms_json: Vec<serde_json::Value> = if i < program.cinematics.len() {
-                let uniforms =
-                    crate::codegen::extract_uniforms_public(&program.cinematics[i]);
+                let uniforms = crate::codegen::extract_uniforms_public(&program.cinematics[i]);
                 uniforms
                     .iter()
                     .map(|u| {
@@ -107,11 +106,36 @@ pub fn get_builtins() -> String {
 #[wasm_bindgen(js_name = "getPaletteNames")]
 pub fn get_palette_names() -> String {
     let names = vec![
-        "fire", "ocean", "neon", "aurora", "sunset", "ice",
-        "ember", "lava", "magma", "inferno", "plasma", "electric",
-        "cyber", "matrix", "forest", "moss", "earth", "desert",
-        "blood", "rose", "candy", "royal", "deep_sea", "coral",
-        "arctic", "twilight", "vapor", "gold", "silver", "monochrome",
+        "fire",
+        "ocean",
+        "neon",
+        "aurora",
+        "sunset",
+        "ice",
+        "ember",
+        "lava",
+        "magma",
+        "inferno",
+        "plasma",
+        "electric",
+        "cyber",
+        "matrix",
+        "forest",
+        "moss",
+        "earth",
+        "desert",
+        "blood",
+        "rose",
+        "candy",
+        "royal",
+        "deep_sea",
+        "coral",
+        "arctic",
+        "twilight",
+        "vapor",
+        "gold",
+        "silver",
+        "monochrome",
     ];
     serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string())
 }

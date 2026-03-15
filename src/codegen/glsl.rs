@@ -303,12 +303,8 @@ fn generate_fragment_inner(
             );
         }
         // Quality output pipeline: tonemap + dither
-        s.push_str(
-            "    final_color = vec4(aces_tonemap(final_color.rgb), final_color.a);\n",
-        );
-        s.push_str(
-            "    final_color += (dither_noise(v_uv * u_resolution) - 0.5) / 255.0;\n",
-        );
+        s.push_str("    final_color = vec4(aces_tonemap(final_color.rgb), final_color.a);\n");
+        s.push_str("    final_color += (dither_noise(v_uv * u_resolution) - 0.5) / 255.0;\n");
         s.push_str("    fragColor = final_color;\n");
     }
     s.push_str("}\n");
@@ -593,9 +589,7 @@ fn emit_pass_stage_glsl(s: &mut String, stage: &Stage, indent: &str) {
             s.push_str(&format!("{indent}vec2 texel = 1.0 / u_resolution;\n"));
             s.push_str(&format!("{indent}int r = int({radius});\n"));
             s.push_str(&format!("{indent}float count = 0.0;\n"));
-            s.push_str(&format!(
-                "{indent}for (int dy = -r; dy <= r; dy++) {{\n"
-            ));
+            s.push_str(&format!("{indent}for (int dy = -r; dy <= r; dy++) {{\n"));
             s.push_str(&format!(
                 "{indent}    for (int dx = -r; dx <= r; dx++) {{\n"
             ));
@@ -675,9 +669,7 @@ fn emit_pass_stage_glsl(s: &mut String, stage: &Stage, indent: &str) {
                 "0.5".to_string()
             };
             s.push_str(&format!("{indent}// unsharp mask sharpen\n"));
-            s.push_str(&format!(
-                "{indent}vec2 sh_texel = 1.0 / u_resolution;\n"
-            ));
+            s.push_str(&format!("{indent}vec2 sh_texel = 1.0 / u_resolution;\n"));
             s.push_str(&format!(
                 "{indent}vec4 sh_n = texture(u_pass_tex, uv + vec2(0.0, sh_texel.y));\n"
             ));
@@ -716,10 +708,7 @@ fn emit_pass_stage_glsl(s: &mut String, stage: &Stage, indent: &str) {
         }
         _ => {
             // Unknown pass stage — passthrough
-            s.push_str(&format!(
-                "{indent}// unknown pass stage: {}\n",
-                stage.name
-            ));
+            s.push_str(&format!("{indent}// unknown pass stage: {}\n", stage.name));
         }
     }
 }
@@ -989,9 +978,11 @@ fn emit_glsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             let r = get_arg(args, "r", 0, "shade");
             let g = get_arg(args, "g", 1, "shade");
             let b = get_arg(args, "b", 2, "shade");
-            s.push_str(&format!("{indent}float shade_fw = fwidth(sdf_result);
+            s.push_str(&format!(
+                "{indent}float shade_fw = fwidth(sdf_result);
 {indent}float shade_alpha = 1.0 - smoothstep(-shade_fw, shade_fw, sdf_result);
-{indent}vec4 color_result = vec4(vec3({r}, {g}, {b}) * shade_alpha, shade_alpha);\n"));
+{indent}vec4 color_result = vec4(vec3({r}, {g}, {b}) * shade_alpha, shade_alpha);\n"
+            ));
         }
         "emissive" => {
             let intensity = get_arg(args, "intensity", 0, "emissive");
@@ -2076,6 +2067,58 @@ mod tests {
         assert!(
             output2.contains("float sp_r = length(p)"),
             "spiral code emitted"
+        );
+    }
+
+    // ── Mouse interaction tests ─────────────────────────────
+
+    #[test]
+    fn glsl_mouse_uniforms() {
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(
+            output.contains("uniform vec2 u_mouse;"),
+            "must declare u_mouse uniform, got:\n{output}"
+        );
+        assert!(
+            output.contains("uniform float u_mouse_down;"),
+            "must declare u_mouse_down uniform, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn glsl_mouse_alias_variables() {
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(
+            output.contains("float mouse_x = u_mouse.x;"),
+            "must declare mouse_x alias, got:\n{output}"
+        );
+        assert!(
+            output.contains("float mouse_y = u_mouse.y;"),
+            "must declare mouse_y alias, got:\n{output}"
+        );
+        assert!(
+            output.contains("float mouse_down = u_mouse_down;"),
+            "must declare mouse_down alias, got:\n{output}"
         );
     }
 }

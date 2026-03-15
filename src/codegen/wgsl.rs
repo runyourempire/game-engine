@@ -329,11 +329,19 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
                 "0.005".to_string()
             };
             s.push_str(&format!("{indent}// chromatic aberration\n"));
-            s.push_str(&format!("{indent}let ca_dir = normalize(uv - 0.5) * {strength};\n"));
-            s.push_str(&format!("{indent}let ca_r = textureSample(pass_tex, pass_sampler, uv + ca_dir).r;\n"));
+            s.push_str(&format!(
+                "{indent}let ca_dir = normalize(uv - 0.5) * {strength};\n"
+            ));
+            s.push_str(&format!(
+                "{indent}let ca_r = textureSample(pass_tex, pass_sampler, uv + ca_dir).r;\n"
+            ));
             s.push_str(&format!("{indent}let ca_g = color_result.g;\n"));
-            s.push_str(&format!("{indent}let ca_b = textureSample(pass_tex, pass_sampler, uv - ca_dir).b;\n"));
-            s.push_str(&format!("{indent}color_result = vec4<f32>(ca_r, ca_g, ca_b, color_result.a);\n"));
+            s.push_str(&format!(
+                "{indent}let ca_b = textureSample(pass_tex, pass_sampler, uv - ca_dir).b;\n"
+            ));
+            s.push_str(&format!(
+                "{indent}color_result = vec4<f32>(ca_r, ca_g, ca_b, color_result.a);\n"
+            ));
         }
         "sharpen" => {
             let amount = if !args.is_empty() {
@@ -347,7 +355,9 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
             s.push_str(&format!("{indent}let sh_s = textureSample(pass_tex, pass_sampler, uv + vec2<f32>(0.0, sh_texel.y));\n"));
             s.push_str(&format!("{indent}let sh_e = textureSample(pass_tex, pass_sampler, uv + vec2<f32>(sh_texel.x, 0.0));\n"));
             s.push_str(&format!("{indent}let sh_w = textureSample(pass_tex, pass_sampler, uv + vec2<f32>(-sh_texel.x, 0.0));\n"));
-            s.push_str(&format!("{indent}let sh_avg = (sh_n + sh_s + sh_e + sh_w) * 0.25;\n"));
+            s.push_str(&format!(
+                "{indent}let sh_avg = (sh_n + sh_s + sh_e + sh_w) * 0.25;\n"
+            ));
             s.push_str(&format!("{indent}color_result = vec4<f32>(mix(sh_avg.rgb, color_result.rgb, 1.0 + {amount}), color_result.a);\n"));
         }
         "film_grain" => {
@@ -357,9 +367,13 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
                 "0.05".to_string()
             };
             s.push_str(&format!("{indent}// film grain\n"));
-            s.push_str(&format!("{indent}let grain_seed = uv * u.resolution + vec2<f32>(u.time * 1000.0, 0.0);\n"));
+            s.push_str(&format!(
+                "{indent}let grain_seed = uv * u.resolution + vec2<f32>(u.time * 1000.0, 0.0);\n"
+            ));
             s.push_str(&format!("{indent}let grain_val = (fract(sin(dot(grain_seed, vec2<f32>(12.9898, 78.233))) * 43758.5453) - 0.5) * {amount};\n"));
-            s.push_str(&format!("{indent}color_result = vec4<f32>(color_result.rgb + grain_val, color_result.a);\n"));
+            s.push_str(&format!(
+                "{indent}color_result = vec4<f32>(color_result.rgb + grain_val, color_result.a);\n"
+            ));
         }
         _ => {
             // Unknown pass stage — passthrough
@@ -520,7 +534,9 @@ fn generate_fragment_inner(
             s.push_str("    // Compute field visualization\n");
             s.push_str("    let cv = sample_compute(input.uv);\n");
             s.push_str("    let compute_color = vec4<f32>(cv * 1.5, cv * 0.8, cv * 0.3, cv);\n");
-            s.push_str("    final_color = final_color + compute_color * (1.0 - final_color.a);\n\n");
+            s.push_str(
+                "    final_color = final_color + compute_color * (1.0 - final_color.a);\n\n",
+            );
         }
         if cinematic.matrix_color.is_some() {
             s.push_str("    final_color = vec4<f32>(apply_color_matrix(final_color.rgb), final_color.a);\n");
@@ -678,7 +694,9 @@ fn emit_wgsl_builtins(s: &mut String, cinematic: &Cinematic) {
     s.push_str("}\n\n");
 
     s.push_str("fn dither_noise(uv: vec2<f32>) -> f32 {\n");
-    s.push_str("    return fract(52.9829189 * fract(dot(uv, vec2<f32>(0.06711056, 0.00583715))));\n");
+    s.push_str(
+        "    return fract(52.9829189 * fract(dot(uv, vec2<f32>(0.06711056, 0.00583715))));\n",
+    );
     s.push_str("}\n\n");
 }
 
@@ -879,14 +897,20 @@ fn emit_wgsl_layer(
         if compute_kind.is_some() {
             s.push_str(&format!("{indent}// Compute field visualization\n"));
             s.push_str(&format!("{indent}let cv = sample_compute(input.uv);\n"));
-            s.push_str(&format!("{indent}let compute_color = vec4<f32>(cv * 1.5, cv * 0.8, cv * 0.3, cv);\n"));
-            s.push_str(&format!("{indent}color_result = color_result + compute_color * (1.0 - color_result.a);\n\n"));
+            s.push_str(&format!(
+                "{indent}let compute_color = vec4<f32>(cv * 1.5, cv * 0.8, cv * 0.3, cv);\n"
+            ));
+            s.push_str(&format!(
+                "{indent}color_result = color_result + compute_color * (1.0 - color_result.a);\n\n"
+            ));
         }
         if has_color_matrix {
             s.push_str(&format!("{indent}color_result = vec4<f32>(apply_color_matrix(color_result.rgb), color_result.a);\n"));
         }
         // Quality output pipeline: tonemap + dither
-        s.push_str(&format!("{indent}color_result = vec4<f32>(aces_tonemap(color_result.rgb), color_result.a);\n"));
+        s.push_str(&format!(
+            "{indent}color_result = vec4<f32>(aces_tonemap(color_result.rgb), color_result.a);\n"
+        ));
         s.push_str(&format!("{indent}color_result = color_result + (dither_noise(input.uv * u.resolution) - 0.5) / 255.0;\n"));
         s.push_str(&format!("{indent}return color_result;\n"));
     }
@@ -1097,9 +1121,11 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             let r = get_arg(args, "r", 0, "shade");
             let g = get_arg(args, "g", 1, "shade");
             let b = get_arg(args, "b", 2, "shade");
-            s.push_str(&format!("{indent}let shade_fw = fwidth(sdf_result);
+            s.push_str(&format!(
+                "{indent}let shade_fw = fwidth(sdf_result);
 {indent}let shade_alpha = 1.0 - smoothstep(-shade_fw, shade_fw, sdf_result);
-{indent}var color_result = vec4<f32>(vec3<f32>({r}, {g}, {b}) * shade_alpha, shade_alpha);\n"));
+{indent}var color_result = vec4<f32>(vec3<f32>({r}, {g}, {b}) * shade_alpha, shade_alpha);\n"
+            ));
         }
         "emissive" => {
             let intensity = get_arg(args, "intensity", 0, "emissive");
@@ -2515,5 +2541,80 @@ mod tests {
             Expr::Number(v) => assert_eq!(*v, 0.3),
             _ => panic!("expected Number after substitution"),
         }
+    }
+
+    // ── Mouse interaction tests ─────────────────────────────
+
+    #[test]
+    fn wgsl_mouse_uniforms_in_struct() {
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(
+            output.contains("mouse: vec2<f32>"),
+            "Uniforms struct must contain mouse: vec2<f32>, got:\n{output}"
+        );
+        assert!(
+            output.contains("mouse_down: f32"),
+            "Uniforms struct must contain mouse_down: f32, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn wgsl_mouse_alias_variables() {
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(
+            output.contains("let mouse_x = u.mouse.x;"),
+            "must declare mouse_x alias, got:\n{output}"
+        );
+        assert!(
+            output.contains("let mouse_y = u.mouse.y;"),
+            "must declare mouse_y alias, got:\n{output}"
+        );
+        assert!(
+            output.contains("let mouse_down = u.mouse_down;"),
+            "must declare mouse_down alias, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn wgsl_mouse_expr_in_stage_args() {
+        let source = r#"
+            cinematic "test" {
+                layer main {
+                    translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0) | circle(0.1) | glow(2.0)
+                }
+            }
+        "#;
+        let program = crate::compile_to_ast(source).unwrap();
+        let cinematic = &program.cinematics[0];
+        let uniforms = crate::codegen::extract_uniforms_public(cinematic);
+        let frag = generate_fragment(cinematic, &uniforms);
+        assert!(
+            frag.contains("mouse_x"),
+            "WGSL output must reference mouse_x, got:\n{frag}"
+        );
+        assert!(
+            frag.contains("mouse_y"),
+            "WGSL output must reference mouse_y, got:\n{frag}"
+        );
     }
 }

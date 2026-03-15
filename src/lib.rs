@@ -4,13 +4,13 @@ pub mod builtins;
 pub mod codegen;
 pub mod error;
 pub mod lexer;
+#[cfg(feature = "lsp")]
+pub mod lsp;
 pub mod parser;
 pub mod runtime;
 pub mod token;
 #[cfg(feature = "wasm")]
 pub mod wasm;
-#[cfg(feature = "lsp")]
-pub mod lsp;
 
 use error::CompileError;
 

@@ -763,20 +763,18 @@ fn main() -> Result<()> {
             game_compiler::lsp::run_lsp();
         }
 
-        Command::Info { category } => {
-            match category.as_str() {
-                "builtins" | "b" => print_builtins(),
-                "palettes" | "p" => print_palettes(),
-                "templates" | "t" => print_templates(),
-                _ => {
-                    print_builtins();
-                    println!();
-                    print_palettes();
-                    println!();
-                    print_templates();
-                }
+        Command::Info { category } => match category.as_str() {
+            "builtins" | "b" => print_builtins(),
+            "palettes" | "p" => print_palettes(),
+            "templates" | "t" => print_templates(),
+            _ => {
+                print_builtins();
+                println!();
+                print_palettes();
+                println!();
+                print_templates();
             }
-        }
+        },
     }
 
     Ok(())
@@ -804,50 +802,60 @@ fn print_builtins() {
     }
 
     println!("\n  SDF Generators (Position -> SDF):");
-    for sig in &sdf_gen { println!("    {sig}"); }
+    for sig in &sdf_gen {
+        println!("    {sig}");
+    }
     println!("\n  Transforms (Position -> Position):");
-    for sig in &transforms { println!("    {sig}"); }
+    for sig in &transforms {
+        println!("    {sig}");
+    }
     println!("\n  Bridges (SDF -> Color):");
-    for sig in &bridges { println!("    {sig}"); }
+    for sig in &bridges {
+        println!("    {sig}");
+    }
     println!("\n  Color Processors (Color -> Color):");
-    for sig in &color_proc { println!("    {sig}"); }
+    for sig in &color_proc {
+        println!("    {sig}");
+    }
     println!("\n  Shape Modifiers (SDF -> SDF):");
-    for sig in &sdf_mod { println!("    {sig}"); }
+    for sig in &sdf_mod {
+        println!("    {sig}");
+    }
 }
 
 fn print_palettes() {
     println!("Named Palettes (30)");
     println!("===================");
     let palettes = [
-        ("fire",       "warm reds/oranges"),
-        ("ocean",      "cool blues"),
-        ("neon",       "vibrant rainbow"),
-        ("aurora",     "green/purple northern lights"),
-        ("sunset",     "warm orange/pink horizon"),
-        ("ice",        "cool blue/white"),
-        ("ember",      "deep red/orange coals"),
-        ("lava",       "volcanic orange/red"),
-        ("magma",      "bright orange to deep red"),
-        ("inferno",    "yellow-white to deep red"),
-        ("plasma",     "purple/pink energy"),
-        ("electric",   "bright cyan/blue"),
-        ("cyber",      "neon green/cyan"),
-        ("matrix",     "green-on-black terminal"),
-        ("forest",     "deep greens/warm browns"),
-        ("moss",       "muted greens/earth"),
-        ("earth",      "brown/tan/olive"),
-        ("desert",     "warm sand/terracotta"),
-        ("blood",      "dark to bright red"),
-        ("rose",       "pink/rose/magenta"),
-        ("candy",      "bright pink/purple/blue"),
-        ("royal",      "deep purple/gold"),
-        ("deep_sea",   "dark blue/cyan"),
-        ("coral",      "warm coral/orange/pink"),
-        ("arctic",     "white/light blue cold"),
-        ("twilight",   "purple/orange horizon"),
-        ("vapor",      "vaporwave purple/pink/teal"),
-        ("gold",       "warm gold/amber"),
-        ("silver",     "cool gray/white"),
+        ("fire", "warm reds/oranges"),
+        ("ocean", "cool blues"),
+        ("neon", "vibrant rainbow"),
+        ("aurora", "green/purple northern lights"),
+        ("sunset", "warm orange/pink horizon"),
+        ("ice", "cool blue/white"),
+        ("ember", "deep red/orange coals"),
+        ("lava", "volcanic orange/red"),
+        ("magma", "bright orange to deep red"),
+        ("inferno", "yellow-white to deep red"),
+        ("plasma", "purple/pink energy"),
+        ("electric", "bright cyan/blue"),
+        ("cyber", "neon green/cyan"),
+        ("matrix", "green-on-black terminal"),
+        ("forest", "deep greens/warm browns"),
+        ("moss", "muted greens/earth"),
+        ("earth", "brown/tan/olive"),
+        ("desert", "warm sand/terracotta"),
+        ("blood", "dark to bright red"),
+        ("rose", "pink/rose/magenta"),
+        ("candy", "bright pink/purple/blue"),
+        ("royal", "deep purple/gold"),
+        ("deep_sea", "dark blue/cyan"),
+        ("coral", "warm coral/orange/pink"),
+        ("arctic", "white/light blue cold"),
+        ("twilight", "purple/orange horizon"),
+        ("vapor", "vaporwave purple/pink/teal"),
+        ("gold", "warm gold/amber"),
+        ("silver", "cool gray/white"),
         ("monochrome", "grayscale"),
     ];
     for (name, desc) in &palettes {

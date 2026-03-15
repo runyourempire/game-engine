@@ -1132,9 +1132,14 @@ Interaction: mouse_x (0-1), mouse_y (0-1), mouse_down (0 or 1)
 Audio: bass, mid, treble, energy, beat
 Example: translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0) | circle(0.1 + mouse_down * 0.15) | glow(2.0 + mouse_down * 2.0)
 
+## Expressions in arguments
+Stage args support full math: circle(0.1 + pulse * 0.15), glow(2.0 + sin(pulse * 6.28) * 0.5)
+Math functions: sin, cos, abs, min, max, pow, floor, ceil, fract, clamp, mix, step, smoothstep
+Operators: + - * / ^ (power)
+
 ## Resonate properties: .scale, .brightness, .intensity, .opacity
 ## Easing: linear, ease-in, ease-out, ease-in-out, elastic, bounce
-## Config params use NEWLINES not semicolons
+## Config params use NEWLINES (semicolons are tolerated)
 ## Parameters used in arc/resonate MUST be declared in config layer
 ## Compiler auto-applies ACES tonemapping + dithering
 
@@ -1146,6 +1151,8 @@ Example: translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0) | circle(0.1 + mous
 5. Always add pass frame { vignette(0.4) }
 6. Use resonate for emergent behavior
 7. cinematic names: kebab-case, layer names: snake_case
+8. DO NOT use "blend" as a pass name (reserved keyword)
+9. ONLY use the builtins listed above -- do not invent new ones
 
 OUTPUT ONLY THE GAME CODE. No explanation, no markdown fences, no comments about what it does. Just the raw .game source code.`;
 

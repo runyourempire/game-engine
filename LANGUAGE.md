@@ -59,6 +59,21 @@ Use in any expression: `circle(0.1 + mouse_down * 0.2)`, `translate(mouse_x * 2.
 ### Audio
 `bass`, `mid`, `treble` (frequency bands), `energy` (RMS), `beat` (detection signal)
 
+## Expressions in Arguments
+
+Stage arguments support full arithmetic expressions:
+
+```
+circle(0.1 + pulse * 0.15)
+glow(2.0 + sin(pulse * 6.28) * 0.5)
+translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+warp(scale: 2.0, octaves: 4, strength: 0.1 + energy * 0.2)
+```
+
+**Math functions**: sin, cos, abs, min, max, pow, floor, ceil, fract, clamp, mix, step, smoothstep, length, dot, atan2
+
+**Operators**: `+` `-` `*` `/` `^` (power)
+
 ## Key Features
 - **Memory**: `layer x memory: 0.93` -- ping-pong framebuffer persistence
 - **Arc**: `arc { param: 0 -> 1 over 5s ease-in-out }` -- timeline animations
