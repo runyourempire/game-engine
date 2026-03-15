@@ -897,21 +897,36 @@ function renderPreview(compiled) {
   script.setAttribute('data-game-playground', 'true');
   script.textContent = js;
 
-  // Listen for errors during script execution
+  // Capture GPU validation errors for better diagnostics
+  let gpuErrors = [];
   const errorHandler = (e) => {
-    showError(`Runtime: ${e.message || e.error?.message || 'Unknown error'}`);
+    const msg = e.message || e.error?.message || 'Unknown error';
+    gpuErrors.push(msg);
+    showError(`Runtime: ${msg}`);
   };
   window.addEventListener('error', errorHandler);
+
+  // Also capture unhandled promise rejections (common for WebGPU pipeline errors)
+  const rejectionHandler = (e) => {
+    const msg = e.reason?.message || String(e.reason) || 'GPU pipeline error';
+    gpuErrors.push(msg);
+    showError(`GPU: ${msg}`);
+  };
+  window.addEventListener('unhandledrejection', rejectionHandler);
 
   try {
     document.head.appendChild(script);
 
-    // Give the custom element a moment to register, then create it
-    requestAnimationFrame(() => {
+    // Give the custom element time to register and initialize GPU
+    setTimeout(() => {
       window.removeEventListener('error', errorHandler);
+      window.removeEventListener('unhandledrejection', rejectionHandler);
 
       if (!customElements.get(actualTag)) {
-        showError(`Component '${actualTag}' failed to register. Check console for WebGPU errors.`);
+        const detail = gpuErrors.length > 0
+          ? `GPU shader error: ${gpuErrors[0]}`
+          : `Component '${actualTag}' failed to register`;
+        showError(detail);
         return;
       }
 
@@ -922,9 +937,10 @@ function renderPreview(compiled) {
       previewContainer.appendChild(el);
       activeComponent = el;
       buildControls(activeUniforms);
-    });
+    }, 200);
   } catch (e) {
     window.removeEventListener('error', errorHandler);
+    window.removeEventListener('unhandledrejection', rejectionHandler);
     showError(`Script: ${e.message}`);
   }
 }
@@ -1156,6 +1172,30 @@ Operators: + - * / ^ (power)
 
 OUTPUT ONLY THE GAME CODE. No explanation, no markdown fences, no comments about what it does. Just the raw .game source code.`;
 
+function cleanGameCode(raw) {
+  const fenceMatch = raw.match(/```(?:game)?\s*\n([\s\S]*?)```/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return raw.replace(/^```(?:game)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+}
+
+function tryValidate(code) {
+  if (!wasmReady) return null;
+  const result = validateGame(code);
+  return result === 'ok' ? null : result;
+}
+
+function tryCompile(code) {
+  if (!wasmReady) return 'WASM not ready';
+  const target = document.getElementById('target-select').value;
+  try {
+    const resultJson = compileGame(code, target);
+    JSON.parse(resultJson); // verify it's valid JSON
+    return null; // success
+  } catch (e) {
+    return e.message || String(e);
+  }
+}
+
 async function generateFromAI() {
   const prompt = aiPromptEl.value.trim();
   if (!prompt) return;
@@ -1168,39 +1208,58 @@ async function generateFromAI() {
   }
 
   const provider = aiProviderEl.value;
+  const MAX_RETRIES = 2;
   btnGenerate.disabled = true;
-  aiStatusEl.textContent = 'Generating...';
-  aiStatusEl.className = 'generating';
 
   try {
-    let gameCode;
-    if (provider === 'anthropic') {
-      gameCode = await callAnthropic(apiKey, prompt);
-    } else {
-      gameCode = await callOpenAI(apiKey, prompt);
-    }
-
-    // Clean up response -- strip markdown fences, explanatory text, etc.
-    // Extract content between first ```game/``` block if present
-    const fenceMatch = gameCode.match(/```(?:game)?\s*\n([\s\S]*?)```/);
-    if (fenceMatch) {
-      gameCode = fenceMatch[1].trim();
-    } else {
-      // Strip any standalone fence markers
-      gameCode = gameCode.replace(/^```(?:game)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
-    }
-
-    sourceEl.value = gameCode;
-    validateSource();
-    aiStatusEl.textContent = 'Generated. Compiling...';
+    // Step 1: Initial generation
+    aiStatusEl.textContent = 'Generating...';
     aiStatusEl.className = 'generating';
 
-    // Auto-compile
-    setTimeout(() => {
-      compile();
-      aiStatusEl.textContent = 'Done';
-      aiStatusEl.className = '';
-    }, 100);
+    const callAI = provider === 'anthropic' ? callAnthropic : callOpenAI;
+    let messages = [{ role: 'user', content: prompt }];
+    let gameCode = cleanGameCode(await callAI(apiKey, prompt, messages));
+
+    // Step 2: Validate + auto-fix loop
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const validationError = tryValidate(gameCode);
+      const compileError = validationError ? null : tryCompile(gameCode);
+      const error = validationError || compileError;
+
+      if (!error) {
+        // Success — show code and compile
+        sourceEl.value = gameCode;
+        validateSource();
+        compile();
+        aiStatusEl.textContent = attempt === 0 ? 'Done' : `Done (fixed on attempt ${attempt + 1})`;
+        aiStatusEl.className = '';
+        return;
+      }
+
+      if (attempt < MAX_RETRIES) {
+        // Feed error back to AI for self-correction
+        aiStatusEl.textContent = `Fixing error (attempt ${attempt + 2}/${MAX_RETRIES + 1})...`;
+        aiStatusEl.className = 'generating';
+
+        const fixPrompt = `The GAME code you generated has a compilation error:\n\n${error}\n\nHere is the code that failed:\n\n${gameCode}\n\nFix the error and output ONLY the corrected .game code. No explanation.`;
+
+        // Build conversation history for context
+        const fixMessages = [
+          { role: 'user', content: prompt },
+          { role: 'assistant', content: gameCode },
+          { role: 'user', content: fixPrompt },
+        ];
+
+        gameCode = cleanGameCode(await callAI(apiKey, null, fixMessages));
+      } else {
+        // All retries exhausted — show the code with the error
+        sourceEl.value = gameCode;
+        validateSource();
+        compile(); // will show the error in the UI
+        aiStatusEl.textContent = `Generated with errors after ${MAX_RETRIES + 1} attempts`;
+        aiStatusEl.className = 'error';
+      }
+    }
 
   } catch (e) {
     aiStatusEl.textContent = `Error: ${e.message}`;
@@ -1210,7 +1269,7 @@ async function generateFromAI() {
   }
 }
 
-async function callAnthropic(apiKey, userPrompt) {
+async function callAnthropic(apiKey, _prompt, messages) {
   // Proxy through local server to avoid CORS issues
   const resp = await fetch('/api/anthropic', {
     method: 'POST',
@@ -1220,7 +1279,7 @@ async function callAnthropic(apiKey, userPrompt) {
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: GAME_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages,
     }),
   });
   if (!resp.ok) {
@@ -1231,7 +1290,7 @@ async function callAnthropic(apiKey, userPrompt) {
   return data.content[0].text;
 }
 
-async function callOpenAI(apiKey, userPrompt) {
+async function callOpenAI(apiKey, _prompt, messages) {
   // Proxy through local server to avoid CORS issues
   const resp = await fetch('/api/openai', {
     method: 'POST',
@@ -1242,7 +1301,7 @@ async function callOpenAI(apiKey, userPrompt) {
       max_tokens: 4096,
       messages: [
         { role: 'system', content: GAME_SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
+        ...messages,
       ],
     }),
   });
