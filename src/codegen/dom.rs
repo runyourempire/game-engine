@@ -64,14 +64,22 @@ pub fn generate_dom(cinematic: &Cinematic) -> (Option<String>, Option<String>) {
             ));
         }
 
-        // CSS positioning + user styles
-        css.push_str(&format!(
-            ".{class_name}{{position:absolute;left:{x}px;top:{y}px;{style}}}",
-            class_name = class_name,
+        // CSS positioning + optional width/alignment + user styles
+        let mut props = format!(
+            "position:absolute;left:{x};top:{y};",
             x = el.x,
             y = el.y,
-            style = el.style,
-        ));
+        );
+        if let Some(ref w) = el.width {
+            props.push_str(&format!(
+                "width:{w};white-space:normal;word-wrap:break-word;"
+            ));
+        }
+        if let Some(ref a) = el.align {
+            props.push_str(&format!("text-align:{a};"));
+        }
+        props.push_str(&el.style);
+        css.push_str(&format!(".{class_name}{{{props}}}"));
     }
 
     (Some(html), Some(css))
@@ -122,10 +130,12 @@ mod tests {
                 elements: vec![DomElement {
                     tag: "text".into(),
                     name: "title".into(),
-                    x: 72.0,
-                    y: 12.0,
+                    x: "72px".into(),
+                    y: "12px".into(),
                     style: "font:600 14px Inter;color:#FFF".into(),
                     bind: Some("title".into()),
+                    width: None,
+                    align: None,
                 }],
             }),
             events: vec![EventHandler {
@@ -184,5 +194,224 @@ mod tests {
         let (html, css) = generate_dom(&cin);
         assert!(html.is_none());
         assert!(css.is_none());
+    }
+
+    #[test]
+    fn percentage_positioning() {
+        let cin = Cinematic {
+            name: "pct-test".into(),
+            layers: vec![],
+            arcs: vec![],
+            resonates: vec![],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+            react: None,
+            swarm: None,
+            flow: None,
+            passes: vec![],
+            cinematic_uses: vec![],
+            matrix_coupling: None,
+            matrix_color: None,
+            props: None,
+            dom: Some(DomBlock {
+                elements: vec![DomElement {
+                    tag: "text".into(),
+                    name: "centered".into(),
+                    x: "50%".into(),
+                    y: "25%".into(),
+                    style: "color:#FFF".into(),
+                    bind: None,
+                    width: None,
+                    align: None,
+                }],
+            }),
+            events: vec![],
+            role: None,
+        };
+        let (_, css) = generate_dom(&cin);
+        let css = css.unwrap();
+        assert!(css.contains("left:50%"), "expected left:50%, got: {css}");
+        assert!(css.contains("top:25%"), "expected top:25%, got: {css}");
+    }
+
+    #[test]
+    fn width_constraint_enables_wrapping() {
+        let cin = Cinematic {
+            name: "width-test".into(),
+            layers: vec![],
+            arcs: vec![],
+            resonates: vec![],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+            react: None,
+            swarm: None,
+            flow: None,
+            passes: vec![],
+            cinematic_uses: vec![],
+            matrix_coupling: None,
+            matrix_color: None,
+            props: None,
+            dom: Some(DomBlock {
+                elements: vec![DomElement {
+                    tag: "text".into(),
+                    name: "body".into(),
+                    x: "88px".into(),
+                    y: "44px".into(),
+                    style: "font:400 13px Inter".into(),
+                    bind: None,
+                    width: Some("200px".into()),
+                    align: None,
+                }],
+            }),
+            events: vec![],
+            role: None,
+        };
+        let (_, css) = generate_dom(&cin);
+        let css = css.unwrap();
+        assert!(css.contains("width:200px"), "expected width:200px, got: {css}");
+        assert!(
+            css.contains("white-space:normal"),
+            "expected white-space:normal, got: {css}"
+        );
+        assert!(
+            css.contains("word-wrap:break-word"),
+            "expected word-wrap:break-word, got: {css}"
+        );
+    }
+
+    #[test]
+    fn percentage_width() {
+        let cin = Cinematic {
+            name: "pct-width".into(),
+            layers: vec![],
+            arcs: vec![],
+            resonates: vec![],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+            react: None,
+            swarm: None,
+            flow: None,
+            passes: vec![],
+            cinematic_uses: vec![],
+            matrix_coupling: None,
+            matrix_color: None,
+            props: None,
+            dom: Some(DomBlock {
+                elements: vec![DomElement {
+                    tag: "div".into(),
+                    name: "container".into(),
+                    x: "10%".into(),
+                    y: "10%".into(),
+                    style: String::new(),
+                    bind: None,
+                    width: Some("80%".into()),
+                    align: None,
+                }],
+            }),
+            events: vec![],
+            role: None,
+        };
+        let (html, css) = generate_dom(&cin);
+        let html = html.unwrap();
+        let css = css.unwrap();
+        assert!(html.contains("<div"), "expected div tag, got: {html}");
+        assert!(css.contains("width:80%"), "expected width:80%, got: {css}");
+    }
+
+    #[test]
+    fn text_alignment() {
+        let cin = Cinematic {
+            name: "align-test".into(),
+            layers: vec![],
+            arcs: vec![],
+            resonates: vec![],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+            react: None,
+            swarm: None,
+            flow: None,
+            passes: vec![],
+            cinematic_uses: vec![],
+            matrix_coupling: None,
+            matrix_color: None,
+            props: None,
+            dom: Some(DomBlock {
+                elements: vec![DomElement {
+                    tag: "text".into(),
+                    name: "heading".into(),
+                    x: "0px".into(),
+                    y: "0px".into(),
+                    style: "font:600 18px Inter".into(),
+                    bind: None,
+                    width: Some("100%".into()),
+                    align: Some("center".into()),
+                }],
+            }),
+            events: vec![],
+            role: None,
+        };
+        let (_, css) = generate_dom(&cin);
+        let css = css.unwrap();
+        assert!(
+            css.contains("text-align:center"),
+            "expected text-align:center, got: {css}"
+        );
+    }
+
+    #[test]
+    fn combined_width_and_alignment() {
+        let cin = Cinematic {
+            name: "combo-test".into(),
+            layers: vec![],
+            arcs: vec![],
+            resonates: vec![],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+            react: None,
+            swarm: None,
+            flow: None,
+            passes: vec![],
+            cinematic_uses: vec![],
+            matrix_coupling: None,
+            matrix_color: None,
+            props: None,
+            dom: Some(DomBlock {
+                elements: vec![DomElement {
+                    tag: "text".into(),
+                    name: "desc".into(),
+                    x: "50%".into(),
+                    y: "50%".into(),
+                    style: "color:#A0A0A0".into(),
+                    bind: None,
+                    width: Some("60%".into()),
+                    align: Some("right".into()),
+                }],
+            }),
+            events: vec![],
+            role: None,
+        };
+        let (_, css) = generate_dom(&cin);
+        let css = css.unwrap();
+        assert!(css.contains("left:50%"), "expected left:50%, got: {css}");
+        assert!(css.contains("top:50%"), "expected top:50%, got: {css}");
+        assert!(css.contains("width:60%"), "expected width:60%, got: {css}");
+        assert!(
+            css.contains("text-align:right"),
+            "expected text-align:right, got: {css}"
+        );
+        assert!(
+            css.contains("white-space:normal"),
+            "expected white-space:normal, got: {css}"
+        );
     }
 }

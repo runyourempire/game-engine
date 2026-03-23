@@ -111,7 +111,7 @@ pub fn webgpu_renderer(
     s.push_str("    const fMod = this.device.createShaderModule({ code: this.wgslFragment });\n\n");
 
     // Uniform buffer
-    s.push_str("    const floatCount = 11 + this.uniformDefs.length;\n");
+    s.push_str("    const floatCount = 12 + this.uniformDefs.length;\n");
     s.push_str("    const bufSize = Math.ceil(floatCount * 4 / 16) * 16;\n");
     s.push_str("    this.uniformBuffer = this.device.createBuffer({\n");
     s.push_str("      size: bufSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST\n");
@@ -226,7 +226,8 @@ pub fn webgpu_renderer(
     s.push_str("    data[6] = w; data[7] = h;\n");
     s.push_str("    data[8] = this.mouseX; data[9] = this.mouseY;\n");
     s.push_str("    data[10] = this.mouseDown;\n");
-    s.push_str("    let i = 11;\n");
+    s.push_str("    data[11] = w / (h || 1);\n");
+    s.push_str("    let i = 12;\n");
     s.push_str(
         "    for (const u of this.uniformDefs) data[i++] = this.userParams[u.name] ?? u.default;\n",
     );
@@ -532,6 +533,7 @@ pub fn webgl2_renderer(needs_prev_frame: bool) -> String {
     s.push_str("      resolution: gl.getUniformLocation(this.program, 'u_resolution'),\n");
     s.push_str("      mouse: gl.getUniformLocation(this.program, 'u_mouse'),\n");
     s.push_str("      mouse_down: gl.getUniformLocation(this.program, 'u_mouse_down'),\n");
+    s.push_str("      aspect_ratio: gl.getUniformLocation(this.program, 'u_aspect_ratio'),\n");
     s.push_str("    };\n");
     s.push_str("    this.paramLocs = {};\n");
     s.push_str("    for (const u of this.uniformDefs) {\n");
@@ -600,6 +602,7 @@ pub fn webgl2_renderer(needs_prev_frame: bool) -> String {
     s.push_str("    gl.uniform2f(this.locs.resolution, this.canvas.width, this.canvas.height);\n");
     s.push_str("    gl.uniform2f(this.locs.mouse, this.mouseX, this.mouseY);\n");
     s.push_str("    gl.uniform1f(this.locs.mouse_down, this.mouseDown);\n");
+    s.push_str("    gl.uniform1f(this.locs.aspect_ratio, this.canvas.width / (this.canvas.height || 1));\n");
     s.push_str("    for (const u of this.uniformDefs) {\n");
     s.push_str(
         "      gl.uniform1f(this.paramLocs[u.name], this.userParams[u.name] ?? u.default);\n",

@@ -1,4 +1,4 @@
-//! Arc block codegen — animated parameter sweeps with easing.
+//! Arc block codegen — animated parameter sweeps with easing and lifecycle states.
 //!
 //! Arc is GAME's temporal evolution primitive. It drives parameters through
 //! value ranges over time, creating visual systems that develop and transform.
@@ -7,18 +7,28 @@
 //! arc {
 //!   scale: 0.1 -> 1.0 over 3s ease-out
 //!   intensity: 0.0 -> 0.8 over 5s ease-in-out
-//!   hue: 0.0 -> 360.0 over 10s
+//! }
+//!
+//! arc enter {
+//!   opacity: 0.0 -> 1.0 over 200ms ease-out
+//! }
+//!
+//! arc exit {
+//!   opacity: 1.0 -> 0.0 over 300ms ease-in
+//! }
+//!
+//! arc hover {
+//!   glow: 0.0 -> 1.0 over 150ms ease-out
 //! }
 //! ```
 //!
-//! Generates a `GameArcTimeline` JS class that:
-//! 1. Manages a list of parameter animations with start/end values
-//! 2. Each frame: computes progress, applies easing, lerps values
-//! 3. Supports standard easing functions (linear, ease-in, ease-out, etc.)
-//! 4. Animations complete and hold at final value (one-shot, not looping)
-//! 5. Exposes `isComplete` for composition with score/breed systems
+//! Generates timeline classes per state:
+//! - **Unnamed / idle**: `GameArcTimeline` -- loops continuously (backward compatible)
+//! - **enter**: `GameArcEnter` -- plays once on connectedCallback, holds final value
+//! - **exit**: `GameArcExit` -- plays once on programmatic trigger, holds final value
+//! - **hover**: `GameArcHover` -- plays on mouseenter, reverses on mouseleave
 
-use crate::ast::{ArcBlock, Duration, Expr};
+use crate::ast::{ArcBlock, ArcEntry, ArcState, Duration, Expr};
 
 /// Convert a Duration to seconds.
 fn duration_to_seconds(d: &Duration) -> f64 {
@@ -77,45 +87,33 @@ fn easing_fn_js(name: &str) -> &'static str {
     }
 }
 
-/// Generate JavaScript for arc-based parameter animation timeline.
-///
-/// Produces a `GameArcTimeline` class that manages value sweeps
-/// with easing and temporal progression.
-pub fn generate_arc_js(blocks: &[ArcBlock]) -> String {
-    let entries: Vec<_> = blocks.iter().flat_map(|b| b.entries.iter()).collect();
-    if entries.is_empty() {
-        return String::new();
-    }
-
-    let mut s = String::with_capacity(2048);
-
-    // Collect unique easing functions needed
-    let mut easings: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for entry in &entries {
+/// Collect all unique easing functions from a set of arc entries.
+fn collect_easings(entries: &[&ArcEntry]) -> std::collections::HashSet<String> {
+    let mut easings = std::collections::HashSet::new();
+    for entry in entries {
         if let Some(ref e) = entry.easing {
             easings.insert(e.clone());
         }
     }
+    easings
+}
 
-    // Emit easing function map
+/// Emit the shared easing function map.
+fn emit_easings(s: &mut String, easings: &std::collections::HashSet<String>) {
     s.push_str("const _gameEasings = {\n");
     s.push_str("  linear: t => t,\n");
-    for name in &easings {
+    for name in easings {
         let body = easing_fn_js(name);
-        // Normalize name for JS (replace hyphens with underscores)
         let js_name = name.replace('-', "_");
         s.push_str(&format!("  {js_name}: t => {body},\n"));
     }
     s.push_str("};\n\n");
+}
 
-    s.push_str("class GameArcTimeline {\n");
-
-    // Constructor: build animation entries
-    s.push_str("  constructor() {\n");
-    s.push_str("    this._startTime = null;\n");
+/// Emit the entries array for a timeline constructor.
+fn emit_entries_array(s: &mut String, entries: &[&ArcEntry]) {
     s.push_str("    this._entries = [\n");
-
-    for entry in &entries {
+    for entry in entries {
         let from_js = expr_to_js(&entry.from);
         let to_js = expr_to_js(&entry.to);
         let dur_secs = duration_to_seconds(&entry.duration);
@@ -124,53 +122,220 @@ pub fn generate_arc_js(blocks: &[ArcBlock]) -> String {
             .as_deref()
             .unwrap_or("linear")
             .replace('-', "_");
-
         s.push_str(&format!(
             "      {{ target: '{}', from: {}, to: {}, duration: {}, easing: '{}' }},\n",
             entry.target, from_js, to_js, dur_secs, easing_name
         ));
     }
-
     s.push_str("    ];\n");
-    s.push_str("  }\n\n");
+}
 
-    // evaluate(elapsed): compute current values for all arc entries
+/// Emit the standard evaluate/isComplete/reset/progress methods.
+fn emit_timeline_methods(s: &mut String) {
     s.push_str("  evaluate(elapsedSec) {\n");
     s.push_str("    if (this._startTime === null) this._startTime = elapsedSec;\n");
     s.push_str("    const t = elapsedSec - this._startTime;\n");
     s.push_str("    const values = {};\n\n");
-
     s.push_str("    for (const e of this._entries) {\n");
     s.push_str("      const progress = Math.min(t / e.duration, 1.0);\n");
     s.push_str("      const easeFn = _gameEasings[e.easing] || _gameEasings.linear;\n");
     s.push_str("      const eased = easeFn(progress);\n");
     s.push_str("      values[e.target] = e.from + (e.to - e.from) * eased;\n");
     s.push_str("    }\n\n");
-
     s.push_str("    return values;\n");
     s.push_str("  }\n\n");
 
-    // isComplete: true when all animations have finished
     s.push_str("  isComplete(elapsedSec) {\n");
     s.push_str("    if (this._startTime === null) return false;\n");
     s.push_str("    const t = elapsedSec - this._startTime;\n");
     s.push_str("    return this._entries.every(e => t >= e.duration);\n");
     s.push_str("  }\n\n");
 
-    // reset: restart the timeline
     s.push_str("  reset() { this._startTime = null; }\n\n");
 
-    // progress: 0..1 overall completion
     s.push_str("  progress(elapsedSec) {\n");
     s.push_str("    if (this._startTime === null) return 0;\n");
     s.push_str("    const t = elapsedSec - this._startTime;\n");
     s.push_str("    const maxDur = Math.max(...this._entries.map(e => e.duration));\n");
     s.push_str("    return Math.min(t / maxDur, 1.0);\n");
     s.push_str("  }\n");
+}
 
-    s.push_str("}\n");
+/// Generate the backward-compatible `GameArcTimeline` class (looping idle).
+fn generate_idle_timeline(s: &mut String, entries: &[&ArcEntry]) {
+    s.push_str("class GameArcTimeline {\n");
+    s.push_str("  constructor() {\n");
+    s.push_str("    this._startTime = null;\n");
+    emit_entries_array(s, entries);
+    s.push_str("  }\n\n");
+    emit_timeline_methods(s);
+    s.push_str("}\n\n");
+}
+
+/// Generate a one-shot arc class (enter or exit) that plays once and holds.
+fn generate_oneshot_timeline(s: &mut String, class_name: &str, entries: &[&ArcEntry]) {
+    s.push_str(&format!("class {class_name} {{\n"));
+    s.push_str("  constructor() {\n");
+    s.push_str("    this._startTime = null;\n");
+    s.push_str("    this._active = false;\n");
+    emit_entries_array(s, entries);
+    s.push_str("  }\n\n");
+
+    s.push_str("  play(elapsedSec) {\n");
+    s.push_str("    this._startTime = elapsedSec;\n");
+    s.push_str("    this._active = true;\n");
+    s.push_str("  }\n\n");
+
+    emit_timeline_methods(s);
+
+    s.push_str("  evaluateIfActive(elapsedSec) {\n");
+    s.push_str("    if (!this._active) return null;\n");
+    s.push_str("    return this.evaluate(elapsedSec);\n");
+    s.push_str("  }\n");
+
+    s.push_str("}\n\n");
+}
+
+/// Generate a hover arc class that plays forward on enter, reverse on leave.
+fn generate_hover_timeline(s: &mut String, entries: &[&ArcEntry]) {
+    s.push_str("class GameArcHover {\n");
+    s.push_str("  constructor() {\n");
+    s.push_str("    this._startTime = null;\n");
+    s.push_str("    this._active = false;\n");
+    s.push_str("    this._reverse = false;\n");
+    s.push_str("    this._holdProgress = 0;\n");
+    emit_entries_array(s, entries);
+    s.push_str("  }\n\n");
+
+    s.push_str("  enter(elapsedSec) {\n");
+    s.push_str("    this._startTime = elapsedSec;\n");
+    s.push_str("    this._reverse = false;\n");
+    s.push_str("    this._active = true;\n");
+    s.push_str("  }\n\n");
+
+    s.push_str("  leave(elapsedSec) {\n");
+    s.push_str("    this._startTime = elapsedSec;\n");
+    s.push_str("    this._reverse = true;\n");
+    s.push_str("    this._active = true;\n");
+    s.push_str("  }\n\n");
+
+    s.push_str("  evaluate(elapsedSec) {\n");
+    s.push_str("    if (this._startTime === null) this._startTime = elapsedSec;\n");
+    s.push_str("    const t = elapsedSec - this._startTime;\n");
+    s.push_str("    const values = {};\n\n");
+    s.push_str("    for (const e of this._entries) {\n");
+    s.push_str("      let progress = Math.min(t / e.duration, 1.0);\n");
+    s.push_str("      if (this._reverse) progress = Math.max(1.0 - progress, 0.0);\n");
+    s.push_str("      const easeFn = _gameEasings[e.easing] || _gameEasings.linear;\n");
+    s.push_str("      const eased = easeFn(progress);\n");
+    s.push_str("      values[e.target] = e.from + (e.to - e.from) * eased;\n");
+    s.push_str("    }\n\n");
+    s.push_str("    return values;\n");
+    s.push_str("  }\n\n");
+
+    s.push_str("  evaluateIfActive(elapsedSec) {\n");
+    s.push_str("    if (!this._active) return null;\n");
+    s.push_str("    return this.evaluate(elapsedSec);\n");
+    s.push_str("  }\n\n");
+
+    s.push_str("  isComplete(elapsedSec) {\n");
+    s.push_str("    if (this._startTime === null) return false;\n");
+    s.push_str("    const t = elapsedSec - this._startTime;\n");
+    s.push_str("    return this._entries.every(e => t >= e.duration);\n");
+    s.push_str("  }\n\n");
+
+    s.push_str(
+        "  reset() { this._startTime = null; this._active = false; this._reverse = false; }\n\n",
+    );
+
+    s.push_str("  progress(elapsedSec) {\n");
+    s.push_str("    if (this._startTime === null) return 0;\n");
+    s.push_str("    const t = elapsedSec - this._startTime;\n");
+    s.push_str("    const maxDur = Math.max(...this._entries.map(e => e.duration));\n");
+    s.push_str("    let p = Math.min(t / maxDur, 1.0);\n");
+    s.push_str("    if (this._reverse) p = 1.0 - p;\n");
+    s.push_str("    return p;\n");
+    s.push_str("  }\n");
+
+    s.push_str("}\n\n");
+}
+
+/// Classify a block's effective state key for grouping.
+fn block_state_key(block: &ArcBlock) -> &'static str {
+    match &block.state {
+        None => "idle",
+        Some(ArcState::Enter) => "enter",
+        Some(ArcState::Exit) => "exit",
+        Some(ArcState::Hover) => "hover",
+        Some(ArcState::Idle) => "idle",
+    }
+}
+
+/// Generate JavaScript for arc-based parameter animation timelines.
+///
+/// Produces timeline classes grouped by lifecycle state:
+/// - Unnamed/idle blocks -> `GameArcTimeline` (backward compatible, looping)
+/// - Enter blocks -> `GameArcEnter` (one-shot, auto-plays on connect)
+/// - Exit blocks -> `GameArcExit` (one-shot, programmatic trigger)
+/// - Hover blocks -> `GameArcHover` (forward on mouseenter, reverse on mouseleave)
+pub fn generate_arc_js(blocks: &[ArcBlock]) -> String {
+    let all_entries: Vec<_> = blocks.iter().flat_map(|b| b.entries.iter()).collect();
+    if all_entries.is_empty() {
+        return String::new();
+    }
+
+    let idle_entries: Vec<&ArcEntry> = blocks
+        .iter()
+        .filter(|b| block_state_key(b) == "idle")
+        .flat_map(|b| b.entries.iter())
+        .collect();
+    let enter_entries: Vec<&ArcEntry> = blocks
+        .iter()
+        .filter(|b| block_state_key(b) == "enter")
+        .flat_map(|b| b.entries.iter())
+        .collect();
+    let exit_entries: Vec<&ArcEntry> = blocks
+        .iter()
+        .filter(|b| block_state_key(b) == "exit")
+        .flat_map(|b| b.entries.iter())
+        .collect();
+    let hover_entries: Vec<&ArcEntry> = blocks
+        .iter()
+        .filter(|b| block_state_key(b) == "hover")
+        .flat_map(|b| b.entries.iter())
+        .collect();
+
+    let has_idle = !idle_entries.is_empty();
+    let has_enter = !enter_entries.is_empty();
+    let has_exit = !exit_entries.is_empty();
+    let has_hover = !hover_entries.is_empty();
+
+    let mut s = String::with_capacity(4096);
+
+    // Collect ALL easings across all states for the shared map
+    let easings = collect_easings(&all_entries);
+    emit_easings(&mut s, &easings);
+
+    // Generate per-state timeline classes
+    if has_idle {
+        generate_idle_timeline(&mut s, &idle_entries);
+    }
+    if has_enter {
+        generate_oneshot_timeline(&mut s, "GameArcEnter", &enter_entries);
+    }
+    if has_exit {
+        generate_oneshot_timeline(&mut s, "GameArcExit", &exit_entries);
+    }
+    if has_hover {
+        generate_hover_timeline(&mut s, &hover_entries);
+    }
 
     s
+}
+
+/// Returns true if any block in the slice has the given state.
+pub fn has_arc_state(blocks: &[ArcBlock], state: &str) -> bool {
+    blocks.iter().any(|b| block_state_key(b) == state)
 }
 
 #[cfg(test)]
@@ -178,7 +343,13 @@ mod tests {
     use super::*;
     use crate::ast::*;
 
-    fn make_entry(target: &str, from: f64, to: f64, secs: f64, easing: Option<&str>) -> ArcEntry {
+    fn make_entry(
+        target: &str,
+        from: f64,
+        to: f64,
+        secs: f64,
+        easing: Option<&str>,
+    ) -> ArcEntry {
         ArcEntry {
             target: target.into(),
             from: Expr::Number(from),
@@ -191,6 +362,7 @@ mod tests {
     #[test]
     fn single_arc_generates() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![make_entry("scale", 0.1, 1.0, 3.0, None)],
         }];
         let js = generate_arc_js(&blocks);
@@ -204,6 +376,7 @@ mod tests {
     #[test]
     fn easing_function_included() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![make_entry("x", 0.0, 1.0, 2.0, Some("ease-out"))],
         }];
         let js = generate_arc_js(&blocks);
@@ -214,6 +387,7 @@ mod tests {
     #[test]
     fn multiple_easings_collected() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![
                 make_entry("a", 0.0, 1.0, 1.0, Some("ease-in")),
                 make_entry("b", 0.0, 1.0, 2.0, Some("elastic")),
@@ -233,7 +407,10 @@ mod tests {
 
     #[test]
     fn empty_entries_produce_nothing() {
-        let blocks = vec![ArcBlock { entries: vec![] }];
+        let blocks = vec![ArcBlock {
+            state: None,
+            entries: vec![],
+        }];
         let js = generate_arc_js(&blocks);
         assert!(js.is_empty());
     }
@@ -241,6 +418,7 @@ mod tests {
     #[test]
     fn evaluate_method_exists() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![make_entry("x", 0.0, 1.0, 1.0, None)],
         }];
         let js = generate_arc_js(&blocks);
@@ -251,6 +429,7 @@ mod tests {
     #[test]
     fn is_complete_and_reset() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![make_entry("x", 0.0, 1.0, 1.0, None)],
         }];
         let js = generate_arc_js(&blocks);
@@ -262,6 +441,7 @@ mod tests {
     #[test]
     fn millis_duration_converted() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![ArcEntry {
                 target: "x".into(),
                 from: Expr::Number(0.0),
@@ -277,6 +457,7 @@ mod tests {
     #[test]
     fn bars_duration_converted() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![ArcEntry {
                 target: "x".into(),
                 from: Expr::Number(0.0),
@@ -293,9 +474,11 @@ mod tests {
     fn multi_block_merges_entries() {
         let blocks = vec![
             ArcBlock {
+                state: None,
                 entries: vec![make_entry("a", 0.0, 1.0, 1.0, None)],
             },
             ArcBlock {
+                state: None,
                 entries: vec![make_entry("b", 1.0, 0.0, 2.0, None)],
             },
         ];
@@ -307,10 +490,110 @@ mod tests {
     #[test]
     fn bounce_easing_generates() {
         let blocks = vec![ArcBlock {
+            state: None,
             entries: vec![make_entry("y", 0.0, 100.0, 2.0, Some("bounce"))],
         }];
         let js = generate_arc_js(&blocks);
         assert!(js.contains("bounce: t =>"));
         assert!(js.contains("7.5625"));
+    }
+
+    // -- Lifecycle state tests --
+
+    #[test]
+    fn enter_arc_generates_oneshot_class() {
+        let blocks = vec![ArcBlock {
+            state: Some(ArcState::Enter),
+            entries: vec![make_entry("opacity", 0.0, 1.0, 0.2, Some("ease-out"))],
+        }];
+        let js = generate_arc_js(&blocks);
+        assert!(js.contains("class GameArcEnter"));
+        assert!(js.contains("play(elapsedSec)"));
+        assert!(js.contains("evaluateIfActive(elapsedSec)"));
+        assert!(js.contains("target: 'opacity'"));
+        assert!(!js.contains("class GameArcTimeline"));
+    }
+
+    #[test]
+    fn exit_arc_generates_oneshot_class() {
+        let blocks = vec![ArcBlock {
+            state: Some(ArcState::Exit),
+            entries: vec![make_entry("opacity", 1.0, 0.0, 0.3, Some("ease-in"))],
+        }];
+        let js = generate_arc_js(&blocks);
+        assert!(js.contains("class GameArcExit"));
+        assert!(js.contains("play(elapsedSec)"));
+        assert!(!js.contains("class GameArcTimeline"));
+    }
+
+    #[test]
+    fn hover_arc_generates_bidirectional_class() {
+        let blocks = vec![ArcBlock {
+            state: Some(ArcState::Hover),
+            entries: vec![make_entry("glow", 0.0, 1.0, 0.15, Some("ease-out"))],
+        }];
+        let js = generate_arc_js(&blocks);
+        assert!(js.contains("class GameArcHover"));
+        assert!(js.contains("enter(elapsedSec)"));
+        assert!(js.contains("leave(elapsedSec)"));
+        assert!(js.contains("this._reverse"));
+        assert!(!js.contains("class GameArcTimeline"));
+    }
+
+    #[test]
+    fn idle_state_uses_standard_timeline() {
+        let blocks = vec![ArcBlock {
+            state: Some(ArcState::Idle),
+            entries: vec![make_entry("x", 0.0, 1.0, 2.0, None)],
+        }];
+        let js = generate_arc_js(&blocks);
+        assert!(js.contains("class GameArcTimeline"));
+    }
+
+    #[test]
+    fn mixed_states_generate_multiple_classes() {
+        let blocks = vec![
+            ArcBlock {
+                state: None,
+                entries: vec![make_entry("scale", 0.5, 1.5, 4.0, None)],
+            },
+            ArcBlock {
+                state: Some(ArcState::Enter),
+                entries: vec![make_entry("opacity", 0.0, 1.0, 0.2, Some("ease-out"))],
+            },
+            ArcBlock {
+                state: Some(ArcState::Exit),
+                entries: vec![make_entry("opacity", 1.0, 0.0, 0.3, None)],
+            },
+            ArcBlock {
+                state: Some(ArcState::Hover),
+                entries: vec![make_entry("glow", 0.0, 1.0, 0.15, None)],
+            },
+        ];
+        let js = generate_arc_js(&blocks);
+        assert!(js.contains("class GameArcTimeline"));
+        assert!(js.contains("class GameArcEnter"));
+        assert!(js.contains("class GameArcExit"));
+        assert!(js.contains("class GameArcHover"));
+        // Single shared easing map
+        assert_eq!(js.matches("const _gameEasings").count(), 1);
+    }
+
+    #[test]
+    fn has_arc_state_helper() {
+        let blocks = vec![
+            ArcBlock {
+                state: None,
+                entries: vec![make_entry("x", 0.0, 1.0, 1.0, None)],
+            },
+            ArcBlock {
+                state: Some(ArcState::Enter),
+                entries: vec![make_entry("y", 0.0, 1.0, 0.2, None)],
+            },
+        ];
+        assert!(has_arc_state(&blocks, "idle"));
+        assert!(has_arc_state(&blocks, "enter"));
+        assert!(!has_arc_state(&blocks, "exit"));
+        assert!(!has_arc_state(&blocks, "hover"));
     }
 }

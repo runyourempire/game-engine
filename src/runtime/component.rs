@@ -184,9 +184,36 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
         }
     }
 
+    // Arc lifecycle: instantiate state timelines
+    if shader.has_arc_enter {
+        s.push_str("    this._arcEnter = new GameArcEnter();\n");
+    }
+    if shader.has_arc_exit {
+        s.push_str("    this._arcExit = new GameArcExit();\n");
+    }
+    if shader.has_arc_hover {
+        s.push_str("    this._arcHover = new GameArcHover();\n");
+        s.push_str("    this.addEventListener('mouseenter', () => {\n");
+        s.push_str("      if (this._arcHover && this._renderer) {\n");
+        s.push_str("        this._arcHover.enter(this._renderer._elapsed || 0);\n");
+        s.push_str("      }\n");
+        s.push_str("    });\n");
+        s.push_str("    this.addEventListener('mouseleave', () => {\n");
+        s.push_str("      if (this._arcHover && this._renderer) {\n");
+        s.push_str("        this._arcHover.leave(this._renderer._elapsed || 0);\n");
+        s.push_str("      }\n");
+        s.push_str("    });\n");
+    }
+
     s.push_str("    this._initRenderer();\n");
     s.push_str("    this._resizeObserver = new ResizeObserver(() => this._resize());\n");
     s.push_str("    this._resizeObserver.observe(this);\n");
+
+    // Auto-play enter arc after renderer init
+    if shader.has_arc_enter {
+        s.push_str("    if (this._arcEnter) this._arcEnter.play(0);\n");
+    }
+
     s.push_str("  }\n\n");
 
     s.push_str("  disconnectedCallback() {\n");
@@ -350,6 +377,22 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     s.push_str(
         "  setAudioSource(bridge) { bridge?.subscribe(d => this._renderer?.setAudioData(d)); }\n\n",
     );
+
+    // playArc(name) — programmatic arc lifecycle trigger
+    if shader.has_arc_enter || shader.has_arc_exit || shader.has_arc_hover {
+        s.push_str("  playArc(name) {\n");
+        s.push_str("    const t = this._renderer?._elapsed || 0;\n");
+        if shader.has_arc_enter {
+            s.push_str("    if (name === 'enter' && this._arcEnter) this._arcEnter.play(t);\n");
+        }
+        if shader.has_arc_exit {
+            s.push_str("    if (name === 'exit' && this._arcExit) this._arcExit.play(t);\n");
+        }
+        if shader.has_arc_hover {
+            s.push_str("    if (name === 'hover') { if (this._arcHover) this._arcHover.enter(t); }\n");
+        }
+        s.push_str("  }\n\n");
+    }
 
     // DOM update method — syncs string props to bound DOM elements
     if has_dom && has_string_props {
@@ -531,6 +574,9 @@ mod tests {
             dom_css: None,
             event_handlers: vec![],
             aria_role: None,
+            has_arc_enter: false,
+            has_arc_exit: false,
+            has_arc_hover: false,
         }
     }
 

@@ -78,6 +78,12 @@ pub struct ShaderOutput {
     pub event_handlers: Vec<(String, Option<String>)>,
     /// ARIA role attribute value.
     pub aria_role: Option<String>,
+    /// Whether this cinematic has an arc enter state (auto-play on connect).
+    pub has_arc_enter: bool,
+    /// Whether this cinematic has an arc exit state (programmatic trigger).
+    pub has_arc_exit: bool,
+    /// Whether this cinematic has an arc hover state (mouseenter/mouseleave).
+    pub has_arc_hover: bool,
 }
 
 /// A string-typed property for DOM binding.
@@ -431,6 +437,9 @@ pub fn generate_with_fns(
         dom_css,
         event_handlers,
         aria_role,
+        has_arc_enter: arc::has_arc_state(&cinematic.arcs, "enter"),
+        has_arc_exit: arc::has_arc_state(&cinematic.arcs, "exit"),
+        has_arc_hover: arc::has_arc_state(&cinematic.arcs, "hover"),
     })
 }
 
@@ -849,6 +858,7 @@ mod tests {
                 ]),
             }],
             arcs: vec![crate::ast::ArcBlock {
+                state: None,
                 entries: vec![crate::ast::ArcEntry {
                     target: "scale".into(),
                     from: Expr::Number(0.1),
@@ -906,6 +916,7 @@ mod tests {
                 ]),
             }],
             arcs: vec![crate::ast::ArcBlock {
+                state: None,
                 entries: vec![crate::ast::ArcEntry {
                     target: "scale".into(),
                     from: Expr::Number(0.0),

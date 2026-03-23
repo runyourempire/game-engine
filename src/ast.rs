@@ -147,9 +147,24 @@ pub struct Arg {
     pub value: Expr,
 }
 
-/// `arc { entries }`
+/// Lifecycle state for an arc block.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArcState {
+    /// Plays once on element connect, then holds final value.
+    Enter,
+    /// Plays once on programmatic trigger, then holds final value.
+    Exit,
+    /// Plays on mouseenter, reverses on mouseleave.
+    Hover,
+    /// Loops continuously (default for unnamed arc blocks).
+    Idle,
+}
+
+/// `arc [state] { entries }`
 #[derive(Debug, Clone)]
 pub struct ArcBlock {
+    /// Optional lifecycle state. `None` means backward-compatible looping (same as Idle).
+    pub state: Option<ArcState>,
     pub entries: Vec<ArcEntry>,
 }
 
@@ -560,14 +575,18 @@ pub struct DomElement {
     pub tag: String,
     /// Identifier for this element.
     pub name: String,
-    /// X position from left in pixels.
-    pub x: f64,
-    /// Y position from top in pixels.
-    pub y: f64,
+    /// X position as CSS value (e.g. "72px", "50%").
+    pub x: String,
+    /// Y position as CSS value (e.g. "12px", "25%").
+    pub y: String,
     /// CSS style string.
     pub style: String,
     /// Prop name whose value is bound to textContent.
     pub bind: Option<String>,
+    /// Width constraint as CSS value (e.g. "200px", "100%").
+    pub width: Option<String>,
+    /// Text alignment: "left", "center", or "right".
+    pub align: Option<String>,
 }
 
 /// `on "click" { emit: "dismiss" }` — event handler declaration.

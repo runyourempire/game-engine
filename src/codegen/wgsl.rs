@@ -400,6 +400,7 @@ fn generate_fragment_inner(
     s.push_str("    resolution: vec2<f32>,\n");
     s.push_str("    mouse: vec2<f32>,\n");
     s.push_str("    mouse_down: f32,\n");
+    s.push_str("    aspect_ratio: f32,\n");
     for u in uniforms {
         s.push_str(&format!("    p_{}: f32,\n", u.name));
     }
@@ -489,7 +490,7 @@ fn generate_fragment_inner(
     s.push_str("@fragment\n");
     s.push_str("fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {\n");
     s.push_str("    let uv = input.uv * 2.0 - 1.0;\n");
-    s.push_str("    let aspect = u.resolution.x / u.resolution.y;\n");
+    s.push_str("    let aspect = u.aspect_ratio;\n");
     s.push_str("    let time = fract(u.time / 120.0) * 120.0;\n");
     s.push_str("    let mouse_x = u.mouse.x;\n");
     s.push_str("    let mouse_y = u.mouse.y;\n");
@@ -2633,6 +2634,95 @@ mod tests {
         assert!(
             frag.contains("mouse_y"),
             "WGSL output must reference mouse_y, got:\n{frag}"
+        );
+    }
+
+    #[test]
+    fn wgsl_aspect_ratio_uniform_in_struct() {
+        let cin = make_cinematic(vec![Stage {
+            name: "circle".into(),
+            args: vec![Arg {
+                name: None,
+                value: Expr::Number(0.2),
+            }],
+        }]);
+        let frag = generate_fragment(&cin, &[]);
+        assert!(
+            frag.contains("aspect_ratio: f32,"),
+            "Uniforms struct must contain aspect_ratio field, got:\n{frag}"
+        );
+        assert!(
+            frag.contains("let aspect = u.aspect_ratio;"),
+            "aspect must read from uniform, not compute inline, got:\n{frag}"
+        );
+        assert!(
+            frag.contains("uv.x * aspect"),
+            "p must apply aspect correction, got:\n{frag}"
+        );
+    }
+
+    #[test]
+    fn wgsl_aspect_ratio_in_multi_layer() {
+        let cin = Cinematic {
+            name: "multi".into(),
+            layers: vec![
+                Layer {
+                    name: "bg".into(),
+                    opts: vec![],
+                    memory: None,
+                    opacity: None,
+                    cast: None,
+                    blend: BlendMode::Add,
+                    feedback: false,
+                    body: LayerBody::Pipeline(vec![Stage {
+                        name: "circle".into(),
+                        args: vec![Arg {
+                            name: None,
+                            value: Expr::Number(0.5),
+                        }],
+                    }]),
+                },
+                Layer {
+                    name: "fg".into(),
+                    opts: vec![],
+                    memory: None,
+                    opacity: None,
+                    cast: None,
+                    blend: BlendMode::Add,
+                    feedback: false,
+                    body: LayerBody::Pipeline(vec![Stage {
+                        name: "box".into(),
+                        args: vec![Arg {
+                            name: None,
+                            value: Expr::Number(0.3),
+                        }],
+                    }]),
+                },
+            ],
+            arcs: vec![],
+            resonates: vec![],
+            listen: None,
+            voice: None,
+            score: None,
+            gravity: None,
+            react: None,
+            swarm: None,
+            flow: None,
+            passes: vec![],
+            cinematic_uses: vec![],
+            matrix_coupling: None,
+            matrix_color: None,
+            props: None,
+            dom: None,
+            events: vec![],
+            role: None,
+        };
+        let frag = generate_fragment(&cin, &[]);
+        // Both layers should have aspect-corrected p
+        let p_count = frag.matches("var p = vec2<f32>(uv.x * aspect, uv.y)").count();
+        assert!(
+            p_count == 2,
+            "Each layer must have aspect-corrected p, found {p_count} in:\n{frag}"
         );
     }
 }

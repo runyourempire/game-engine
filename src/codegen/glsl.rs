@@ -235,6 +235,7 @@ fn generate_fragment_inner(
     s.push_str("uniform vec2 u_resolution;\n");
     s.push_str("uniform vec2 u_mouse;\n");
     s.push_str("uniform float u_mouse_down;\n");
+    s.push_str("uniform float u_aspect_ratio;\n");
     for u in uniforms {
         s.push_str(&format!("uniform float u_p_{};\n", u.name));
     }
@@ -258,7 +259,7 @@ fn generate_fragment_inner(
     // Entry point: void main()
     s.push_str("void main(){\n");
     s.push_str("    vec2 uv = v_uv * 2.0 - 1.0;\n");
-    s.push_str("    float aspect = u_resolution.x / u_resolution.y;\n");
+    s.push_str("    float aspect = u_aspect_ratio;\n");
     s.push_str("    float time = fract(u_time / 120.0) * 120.0;\n");
     s.push_str("    float mouse_x = u_mouse.x;\n");
     s.push_str("    float mouse_y = u_mouse.y;\n");
@@ -2137,6 +2138,30 @@ mod tests {
         assert!(
             output.contains("float mouse_down = u_mouse_down;"),
             "must declare mouse_down alias, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn glsl_aspect_ratio_uniform() {
+        let cin = make_cinematic(vec![Stage {
+            name: "circle".into(),
+            args: vec![Arg {
+                name: None,
+                value: Expr::Number(0.2),
+            }],
+        }]);
+        let output = generate_fragment(&cin, &[]);
+        assert!(
+            output.contains("uniform float u_aspect_ratio;"),
+            "must declare u_aspect_ratio uniform, got:\n{output}"
+        );
+        assert!(
+            output.contains("float aspect = u_aspect_ratio;"),
+            "aspect must read from uniform, not compute inline, got:\n{output}"
+        );
+        assert!(
+            output.contains("uv.x * aspect"),
+            "p must apply aspect correction, got:\n{output}"
         );
     }
 }

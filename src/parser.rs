@@ -941,13 +941,30 @@ impl Parser {
 
     fn parse_arc(&mut self) -> Result<ArcBlock, CompileError> {
         self.expect(&Token::Arc)?;
+
+        // Check for optional lifecycle state: enter, exit, hover, idle
+        let state = match self.peek() {
+            Some(Token::Ident(s)) if matches!(s.as_str(), "enter" | "exit" | "hover" | "idle") => {
+                let name = s.clone();
+                self.advance();
+                Some(match name.as_str() {
+                    "enter" => ArcState::Enter,
+                    "exit" => ArcState::Exit,
+                    "hover" => ArcState::Hover,
+                    "idle" => ArcState::Idle,
+                    _ => unreachable!(),
+                })
+            }
+            _ => None,
+        };
+
         self.expect(&Token::LBrace)?;
         let mut entries = Vec::new();
         while !self.at_end() && !self.check(&Token::RBrace) {
             entries.push(self.parse_arc_entry()?);
         }
         self.expect(&Token::RBrace)?;
-        Ok(ArcBlock { entries })
+        Ok(ArcBlock { state, entries })
     }
 
     fn parse_arc_entry(&mut self) -> Result<ArcEntry, CompileError> {
@@ -2328,6 +2345,26 @@ impl Parser {
         }
     }
 
+    /// Parse a CSS value: either a bare number (becomes `"{n}px"`) or a string
+    /// literal (passed through, e.g. `"50%"`, `"auto"`).
+    fn parse_css_value(&mut self) -> Result<String, CompileError> {
+        match self.peek() {
+            Some(Token::StringLit(_)) => self.expect_string(),
+            Some(Token::Float(_)) | Some(Token::Integer(_)) | Some(Token::Minus) => {
+                let n = self.parse_number_value()?;
+                Ok(format!("{n}px"))
+            }
+            _ => {
+                let (line, col) = self.current_pos();
+                Err(CompileError::ParseError {
+                    message: "expected number or string literal for CSS value".into(),
+                    line,
+                    col,
+                })
+            }
+        }
+    }
+
     // ======================================================================
     // Phase v0.8: Component UI Layer
     // ======================================================================
@@ -2392,18 +2429,20 @@ impl Parser {
             let name = self.expect_string()?;
             self.expect(&Token::LBrace)?;
 
-            let mut x: f64 = 0.0;
-            let mut y: f64 = 0.0;
+            let mut x = "0px".to_string();
+            let mut y = "0px".to_string();
             let mut style = String::new();
             let mut bind = None;
+            let mut width = None;
+            let mut align = None;
 
             while !self.check(&Token::RBrace) && !self.at_end() {
                 let key = self.expect_ident_or_keyword()?;
                 self.expect(&Token::Colon)?;
                 match key.as_str() {
                     "at" => {
-                        x = self.parse_number_value()?;
-                        y = self.parse_number_value()?;
+                        x = self.parse_css_value()?;
+                        y = self.parse_css_value()?;
                     }
                     "style" => {
                         style = self.expect_string()?;
@@ -2411,11 +2450,17 @@ impl Parser {
                     "bind" => {
                         bind = Some(self.expect_string()?);
                     }
+                    "width" => {
+                        width = Some(self.parse_css_value()?);
+                    }
+                    "align" => {
+                        align = Some(self.expect_string()?);
+                    }
                     _ => {
                         let (line, col) = self.current_pos();
                         return Err(CompileError::ParseError {
                             message: format!(
-                                "expected `at`, `style`, or `bind` in dom element, found `{key}`"
+                                "expected `at`, `style`, `bind`, `width`, or `align` in dom element, found `{key}`"
                             ),
                             line,
                             col,
@@ -2432,6 +2477,8 @@ impl Parser {
                 y,
                 style,
                 bind,
+                width,
+                align,
             });
         }
 

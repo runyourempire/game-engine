@@ -1831,4 +1831,53 @@ mod tests {
         // Should reference time in shader
         assert!(js.contains("time"), "shader should reference time");
     }
+
+    #[test]
+    fn uniforms_extracted_from_nested_expressions() {
+        // Idents inside binary ops should be extracted as uniforms
+        let source = r#"cinematic "t" {
+            layer config { pulse: 0.5 speed: 1.0 }
+            layer main {
+                circle(0.1 + pulse * 0.2) | glow(2.0 + speed * 1.5) | tint(1.0, 0.5, 0.2)
+            }
+        }"#;
+        let results = compile(source, &default_config()).unwrap();
+        let js = &results[0].js;
+        assert!(js.contains("name:'pulse'"), "pulse should be a uniform");
+        assert!(js.contains("name:'speed'"), "speed should be a uniform");
+        // WGSL should use them
+        assert!(js.contains("let pulse = u.p_pulse;"), "WGSL should read pulse from uniform");
+        assert!(js.contains("let speed = u.p_speed;"), "WGSL should read speed from uniform");
+    }
+
+    #[test]
+    fn uniforms_without_config_layer_extracted_from_expressions() {
+        // Variables used in expressions but NOT declared in config should still be uniforms
+        let source = r#"cinematic "t" {
+            layer main {
+                circle(0.1 + intensity * 0.2) | glow(2.0) | tint(1.0, 0.5, 0.2)
+            }
+        }"#;
+        let results = compile(source, &default_config()).unwrap();
+        let js = &results[0].js;
+        assert!(js.contains("name:'intensity'"), "intensity should be extracted as uniform from expression");
+        // WGSL should declare and use it
+        assert!(js.contains("let intensity = u.p_intensity;"), "WGSL should read intensity from uniform");
+    }
+
+    #[test]
+    fn component_has_pending_params_buffer() {
+        // Compiled components should buffer params for async renderer init
+        let source = r#"cinematic "t" {
+            layer config { size: 0.3 }
+            layer main {
+                circle(size) | glow(2.0) | tint(1.0, 0.5, 0.2)
+            }
+        }"#;
+        let results = compile(source, &default_config()).unwrap();
+        let js = &results[0].js;
+        assert!(js.contains("_pendingParams"), "should have pending params buffer");
+        assert!(js.contains("this._pendingParams[name] = value"), "setParam should buffer");
+        assert!(js.contains("Object.entries(this._pendingParams)"), "should replay pending params");
+    }
 }

@@ -170,6 +170,150 @@ fn parse_arc_block() {
     let entry = &prog.cinematics[0].arcs[0].entries[0];
     assert_eq!(entry.target, "bg.opacity");
     assert_eq!(entry.easing, Some("ease_in".into()));
+    // Unnamed arc has no state
+    assert_eq!(prog.cinematics[0].arcs[0].state, None);
+}
+
+#[test]
+fn parse_arc_enter_state() {
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("fade-in".into())),
+        s(Token::LBrace),
+        s(Token::Arc),
+        s(Token::Ident("enter".into())),
+        s(Token::LBrace),
+        s(Token::Ident("opacity".into())),
+        s(Token::Colon),
+        s(Token::Float(0.0)),
+        s(Token::Arrow),
+        s(Token::Float(1.0)),
+        s(Token::Over),
+        s(Token::Millis(200.0)),
+        s(Token::Ident("ease".into())),
+        s(Token::Minus),
+        s(Token::Ident("out".into())),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse arc enter");
+    assert_eq!(prog.cinematics[0].arcs.len(), 1);
+    let arc = &prog.cinematics[0].arcs[0];
+    assert_eq!(arc.state, Some(crate::ast::ArcState::Enter));
+    let entry = &arc.entries[0];
+    assert_eq!(entry.target, "opacity");
+    assert_eq!(entry.easing, Some("ease-out".into()));
+}
+
+#[test]
+fn parse_arc_exit_state() {
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("x".into())),
+        s(Token::LBrace),
+        s(Token::Arc),
+        s(Token::Ident("exit".into())),
+        s(Token::LBrace),
+        s(Token::Ident("opacity".into())),
+        s(Token::Colon),
+        s(Token::Float(1.0)),
+        s(Token::Arrow),
+        s(Token::Float(0.0)),
+        s(Token::Over),
+        s(Token::Millis(300.0)),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse arc exit");
+    assert_eq!(prog.cinematics[0].arcs[0].state, Some(crate::ast::ArcState::Exit));
+}
+
+#[test]
+fn parse_arc_hover_state() {
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("h".into())),
+        s(Token::LBrace),
+        s(Token::Arc),
+        s(Token::Ident("hover".into())),
+        s(Token::LBrace),
+        s(Token::Ident("glow".into())),
+        s(Token::Colon),
+        s(Token::Float(0.0)),
+        s(Token::Arrow),
+        s(Token::Float(1.0)),
+        s(Token::Over),
+        s(Token::Millis(150.0)),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse arc hover");
+    assert_eq!(prog.cinematics[0].arcs[0].state, Some(crate::ast::ArcState::Hover));
+}
+
+#[test]
+fn parse_arc_idle_state() {
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("i".into())),
+        s(Token::LBrace),
+        s(Token::Arc),
+        s(Token::Ident("idle".into())),
+        s(Token::LBrace),
+        s(Token::Ident("x".into())),
+        s(Token::Colon),
+        s(Token::Integer(0)),
+        s(Token::Arrow),
+        s(Token::Integer(1)),
+        s(Token::Over),
+        s(Token::Seconds(2.0)),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse arc idle");
+    assert_eq!(prog.cinematics[0].arcs[0].state, Some(crate::ast::ArcState::Idle));
+}
+
+#[test]
+fn parse_multiple_arc_states() {
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("multi".into())),
+        s(Token::LBrace),
+        // unnamed arc (idle)
+        s(Token::Arc),
+        s(Token::LBrace),
+        s(Token::Ident("scale".into())),
+        s(Token::Colon),
+        s(Token::Float(0.5)),
+        s(Token::Arrow),
+        s(Token::Float(1.5)),
+        s(Token::Over),
+        s(Token::Seconds(4.0)),
+        s(Token::RBrace),
+        // arc enter
+        s(Token::Arc),
+        s(Token::Ident("enter".into())),
+        s(Token::LBrace),
+        s(Token::Ident("opacity".into())),
+        s(Token::Colon),
+        s(Token::Float(0.0)),
+        s(Token::Arrow),
+        s(Token::Float(1.0)),
+        s(Token::Over),
+        s(Token::Millis(200.0)),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse multiple arc states");
+    assert_eq!(prog.cinematics[0].arcs.len(), 2);
+    assert_eq!(prog.cinematics[0].arcs[0].state, None);
+    assert_eq!(prog.cinematics[0].arcs[1].state, Some(crate::ast::ArcState::Enter));
 }
 
 // ===================================================================

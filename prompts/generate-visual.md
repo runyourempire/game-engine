@@ -257,3 +257,91 @@ Common mistakes to avoid:
 14. For living/organic feel: memory + distort + resonate together
 15. Always add a thin edge ring for structural grounding
 16. Output raw .game code only — no explanation, no markdown
+17. Config params MUST be used in layer expressions -- unused params make sliders dead
+18. Use DIFFERENT time multipliers per layer (0.3, 0.5, 0.7, 1.0) for visual richness
+19. Add matrix color for cinematic color grading
+20. Use distort() on shapes + high glow + memory for living/breathing elements
+21. Give each layer DISTINCT colors via tint() -- avoid monochrome
+22. Use blend: add on secondary/detail layers to prevent them occluding the primary
+23. SDF modifiers like onion() require SDF input -- place AFTER circle/ring, not before
+24. Use custom palettes (a_r/a_g/a_b/b_r/.../d_b) for unique color identities, named palettes for quick results
+25. Layer count: 5-8 layers for showcase quality. Background + 2-3 subjects + 1-2 details + edge
+26. Two config params minimum -- single-param visuals lack dimensionality
+
+## Showcase-Quality Reference
+
+This example demonstrates the quality bar for production visuals:
+
+```
+cinematic "event-horizon" {
+  layer config {
+    mass: 0.7
+    accretion: 0.0
+  }
+
+  layer cosmos memory: 0.88 {
+    warp(scale: 3.0, octaves: 6, persistence: 0.45, strength: 0.2)
+    | voronoi(18.0) | palette(twilight)
+  }
+
+  layer lensing memory: 0.93 blend: add {
+    polar
+    | warp(scale: 5.0, octaves: 5, persistence: 0.5, strength: 0.4 + mass * 0.15)
+    | fbm(scale: 4.0, octaves: 6)
+    | palette(
+        a_r: 0.02, a_g: 0.0, a_b: 0.05,
+        b_r: 0.3, b_g: 0.15, b_b: 0.5,
+        c_r: 1.0, c_g: 0.7, c_b: 0.5,
+        d_r: 0.0, d_g: 0.2, d_b: 0.5
+      )
+  }
+
+  layer disk memory: 0.91 blend: add {
+    distort(scale: 4.0, speed: 0.6, strength: 0.06)
+    | ring(0.25 + accretion * 0.05, 0.04)
+    | glow(3.0 + mass * 1.5)
+    | tint(1.0, 0.5, 0.15)
+  }
+
+  layer inner_plasma memory: 0.94 blend: add {
+    distort(scale: 3.0, speed: 0.9, strength: 0.03)
+    | ring(0.14, 0.02) | glow(4.0 + mass * 2.0) | tint(1.0, 0.85, 0.6)
+  }
+
+  layer void {
+    circle(0.06) | shade(0.0, 0.0, 0.0)
+  }
+
+  layer photon_ring memory: 0.85 {
+    ring(0.09, 0.003) | glow(2.5) | tint(0.9, 0.8, 1.0)
+  }
+
+  layer boundary {
+    ring(0.46, 0.002) | glow(0.6) | tint(0.2, 0.15, 0.3)
+  }
+
+  arc {
+    accretion: 0.0 -> 1.0 over 15s ease-in-out
+  }
+
+  resonate {
+    mass -> disk.brightness * 0.5
+    mass -> lensing.intensity * 0.3
+    accretion -> inner_plasma.brightness * 0.4
+  }
+
+  matrix color {
+    [
+      1.0, -0.03, 0.12,
+      0.0,  0.92, 0.05,
+      0.06, -0.02, 1.2
+    ]
+  }
+
+  pass glow_pass { blur(2.5) }
+  pass aberration { chromatic(0.004) }
+  pass frame { vignette(0.45) }
+}
+```
+
+Key patterns in this example: 7 layers (background + 4 subjects + boundary), custom palette for unique identity, config params driving expressions, memory on all visual layers, polar+warp for vortex, shade() for true darkness, matrix color grading, 3 post-processing passes.

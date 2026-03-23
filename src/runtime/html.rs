@@ -241,6 +241,9 @@ mod tests {
             dom_css: None,
             event_handlers: vec![],
             aria_role: None,
+            has_arc_enter: false,
+            has_arc_exit: false,
+            has_arc_hover: false,
         };
         let html = generate_html(&shader);
         assert!(html.contains("<!DOCTYPE html>"));
