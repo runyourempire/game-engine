@@ -42,6 +42,7 @@ pub struct Cinematic {
     pub react: Option<ReactBlock>,
     pub swarm: Option<SwarmBlock>,
     pub flow: Option<FlowBlock>,
+    pub particles: Option<ParticlesBlock>,
     /// Post-processing passes within this cinematic.
     pub passes: Vec<PassBlock>,
     /// References to other cinematics used as texture inputs.
@@ -58,6 +59,31 @@ pub struct Cinematic {
     pub events: Vec<EventHandler>,
     /// ARIA role for accessibility.
     pub role: Option<String>,
+    /// 3D ray marching scene configuration.
+    pub scene3d: Option<Scene3dBlock>,
+    /// Texture inputs (external images bound to shader samplers).
+    pub textures: Vec<TextureDecl>,
+}
+
+// ── 3D Ray Marching ─────────────────────────────────────
+
+/// Camera mode for 3D scene rendering.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CameraMode {
+    /// Mouse-controlled orbit around the origin.
+    Orbit,
+    /// Fixed camera position (static view).
+    Static,
+    /// WASD fly-through camera.
+    Fly,
+}
+
+/// `scene3d { camera: mode, fov: degrees, distance: units }`
+#[derive(Debug, Clone)]
+pub struct Scene3dBlock {
+    pub camera: CameraMode,
+    pub fov: f64,
+    pub distance: f64,
 }
 
 /// `pass name { pipeline }` — post-processing pass within a cinematic.
@@ -407,6 +433,34 @@ pub struct SwarmBlock {
     pub bounds: BoundsMode,
 }
 
+/// `particles { count, emit, lifetime, speed, spread, gravity, size, fade, color }`
+/// General-purpose GPU-accelerated particle system.
+#[derive(Debug, Clone)]
+pub struct ParticlesBlock {
+    pub count: u32,
+    pub emit: EmitMode,
+    pub lifetime: f64,
+    pub speed: f64,
+    pub spread: f64, // degrees
+    pub gravity: f64,
+    pub size: f64,
+    pub fade: bool,
+    pub color: String, // palette name or "white"
+}
+
+/// Particle emission origin mode.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EmitMode {
+    /// Emit from center of canvas.
+    Center,
+    /// Emit from random positions.
+    Random,
+    /// Emit from a ring of given radius (0.0-1.0).
+    Ring(f64),
+    /// Emit from a specific point (x, y) in UV space.
+    Point(f64, f64),
+}
+
 /// `flow { type, scale, speed, octaves, strength, bounds }`
 /// Curl noise vector field for particle advection.
 #[derive(Debug, Clone)]
@@ -596,6 +650,16 @@ pub struct EventHandler {
     pub event: String,
     /// Custom event to dispatch when triggered.
     pub emit: Option<String>,
+}
+
+// ── Texture inputs ───────────────────────────────────────
+
+/// `texture "name" [from "url"]` — external image/texture input.
+#[derive(Debug, Clone)]
+pub struct TextureDecl {
+    pub name: String,
+    /// Optional URL or path — can also be set from JavaScript at runtime.
+    pub source: Option<String>,
 }
 
 // ── Phase v0.5: Scene sequencing ─────────────────────────

@@ -16,7 +16,9 @@ pub mod listen;
 pub mod lsystem;
 pub mod matrix;
 pub mod memory;
+pub mod particles;
 pub mod project;
+pub mod raymarcher;
 pub mod react;
 pub mod resonate;
 pub mod scene;
@@ -36,6 +38,13 @@ use crate::error::CompileError;
 pub struct UniformInfo {
     pub name: String,
     pub default: f64,
+}
+
+/// Describes a texture input declared in a cinematic.
+#[derive(Debug, Clone)]
+pub struct TextureInfo {
+    pub name: String,
+    pub binding: u32,
 }
 
 /// Collected shader output for a single cinematic.
@@ -60,6 +69,10 @@ pub struct ShaderOutput {
     pub swarm_trail_wgsl: Option<String>,
     /// Flow field compute shader.
     pub flow_wgsl: Option<String>,
+    /// Particle system simulation compute shader.
+    pub particles_sim_wgsl: Option<String>,
+    /// Particle system rasterization compute shader.
+    pub particles_raster_wgsl: Option<String>,
     /// Post-processing pass fragment shaders (ordered).
     pub pass_wgsl: Vec<String>,
     /// Number of post-processing passes.
@@ -78,12 +91,16 @@ pub struct ShaderOutput {
     pub event_handlers: Vec<(String, Option<String>)>,
     /// ARIA role attribute value.
     pub aria_role: Option<String>,
+    /// Whether this cinematic uses 3D ray marching (scene3d block present).
+    pub is_3d: bool,
     /// Whether this cinematic has an arc enter state (auto-play on connect).
     pub has_arc_enter: bool,
     /// Whether this cinematic has an arc exit state (programmatic trigger).
     pub has_arc_exit: bool,
     /// Whether this cinematic has an arc hover state (mouseenter/mouseleave).
     pub has_arc_hover: bool,
+    /// Texture inputs declared in this cinematic (for image sampling).
+    pub textures: Vec<TextureInfo>,
 }
 
 /// A string-typed property for DOM binding.
@@ -297,7 +314,12 @@ pub fn generate_with_fns(
 
     let uniforms = extract_uniforms(cinematic);
 
-    let wgsl_fragment = wgsl::generate_fragment_with_fns(cinematic, &uniforms, fns);
+    let is_3d = cinematic.scene3d.is_some();
+    let wgsl_fragment = if is_3d {
+        raymarcher::generate_fragment_3d(cinematic, &uniforms)
+    } else {
+        wgsl::generate_fragment_with_fns(cinematic, &uniforms, fns)
+    };
     let glsl_fragment = glsl::generate_fragment_with_fns(cinematic, &uniforms, fns);
 
     let uses_memory = memory::any_layer_uses_memory(&cinematic.layers);
@@ -404,6 +426,18 @@ pub fn generate_with_fns(
     // Feedback detection
     let uses_feedback = cinematic.layers.iter().any(|l| l.feedback);
 
+    // Particles → dual compute WGSL + GameParticleSim JS class
+    let (particles_sim_wgsl, particles_raster_wgsl) = if let Some(ref pb) = cinematic.particles {
+        let (w, h) = (512u32, 512u32);
+        js_modules.push(particles::generate_particles_runtime_js(pb, w, h));
+        (
+            Some(particles::generate_sim_wgsl(pb)),
+            Some(particles::generate_raster_wgsl(pb)),
+        )
+    } else {
+        (None, None)
+    };
+
     // Extract string props and DOM from props/dom blocks
     let string_props = dom::extract_string_props(cinematic);
     let (dom_html, dom_css) = dom::generate_dom(cinematic);
@@ -413,6 +447,19 @@ pub fn generate_with_fns(
         .map(|e| (e.event.clone(), e.emit.clone()))
         .collect();
     let aria_role = cinematic.role.clone();
+
+    // Extract texture declarations — assign binding slots
+    // Each texture uses 2 bindings (texture + sampler), starting after
+    // the last used binding in the main bind group (binding 0 = uniforms).
+    let textures: Vec<TextureInfo> = cinematic
+        .textures
+        .iter()
+        .enumerate()
+        .map(|(i, td)| TextureInfo {
+            name: td.name.clone(),
+            binding: (i as u32) * 2 + 5, // bindings 5,6 / 7,8 / 9,10 / 11,12
+        })
+        .collect();
 
     Ok(ShaderOutput {
         name: cinematic.name.clone(),
@@ -437,9 +484,13 @@ pub fn generate_with_fns(
         dom_css,
         event_handlers,
         aria_role,
+        is_3d,
         has_arc_enter: arc::has_arc_state(&cinematic.arcs, "enter"),
         has_arc_exit: arc::has_arc_state(&cinematic.arcs, "exit"),
         has_arc_hover: arc::has_arc_state(&cinematic.arcs, "hover"),
+        textures,
+        particles_sim_wgsl,
+        particles_raster_wgsl,
     })
 }
 
@@ -470,6 +521,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -478,6 +530,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         }
     }
 
@@ -557,6 +611,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -565,6 +620,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let uniforms = extract_uniforms(&cin);
         assert_eq!(uniforms.len(), 1);
@@ -598,6 +655,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -606,6 +664,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         assert!(generate(&cin).is_ok());
     }
@@ -642,6 +702,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -650,6 +711,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let err = generate(&cin).unwrap_err();
         assert!(err.to_string().contains("cast as 'sdf'"));
@@ -693,6 +756,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -701,6 +765,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         assert_eq!(output.js_modules.len(), 1);
@@ -744,6 +810,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -752,6 +819,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.compute_wgsl.is_some());
@@ -818,6 +887,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -826,6 +896,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output
@@ -875,6 +947,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -883,6 +956,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output
@@ -940,6 +1015,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -948,6 +1024,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         let has_resonate = output
@@ -994,6 +1072,7 @@ mod tests {
             }),
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -1002,6 +1081,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.react_wgsl.is_some());
@@ -1048,6 +1129,7 @@ mod tests {
                 bounds: crate::ast::BoundsMode::Wrap,
             }),
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -1056,6 +1138,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.swarm_agent_wgsl.is_some());
@@ -1097,6 +1181,7 @@ mod tests {
                 strength: 1.0,
                 bounds: crate::ast::BoundsMode::Wrap,
             }),
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -1105,6 +1190,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.flow_wgsl.is_some());

@@ -241,9 +241,13 @@ mod tests {
             dom_css: None,
             event_handlers: vec![],
             aria_role: None,
+            is_3d: false,
             has_arc_enter: false,
             has_arc_exit: false,
             has_arc_hover: false,
+            textures: vec![],
+            particles_sim_wgsl: None,
+            particles_raster_wgsl: None,
         };
         let html = generate_html(&shader);
         assert!(html.contains("<!DOCTYPE html>"));

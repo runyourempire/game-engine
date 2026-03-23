@@ -103,6 +103,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -143,6 +144,8 @@ mod tests {
                 emit: Some("dismiss".into()),
             }],
             role: Some("alert".into()),
+            scene3d: None,
+            textures: vec![],
         }
     }
 
@@ -182,6 +185,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -190,6 +194,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let (html, css) = generate_dom(&cin);
         assert!(html.is_none());
@@ -210,6 +216,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -229,6 +236,8 @@ mod tests {
             }),
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();
@@ -250,6 +259,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -269,6 +279,8 @@ mod tests {
             }),
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();
@@ -297,6 +309,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -316,6 +329,8 @@ mod tests {
             }),
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let (html, css) = generate_dom(&cin);
         let html = html.unwrap();
@@ -338,6 +353,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -357,6 +373,8 @@ mod tests {
             }),
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();
@@ -380,6 +398,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -399,6 +418,8 @@ mod tests {
             }),
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();

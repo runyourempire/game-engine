@@ -1,0 +1,22 @@
+// Particle Sparks — GAME v0.8 Particle System Demo
+//
+// 5000 particles with gravity, fading, and center emission.
+// Demonstrates the particles block with compute dispatch.
+
+cinematic "particle-sparks" {
+  particles {
+    count: 5000
+    emit: center
+    lifetime: 3.0
+    speed: 0.5
+    spread: 360
+    gravity: -0.2
+    size: 2.0
+    fade: true
+    color: fire
+  }
+
+  layer bg {
+    circle(0.05) | glow(3.0) | tint(0.831, 0.686, 0.216)
+  }
+}

@@ -179,6 +179,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -187,6 +188,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let err = validate_casts(&cin).unwrap_err();
         assert!(err.to_string().contains("layer 'b'"));

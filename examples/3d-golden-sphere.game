@@ -1,0 +1,16 @@
+// 3D Golden Sphere — GAME v0.8 Ray Marching Demo
+//
+// Orbiting camera, Phong-lit sphere in 4DA gold.
+// Demonstrates the scene3d block with orbit camera.
+
+cinematic "3d-golden-sphere" {
+  scene3d {
+    camera: orbit
+    fov: 45
+    distance: 3.0
+  }
+
+  layer main {
+    circle(0.5) | shade(0.831, 0.686, 0.216)
+  }
+}

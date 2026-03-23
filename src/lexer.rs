@@ -59,6 +59,8 @@ enum LexToken {
     Swarm,
     #[token("flow")]
     Flow,
+    #[token("particles")]
+    Particles,
     #[token("fn")]
     Fn,
     #[token("if")]
@@ -235,6 +237,7 @@ fn convert(lt: LexToken, slice: &str) -> Result<Token, CompileError> {
         LexToken::React => Token::React,
         LexToken::Swarm => Token::Swarm,
         LexToken::Flow => Token::Flow,
+        LexToken::Particles => Token::Particles,
         LexToken::Fn => Token::Fn,
         LexToken::If => Token::If,
         LexToken::Else => Token::Else,

@@ -456,6 +456,13 @@ static GRID_PARAMS: &[BuiltinParam] = &[
     },
 ];
 
+// ── Texture sampling ─────────────────────────────────────
+
+static SAMPLE_PARAMS: &[BuiltinParam] = &[BuiltinParam {
+    name: "name",
+    default: None,
+}];
+
 // ── Registry ─────────────────────────────────────────────
 
 static BUILTINS: &[BuiltinFn] = &[
@@ -756,6 +763,13 @@ static BUILTINS: &[BuiltinFn] = &[
         input: ShaderState::Position,
         output: ShaderState::Sdf,
     },
+    // ── Texture sampling: Position -> Color ────────────────
+    BuiltinFn {
+        name: "sample",
+        params: SAMPLE_PARAMS,
+        input: ShaderState::Position,
+        output: ShaderState::Color,
+    },
 ];
 
 /// Look up a built-in function by name.
@@ -872,6 +886,8 @@ mod tests {
             "egg",
             "spiral",
             "grid",
+            // Texture sampling
+            "sample",
         ] {
             assert!(lookup(name).is_some(), "missing builtin: {name}");
         }

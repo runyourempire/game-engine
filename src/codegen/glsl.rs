@@ -1434,6 +1434,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -1442,6 +1443,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         }
     }
 
@@ -1672,6 +1675,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -1680,6 +1684,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         };
         let output = generate_fragment(&cin, &[]);
         assert!(output.contains("vec4 final_color"));
@@ -1815,6 +1821,7 @@ mod tests {
             react: None,
             swarm: None,
             flow: None,
+            particles: None,
             passes: vec![],
             cinematic_uses: vec![],
             matrix_coupling: None,
@@ -1823,6 +1830,8 @@ mod tests {
             dom: None,
             events: vec![],
             role: None,
+            scene3d: None,
+            textures: vec![],
         }
     }
 

@@ -81,6 +81,7 @@ impl Parser {
                 Token::Cast => "cast",
                 Token::Score => "score",
                 Token::Flow => "flow",
+                Token::Particles => "particles",
                 Token::React => "react",
                 Token::Swarm => "swarm",
                 Token::Gravity => "gravity",
@@ -556,6 +557,7 @@ impl Parser {
         let mut react = None;
         let mut swarm = None;
         let mut flow = None;
+        let mut particles = None;
         let mut passes = Vec::new();
         let mut cinematic_uses = Vec::new();
         let mut matrix_coupling = None;
@@ -564,6 +566,8 @@ impl Parser {
         let mut dom = None;
         let mut events = Vec::new();
         let mut role = None;
+        let mut scene3d = None;
+        let mut textures = Vec::new();
 
         while !self.at_end() && !self.check(&Token::RBrace) {
             match self.peek() {
@@ -577,6 +581,7 @@ impl Parser {
                 Some(Token::React) => react = Some(self.parse_react()?),
                 Some(Token::Swarm) => swarm = Some(self.parse_swarm()?),
                 Some(Token::Flow) => flow = Some(self.parse_flow()?),
+                Some(Token::Particles) => particles = Some(self.parse_particles()?),
                 Some(Token::Pass) => passes.push(self.parse_pass_block()?),
                 Some(Token::Use) => cinematic_uses.push(self.parse_cinematic_use()?),
                 Some(Token::Props) => props = Some(self.parse_props_block()?),
@@ -603,11 +608,17 @@ impl Parser {
                 Some(Token::Ident(s)) if s == "role" => {
                     role = Some(self.parse_role()?);
                 }
+                Some(Token::Ident(s)) if s == "scene3d" => {
+                    scene3d = Some(self.parse_scene3d_block()?);
+                }
+                Some(Token::Ident(s)) if s == "texture" => {
+                    textures.push(self.parse_texture_decl()?);
+                }
                 _ => {
                     let (line, col) = self.current_pos();
                     return Err(CompileError::ParseError {
                         message: format!(
-                            "expected `layer`, `arc`, `resonate`, `listen`, `voice`, `score`, `gravity`, `react`, `swarm`, `flow`, `pass`, `use`, `matrix`, `props`, `dom`, `on`, or `role` inside cinematic, found `{}`",
+                            "expected `layer`, `arc`, `resonate`, `listen`, `voice`, `score`, `gravity`, `react`, `swarm`, `flow`, `particles`, `pass`, `use`, `matrix`, `props`, `dom`, `on`, `role`, `scene3d`, or `texture` inside cinematic, found `{}`",
                             self.peek().map_or("EOF".into(), |t| t.to_string())
                         ),
                         line,
@@ -630,6 +641,7 @@ impl Parser {
             react,
             swarm,
             flow,
+            particles,
             passes,
             cinematic_uses,
             matrix_coupling,
@@ -638,6 +650,8 @@ impl Parser {
             dom,
             events,
             role,
+            scene3d,
+            textures,
         })
     }
 
@@ -1586,6 +1600,103 @@ impl Parser {
     }
 
     // ======================================================================
+    // particles { count, emit, lifetime, speed, spread, gravity, size, fade, color }
+    // ======================================================================
+
+    fn parse_particles(&mut self) -> Result<ParticlesBlock, CompileError> {
+        self.expect(&Token::Particles)?;
+        self.expect(&Token::LBrace)?;
+
+        let mut count = 1000u32;
+        let mut emit = EmitMode::Center;
+        let mut lifetime = 2.0;
+        let mut speed = 0.5;
+        let mut spread = 360.0;
+        let mut gravity = 0.0;
+        let mut size = 2.0;
+        let mut fade = true;
+        let mut color = "white".to_string();
+
+        while !self.at_end() && !self.check(&Token::RBrace) {
+            // Use expect_ident_or_keyword because "gravity" is a keyword token
+            let key = self.expect_ident_or_keyword()?;
+            self.expect(&Token::Colon)?;
+            match key.as_str() {
+                "count" => count = self.expect_number()? as u32,
+                "emit" => {
+                    let mode = self.expect_ident()?;
+                    emit = match mode.as_str() {
+                        "center" => EmitMode::Center,
+                        "random" => EmitMode::Random,
+                        "ring" => {
+                            // ring or ring(radius)
+                            if self.check(&Token::LParen) {
+                                self.advance();
+                                let radius = self.expect_number()?;
+                                self.expect(&Token::RParen)?;
+                                EmitMode::Ring(radius)
+                            } else {
+                                EmitMode::Ring(0.3)
+                            }
+                        }
+                        "point" => {
+                            self.expect(&Token::LParen)?;
+                            let x = self.expect_number()?;
+                            self.expect(&Token::Comma)?;
+                            let y = self.expect_number()?;
+                            self.expect(&Token::RParen)?;
+                            EmitMode::Point(x, y)
+                        }
+                        _ => {
+                            let (line, col) = self.current_pos();
+                            return Err(CompileError::ParseError {
+                                message: format!(
+                                    "unknown emit mode `{mode}`, expected center/random/ring/point"
+                                ),
+                                line,
+                                col,
+                            });
+                        }
+                    };
+                }
+                "lifetime" => lifetime = self.expect_number()?,
+                "speed" => speed = self.expect_number()?,
+                "spread" => spread = self.expect_number()?,
+                "gravity" => gravity = self.parse_number_value()?,
+                "size" => size = self.expect_number()?,
+                "fade" => {
+                    let val = self.expect_ident()?;
+                    fade = val == "true";
+                }
+                "color" => color = self.expect_ident()?,
+                _ => {
+                    let (line, col) = self.current_pos();
+                    return Err(CompileError::ParseError {
+                        message: format!("unknown particles property `{key}`"),
+                        line,
+                        col,
+                    });
+                }
+            }
+            if matches!(self.peek(), Some(Token::Comma)) {
+                self.advance();
+            }
+        }
+        self.expect(&Token::RBrace)?;
+        Ok(ParticlesBlock {
+            count,
+            emit,
+            lifetime,
+            speed,
+            spread,
+            gravity,
+            size,
+            fade,
+            color,
+        })
+    }
+
+    // ======================================================================
     // project mode(params) { source: name, ... }
     // ======================================================================
 
@@ -2521,6 +2632,90 @@ impl Parser {
         self.advance();
         self.expect(&Token::Colon)?;
         self.expect_string()
+    }
+
+    // ======================================================================
+    // scene3d { camera: mode, fov: number, distance: number }
+    // ======================================================================
+
+    fn parse_scene3d_block(&mut self) -> Result<Scene3dBlock, CompileError> {
+        // Consume the "scene3d" identifier
+        self.advance();
+        self.expect(&Token::LBrace)?;
+
+        let mut camera = CameraMode::Orbit;
+        let mut fov = 45.0;
+        let mut distance = 3.0;
+
+        while !self.at_end() && !self.check(&Token::RBrace) {
+            let key = self.expect_ident_or_keyword()?;
+            self.expect(&Token::Colon)?;
+            match key.as_str() {
+                "camera" => {
+                    let mode_str = self.expect_ident()?;
+                    camera = match mode_str.as_str() {
+                        "orbit" => CameraMode::Orbit,
+                        "static" => CameraMode::Static,
+                        "fly" => CameraMode::Fly,
+                        _ => {
+                            let (line, col) = self.current_pos();
+                            return Err(CompileError::ParseError {
+                                message: format!(
+                                    "unknown camera mode '{}', expected: orbit, static, fly",
+                                    mode_str
+                                ),
+                                line,
+                                col,
+                            });
+                        }
+                    };
+                }
+                "fov" => {
+                    fov = self.expect_number()?;
+                }
+                "distance" => {
+                    distance = self.expect_number()?;
+                }
+                _ => {
+                    let (line, col) = self.current_pos();
+                    return Err(CompileError::ParseError {
+                        message: format!(
+                            "unknown scene3d property '{}', expected: camera, fov, distance",
+                            key
+                        ),
+                        line,
+                        col,
+                    });
+                }
+            }
+        }
+
+        self.expect(&Token::RBrace)?;
+        Ok(Scene3dBlock {
+            camera,
+            fov,
+            distance,
+        })
+    }
+
+    // ======================================================================
+    // texture "name" [from "url"]
+    // ======================================================================
+
+    fn parse_texture_decl(&mut self) -> Result<TextureDecl, CompileError> {
+        // Consume the "texture" identifier
+        self.advance();
+        let name = self.expect_string()?;
+
+        // Optional `from "url"` clause
+        let source = if matches!(self.peek(), Some(Token::From)) {
+            self.advance(); // consume `from`
+            Some(self.expect_string()?)
+        } else {
+            None
+        };
+
+        Ok(TextureDecl { name, source })
     }
 }
 
