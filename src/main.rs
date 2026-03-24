@@ -150,10 +150,9 @@ const TEMPLATE_PARTICLES: &str = r#"cinematic "particle-field" {
 
 const TEMPLATE_PROCEDURAL: &str = r#"cinematic "procedural" {
   layer terrain {
-    fbm(octaves: 6, gain: 0.5, lacunarity: 2.0)
-    | warp(strength: 0.3, scale: 2.0)
-    | voronoi(scale: 4.0)
-    | palette(0.5, 0.5, 1.0, 0.0, 0.3, 0.2)
+    warp(scale: 3.0, octaves: 4, strength: 0.3)
+    | fbm(scale: 2.0, octaves: 6, persistence: 0.5)
+    | palette(earth)
   }
 }
 "#;
@@ -163,11 +162,11 @@ const TEMPLATE_COMPOSITION: &str = r#"cinematic "composition" {
     circle(0.4) | glow(2.0) | tint(0.1, 0.1, 0.3)
   }
 
-  layer mid blend screen {
+  layer mid blend: add {
     ring(0.3, 0.01) | glow(3.0) | tint(0.83, 0.69, 0.22)
   }
 
-  layer top blend add {
+  layer top blend: add {
     circle(0.05) | glow(5.0) | tint(1.0, 1.0, 1.0)
   }
 }
@@ -186,13 +185,13 @@ const TEMPLATE_REACTIVE: &str = r#"cinematic "audio-reactive" {
     | circle(0.15) | glow(3.0) | tint(0.83, 0.69, 0.22)
   }
 
-  layer ring1 blend add {
+  layer ring1 blend: add {
     ring(0.25, 0.01) | glow(2.5) | tint(0.4, 0.7, 1.0)
   }
 
   resonate {
-    audio.bass -> core.radius * 0.15
-    audio.mid -> ring1.radius * 0.1
+    bass -> core.radius * 0.15
+    mid -> ring1.radius * 0.1
   }
 }
 "#;
@@ -200,15 +199,11 @@ const TEMPLATE_REACTIVE: &str = r#"cinematic "audio-reactive" {
 const TEMPLATE_SDF: &str = r#"cinematic "sdf-showcase" {
   layer base {
     rotate(0.3)
-    | smooth_union(
-        circle(0.15),
-        translate(0.2, 0.0) | circle(0.1),
-        0.1
-      )
+    | smooth_union(circle(0.15), circle(0.1), 0.1)
     | glow(2.0) | tint(0.9, 0.3, 0.2)
   }
 
-  layer rings blend add {
+  layer rings blend: add {
     radial(6) | ring(0.3, 0.005) | glow(2.5) | tint(0.83, 0.69, 0.22)
   }
 }
@@ -229,7 +224,7 @@ cinematic "main" {
     warp(3.0, 4, 0.5, 2.0, 0.3) | fbm(2.0, 4) | palette(ocean)
   }
 
-  layer indicator blend add {
+  layer indicator blend: add {
     ring(0.2, 0.01) | glow(2.5) | tint(0.2, 0.8, 0.4)
   }
 }
