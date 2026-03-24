@@ -163,10 +163,11 @@ export class PreviewPanel {
     overflow: hidden;
     background: #050505;
   }
-  #component-host > * {
-    display: block;
+  #preview-frame {
     width: 100%;
     height: 100%;
+    border: none;
+    background: #050505;
   }
   #status {
     position: absolute;
@@ -264,10 +265,7 @@ export class PreviewPanel {
 <body>
 <div id="container">
   <div id="component-host">
-    <div class="empty-state">
-      <p>Edit a <code>.game</code> file to see live preview</p>
-      <p style="margin-top:8px;color:#222">Changes render automatically</p>
-    </div>
+    <iframe id="preview-frame" sandbox="allow-scripts"></iframe>
   </div>
   <div id="status">ready</div>
   <div id="error-overlay"></div>
@@ -296,11 +294,9 @@ export class PreviewPanel {
   </div>
 </div>
 <script>
-  const host = document.getElementById('component-host');
   const status = document.getElementById('status');
   const errorOverlay = document.getElementById('error-overlay');
-  let currentTag = null;
-  let scriptElements = [];
+  const previewFrame = document.getElementById('preview-frame');
 
   const vscodeApi = acquireVsCodeApi();
   const tunerOverlay = document.getElementById('tuner-overlay');
@@ -488,40 +484,26 @@ export class PreviewPanel {
     }
 
     if (msg.type === 'compiled') {
-      // Clear previous component
-      host.innerHTML = '';
-      scriptElements.forEach(s => s.remove());
-      scriptElements = [];
       errorOverlay.classList.remove('visible');
 
-      // Custom elements can only be defined once per name, so append a
-      // unique timestamp suffix for each recompile
-      const timestamp = Date.now();
-      const uniqueJs = msg.js.replace(
-        /customElements\\.define\\('([^']+)'/,
-        (match, tag) => {
-          currentTag = tag + '-' + timestamp;
-          return "customElements.define('" + currentTag + "'";
-        }
-      );
+      // Build a self-contained HTML document for the iframe.
+      // Each srcdoc assignment creates a fresh document context —
+      // no Custom Elements Registry leak, no orphaned rAF loops.
+      const tagName = 'game-' + msg.name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      const iframeDoc = '<!DOCTYPE html>' +
+        '<html><head><style>' +
+        '*{margin:0;padding:0;box-sizing:border-box}' +
+        'html,body{width:100%;height:100%;background:#050505;overflow:hidden}' +
+        tagName + '{display:block;width:100%;height:100%}' +
+        '</style></head><body>' +
+        '<' + tagName + '></' + tagName + '>' +
+        '<script>' + msg.js + '<\\/script>' +
+        '</body></html>';
 
-      // Inject the component script
-      const script = document.createElement('script');
-      script.textContent = uniqueJs;
-      document.body.appendChild(script);
-      scriptElements.push(script);
+      previewFrame.srcdoc = iframeDoc;
 
-      // Create the element
-      if (currentTag) {
-        const el = document.createElement(currentTag);
-        el.style.display = 'block';
-        el.style.width = '100%';
-        el.style.height = '100%';
-        host.appendChild(el);
-
-        status.textContent = msg.name + ' \\u2014 live';
-        status.className = 'ok';
-      }
+      status.textContent = msg.name + ' \\u2014 live';
+      status.className = 'ok';
     }
 
     if (msg.type === 'warning') {
