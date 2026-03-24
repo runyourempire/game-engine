@@ -108,8 +108,8 @@
       },
       {
         "command": "game.openGallery",
-        "key": "ctrl+shift+b",
-        "mac": "cmd+shift+b",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
         "when": "editorLangId == game"
       },
       {
@@ -170,7 +170,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "echo skipped",
+    "vscode:prepublish": "tsc -p ./",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package"

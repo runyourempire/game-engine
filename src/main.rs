@@ -506,7 +506,7 @@ fn run_dev_server(input: PathBuf, port: u16) -> Result<()> {
     }));
 
     // Start HTTP server
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("127.0.0.1:{}", port);
     let server = tiny_http::Server::http(&addr)
         .map_err(|e| anyhow::anyhow!("failed to start HTTP server on {}: {}", addr, e))?;
     let server = Arc::new(server);
@@ -555,7 +555,7 @@ fn run_dev_server(input: PathBuf, port: u16) -> Result<()> {
                     match compile_game_file(&input_watcher) {
                         Ok(result) => {
                             let elapsed = start.elapsed();
-                            let mut locked = state_watcher.lock().unwrap();
+                            let mut locked = state_watcher.lock().unwrap_or_else(|e| e.into_inner());
                             locked.version += 1;
                             locked.html = generate_preview_html(
                                 &result.tag,
@@ -587,7 +587,7 @@ fn run_dev_server(input: PathBuf, port: u16) -> Result<()> {
         match server.recv() {
             Ok(request) => {
                 let url = request.url().to_string();
-                let locked = state_server.lock().unwrap();
+                let locked = state_server.lock().unwrap_or_else(|e| e.into_inner());
 
                 match url.as_str() {
                     "/version" => {

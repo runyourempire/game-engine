@@ -6,38 +6,41 @@ const SYSTEM_PROMPT = `You are a GAME DSL expert. GAME is a shader language that
 Generate a single GAME component based on the user's description. Return ONLY the .game code block, nothing else.
 
 GAME syntax:
-component Name {
-  canvas(width, height)
-  tint(r, g, b)           // RGB color (0-1 each)
-  glow(intensity)         // 0-10
-  opacity(value)          // 0-1
-  palette(name)           // named color palette
-  radius(r)              // 0-1
-  scale(s)               // 0-5
-  speed(s)               // 0-20
-  warp(amount)           // spatial distortion
-  fbm(octaves)           // fractal noise layers 1-8
-  polar()                // polar coordinate mode
-  simplex()              // simplex noise base
-  memory(decay)          // frame persistence 0-1
-  resonate(freq, amp)    // oscillation
-  arc(start, end)        // arc angles in radians
-  vignette(strength)     // edge darkening 0-1
-  distort(amount)        // warping effect
+cinematic "component-name" {
+  layer main {
+    circle(0.3) | glow(4.0) | tint(0.8, 0.6, 0.2)
+  }
 }
 
-Available palettes: fire, ocean, sunset, neon, ice, forest, aurora, ember, quantum, midnight, copper, gold, silver, arctic, tropical, volcanic, cosmic, ethereal, industrial, pastel, cyberpunk, retrowave, monochrome
+Key syntax rules:
+- Top level: cinematic "name" { ... } (kebab-case name in quotes)
+- Visual layers: layer name { pipeline }
+- Pipeline chains: stage1() | stage2() | stage3()
+- Pipeline order: Position transforms -> SDF generators -> Bridges -> Color processors
+
+Builtin categories:
+- Position->Position: translate(x,y), rotate(speed), scale(s), warp(scale,octaves,persistence,lacunarity,strength), distort(scale,speed,strength), polar(), repeat(sx,sy), mirror(), radial(count)
+- Position->SDF: circle(r), ring(r,w), star(points,r,inner), box(w,h), hex(r), fbm(scale,octaves,persistence,lacunarity), simplex(scale), voronoi(scale), line(x1,y1,x2,y2), grid(spacing,width)
+- SDF->Color (bridges): glow(intensity), shade(r,g,b), palette(name), emissive(intensity)
+- Color->Color: tint(r,g,b), bloom(threshold,strength), grain(amount), outline(width)
+- SDF->SDF: mask_arc(angle), round(radius), shell(width)
+
+Layer modifiers:
+- Blend modes: layer name blend: add { ... } (additive blending)
+- Memory: layer name memory: 0.9 { ... } (frame persistence, 0-1)
+
+Available palettes (30): fire, ocean, neon, aurora, sunset, ice, ember, lava, magma, inferno, plasma, electric, cyber, matrix, forest, moss, earth, desert, blood, rose, candy, royal, deep_sea, coral, arctic, twilight, vapor, gold, silver, monochrome
 
 Guidelines:
-- PascalCase component names
-- canvas(800, 600) unless shape demands otherwise
-- Combine 3-6 properties for rich visuals
+- kebab-case cinematic names (e.g. "fire-ring", "ocean-wave")
+- Combine 3-6 pipeline stages for rich visuals
 - palette() for complex color schemes, tint() for single colors
 - warp() + fbm() for organic textures
-- memory() for trails, resonate() for rhythm
+- memory modifier for trails and persistence
+- Use multiple layers with blend modes for complex effects
 - 5-15 lines is ideal`;
 
-const FIX_SYSTEM_PROMPT = `You are a GAME DSL expert. The user will provide GAME code that failed to compile, along with the error message. Fix the code and return ONLY the corrected .game code block, nothing else. Keep the visual intent.`;
+const FIX_SYSTEM_PROMPT = `You are a GAME DSL expert. The user will provide GAME code that failed to compile, along with the error message. Fix the code and return ONLY the corrected .game code block, nothing else. Keep the visual intent. GAME uses cinematic "name" { layer name { pipeline... } } syntax with pipe-separated stages.`;
 
 export interface AiGenerationResult {
   code: string;
@@ -94,8 +97,8 @@ export class AiProvider {
       code = codeBlock[1].trim();
     }
 
-    let name = "GeneratedComponent";
-    const nameMatch = code.match(/component\s+(\w+)\s*\{/);
+    let name = "generated-component";
+    const nameMatch = code.match(/cinematic\s+"([^"]+)"/);
     if (nameMatch) {
       name = nameMatch[1];
     }

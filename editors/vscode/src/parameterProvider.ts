@@ -14,11 +14,10 @@ export interface TunableToken {
 }
 
 const KNOWN_PALETTES = [
-  "fire", "ocean", "sunset", "neon", "ice", "forest", "aurora", "ember",
-  "quantum", "midnight", "copper", "gold", "silver", "arctic", "tropical",
-  "volcanic", "cosmic", "ethereal", "industrial", "pastel", "cyberpunk",
-  "retrowave", "monochrome", "heatmap", "terrain", "rainbow", "plasma",
-  "infrared", "ultraviolet", "bioluminescent",
+  "fire", "ocean", "neon", "aurora", "sunset", "ice", "ember", "lava",
+  "magma", "inferno", "plasma", "electric", "cyber", "matrix", "forest",
+  "moss", "earth", "desert", "blood", "rose", "candy", "royal", "deep_sea",
+  "coral", "arctic", "twilight", "vapor", "gold", "silver", "monochrome",
 ];
 
 const CONTEXT_RANGES: Record<string, { min: number; max: number; step: number }> = {
