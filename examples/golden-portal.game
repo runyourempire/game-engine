@@ -3,9 +3,9 @@
 // Multiple ring layers at different speeds create parallax depth.
 
 cinematic "golden-portal" {
-  // Void behind the portal — solid dark base
+  // Solid dark base — fully opaque
   layer void blend: occlude {
-    fbm(scale: 3.0, octaves: 2) | glow(0.04) | tint(0.02, 0.01, 0.0)
+    box(2.0, 2.0) | shade(0.02, 0.01, 0.01)
   }
 
   // Outer energy field — slow rotating polar noise

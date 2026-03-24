@@ -1,0 +1,41 @@
+// Breathing Nebula — living cosmic gas cloud using inline expressions
+// Every parameter pulses with sin/cos — impossible before Phase 1 expressions.
+// No arc blocks needed. The math IS the animation.
+
+cinematic "breathing-nebula" {
+  // Solid dark base — fully opaque
+  layer void blend: occlude {
+    box(2.0, 2.0) | shade(0.02, 0.02, 0.03)
+  }
+
+  // Deep nebula clouds — slow drift, breathing intensity
+  layer clouds memory: 0.96 {
+    warp(scale: 1.5, octaves: 4, persistence: 0.5, lacunarity: 2.0, strength: 0.12)
+    | distort(scale: 0.8, speed: 0.08, strength: 0.06)
+    | fbm(scale: 2.5, octaves: 5, persistence: 0.55)
+    | palette(twilight)
+  }
+
+  // Inner glow — pulses with time
+  layer core memory: 0.94 {
+    warp(scale: 2.5, octaves: 3, persistence: 0.4, lacunarity: 2.0, strength: 0.1)
+    | simplex(scale: 3.0)
+    | glow(0.25)
+    | tint(0.4, 0.15, 0.6)
+  }
+
+  // Star scatter
+  layer stars {
+    voronoi(scale: 50.0) | glow(0.6) | tint(0.9, 0.92, 1.0)
+  }
+
+  // Central bright region
+  layer center {
+    circle(0.08) | glow(2.5) | tint(0.7, 0.5, 1.0)
+  }
+
+  // Depth vignette
+  layer vignette {
+    radial_fade(inner: 0.15, outer: 0.85) | glow(0.9) | tint(0.0, 0.0, 0.0)
+  }
+}

@@ -1,0 +1,37 @@
+// Ember Flow — glowing particles rising through darkness
+// Polar warp creates upward-flowing current patterns.
+// Low memory persistence creates ember-like fading trails.
+
+cinematic "ember-flow" {
+  // Solid dark base — fully opaque
+  layer void blend: occlude {
+    box(2.0, 2.0) | shade(0.02, 0.01, 0.01)
+  }
+
+  // Rising current — polar transformation creates vertical flow
+  layer current memory: 0.90 {
+    polar()
+    | warp(scale: 3.0, octaves: 4, persistence: 0.5, lacunarity: 2.0, strength: 0.3)
+    | distort(scale: 2.0, speed: 0.35, strength: 0.2)
+    | fbm(scale: 5.0, octaves: 4, persistence: 0.4)
+    | palette(ember)
+  }
+
+  // Hot particles — scattered bright points
+  layer particles memory: 0.75 {
+    warp(scale: 5.0, octaves: 3, persistence: 0.3, lacunarity: 2.5, strength: 0.2)
+    | distort(scale: 3.0, speed: 0.5, strength: 0.15)
+    | voronoi(scale: 12.0)
+    | glow(1.5)
+    | tint(1.0, 0.6, 0.15)
+  }
+
+  // Core heat — central warmth
+  layer heat {
+    radial_fade(inner: 0.0, outer: 0.5) | glow(0.4) | tint(0.8, 0.3, 0.05)
+  }
+
+  layer vignette {
+    radial_fade(inner: 0.1, outer: 0.9) | glow(0.85) | tint(0.0, 0.0, 0.0)
+  }
+}
