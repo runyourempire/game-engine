@@ -268,7 +268,7 @@ pub fn webgpu_renderer(
         s.push_str("      colorAttachments: [{\n");
         s.push_str("        view: this.ctx.getCurrentTexture().createView(),\n");
         s.push_str(
-            "        loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 }\n",
+            "        loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 }\n",
         );
         s.push_str("      }]\n");
         s.push_str("    });\n");
@@ -593,7 +593,7 @@ pub fn webgl2_renderer(needs_prev_frame: bool) -> String {
     s.push_str("    const gl = this.gl;\n");
     s.push_str("    const t = performance.now() / 1000 - this.startTime;\n");
     s.push_str("    gl.viewport(0, 0, this.canvas.width, this.canvas.height);\n");
-    s.push_str("    gl.clearColor(0, 0, 0, 0);\n");
+    s.push_str("    gl.clearColor(0, 0, 0, 1);\n");
     s.push_str("    gl.clear(gl.COLOR_BUFFER_BIT);\n");
     s.push_str("    gl.enable(gl.BLEND);\n");
     s.push_str("    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);\n");

@@ -1,41 +1,41 @@
-// Breathing Nebula — living cosmic gas cloud using inline expressions
-// Every parameter pulses with sin/cos — impossible before Phase 1 expressions.
-// No arc blocks needed. The math IS the animation.
+// Breathing Nebula — living cosmic gas cloud
+// Domain-warped noise with twilight palette, star scatter, and depth vignette.
+// Memory persistence creates flowing tendrils through deep space.
 
 cinematic "breathing-nebula" {
-  // Solid dark base — fully opaque
+  // Solid dark base
   layer void blend: occlude {
-    box(2.0, 2.0) | shade(0.02, 0.02, 0.03)
+    box(2.0, 2.0) | shade(0.01, 0.01, 0.02)
   }
 
-  // Deep nebula clouds — slow drift, breathing intensity
-  layer clouds memory: 0.96 {
+  // Deep nebula clouds — very subtle, high persistence
+  layer clouds memory: 0.96 opacity: 0.15 {
     warp(scale: 1.5, octaves: 4, persistence: 0.5, lacunarity: 2.0, strength: 0.12)
     | distort(scale: 0.8, speed: 0.08, strength: 0.06)
     | fbm(scale: 2.5, octaves: 5, persistence: 0.55)
     | palette(twilight)
   }
 
-  // Inner glow — pulses with time
-  layer core memory: 0.94 {
+  // Inner glow — subtle purple
+  layer core memory: 0.94 opacity: 0.12 {
     warp(scale: 2.5, octaves: 3, persistence: 0.4, lacunarity: 2.0, strength: 0.1)
     | simplex(scale: 3.0)
-    | glow(0.25)
-    | tint(0.4, 0.15, 0.6)
+    | glow(0.4)
+    | tint(0.3, 0.1, 0.5)
   }
 
-  // Star scatter
-  layer stars {
-    voronoi(scale: 50.0) | glow(0.6) | tint(0.9, 0.92, 1.0)
+  // Star scatter — tiny bright points
+  layer stars opacity: 0.4 {
+    voronoi(scale: 60.0) | glow(0.5) | tint(0.8, 0.85, 1.0)
   }
 
-  // Central bright region
+  // Central bright region — subtle
   layer center {
-    circle(0.08) | glow(2.5) | tint(0.7, 0.5, 1.0)
+    circle(0.06) | glow(1.8) | tint(0.5, 0.35, 0.8)
   }
 
-  // Depth vignette
+  // Depth vignette — strong edge darkening
   layer vignette {
-    radial_fade(inner: 0.15, outer: 0.85) | glow(0.9) | tint(0.0, 0.0, 0.0)
+    radial_fade(inner: 0.1, outer: 0.7) | glow(1.0) | tint(0.0, 0.0, 0.0)
   }
 }

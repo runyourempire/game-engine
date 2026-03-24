@@ -3,13 +3,13 @@
 // Memory persistence shows the wave function evolving over time.
 
 cinematic "quantum-field" {
-  // Solid dark base — fully opaque
+  // Solid dark base
   layer void blend: occlude {
-    box(2.0, 2.0) | shade(0.01, 0.02, 0.04)
+    box(2.0, 2.0) | shade(0.01, 0.01, 0.03)
   }
 
   // Primary wave function — interference pattern
-  layer psi memory: 0.93 {
+  layer psi memory: 0.93 opacity: 0.15 {
     warp(scale: 2.0, octaves: 5, persistence: 0.6, lacunarity: 2.0, strength: 0.2)
     | distort(scale: 1.5, speed: 0.15, strength: 0.1)
     | voronoi(scale: 7.0)
@@ -17,7 +17,7 @@ cinematic "quantum-field" {
   }
 
   // Secondary wave — offset phase creates interference
-  layer psi2 memory: 0.91 {
+  layer psi2 memory: 0.91 opacity: 0.1 {
     translate(0.1, 0.05)
     | warp(scale: 2.5, octaves: 4, persistence: 0.5, lacunarity: 2.2, strength: 0.18)
     | distort(scale: 1.8, speed: 0.2, strength: 0.12)
@@ -25,15 +25,16 @@ cinematic "quantum-field" {
     | palette(cyber)
   }
 
-  // Probability nodes — bright measurement points
-  layer nodes memory: 0.85 {
+  // Probability nodes — faint bright measurement points
+  layer nodes memory: 0.85 opacity: 0.15 {
     warp(scale: 4.0, octaves: 2, persistence: 0.3, lacunarity: 2.0, strength: 0.1)
     | voronoi(scale: 15.0)
-    | glow(1.0)
-    | tint(0.3, 0.8, 1.0)
+    | glow(0.8)
+    | tint(0.2, 0.6, 0.9)
   }
 
+  // Strong vignette
   layer vignette {
-    radial_fade(inner: 0.2, outer: 0.9) | glow(0.8) | tint(0.0, 0.0, 0.0)
+    radial_fade(inner: 0.15, outer: 0.75) | glow(0.9) | tint(0.0, 0.0, 0.0)
   }
 }
