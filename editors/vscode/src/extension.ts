@@ -35,7 +35,7 @@ export function activate(context: ExtensionContext): void {
       fileEvents: workspace.createFileSystemWatcher("**/*.game"),
     },
     outputChannelName: "GAME Language Server",
-    traceOutputChannelName: "GAME Language Server Trace",
+    traceOutputChannel: window.createOutputChannel("GAME Language Server Trace"),
   };
 
   client = new LanguageClient(
