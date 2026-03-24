@@ -43,7 +43,7 @@ pub enum OutputFormat {
     ArtBlocks,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ShaderTarget {
     WebGpu,
     WebGl2,
@@ -146,10 +146,10 @@ pub fn compile(source: &str, config: &CompileConfig) -> Result<Vec<CompileOutput
         let js = match config.output_format {
             OutputFormat::Split => runtime::component::generate_component_split(&shader),
             OutputFormat::Component | OutputFormat::Standalone => {
-                runtime::component::generate_component(&shader)
+                runtime::component::generate_component(&shader, config.target)
             }
             OutputFormat::Html | OutputFormat::ArtBlocks => {
-                runtime::component::generate_component(&shader)
+                runtime::component::generate_component(&shader, config.target)
             }
         };
 

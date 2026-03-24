@@ -4,10 +4,11 @@
 //! (`<game-xyz>`) with WebGPU primary and WebGL2 fallback.
 
 use crate::codegen::ShaderOutput;
+use crate::ShaderTarget;
 
 /// Generate a zero-dependency Web Component JS file (self-contained with renderers).
-pub fn generate_component(shader: &ShaderOutput) -> String {
-    generate_component_impl(shader, false)
+pub fn generate_component(shader: &ShaderOutput, target: ShaderTarget) -> String {
+    generate_component_impl(shader, false, target)
 }
 
 /// Generate a lightweight Web Component JS file for `--split` mode.
@@ -15,10 +16,10 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
 /// Assumes `GameRenderer` and `GameRendererGL` are available as globals
 /// (loaded from `game-runtime.js`).
 pub fn generate_component_split(shader: &ShaderOutput) -> String {
-    generate_component_impl(shader, true)
+    generate_component_impl(shader, true, ShaderTarget::Both)
 }
 
-fn generate_component_impl(shader: &ShaderOutput, split: bool) -> String {
+fn generate_component_impl(shader: &ShaderOutput, split: bool, target: ShaderTarget) -> String {
     let tag = to_kebab(&shader.name);
     let class = to_pascal(&shader.name);
 
@@ -45,10 +46,17 @@ fn generate_component_impl(shader: &ShaderOutput, split: bool) -> String {
         "// GAME Component: {tag} — auto-generated, do not edit.\n"
     ));
     s.push_str("(function(){\n");
-    s.push_str(&format!("const WGSL_V = `{wgsl_v}`;\n"));
-    s.push_str(&format!("const WGSL_F = `{wgsl_f}`;\n"));
-    s.push_str(&format!("const GLSL_V = `{glsl_v}`;\n"));
-    s.push_str(&format!("const GLSL_F = `{glsl_f}`;\n"));
+    let emit_webgpu = matches!(target, ShaderTarget::WebGpu | ShaderTarget::Both);
+    let emit_webgl2 = matches!(target, ShaderTarget::WebGl2 | ShaderTarget::Both);
+
+    if emit_webgpu {
+        s.push_str(&format!("const WGSL_V = `{wgsl_v}`;\n"));
+        s.push_str(&format!("const WGSL_F = `{wgsl_f}`;\n"));
+    }
+    if emit_webgl2 {
+        s.push_str(&format!("const GLSL_V = `{glsl_v}`;\n"));
+        s.push_str(&format!("const GLSL_F = `{glsl_f}`;\n"));
+    }
     s.push_str(&format!("const UNIFORMS = [{uniform_defs_json}];\n"));
 
     // Pass shader constants
@@ -112,19 +120,21 @@ fn generate_component_impl(shader: &ShaderOutput, split: bool) -> String {
     };
 
     // In split mode, renderer classes come from game-runtime.js (globals).
-    // In normal mode, embed them inline.
+    // In normal mode, embed them inline based on target.
     if !split {
-        // WebGPU renderer (with features)
-        s.push_str(&super::helpers::webgpu_renderer(
-            needs_prev_frame,
-            pass_count,
-            compute_type,
-        ));
-        s.push_str("\n\n");
+        if emit_webgpu {
+            s.push_str(&super::helpers::webgpu_renderer(
+                needs_prev_frame,
+                pass_count,
+                compute_type,
+            ));
+            s.push_str("\n\n");
+        }
 
-        // WebGL2 fallback renderer (with memory, no passes)
-        s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame));
-        s.push_str("\n\n");
+        if emit_webgl2 {
+            s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame));
+            s.push_str("\n\n");
+        }
     }
 
     // Inject feature JS modules (listen, voice, score, temporal, gravity, breed)
@@ -276,32 +286,58 @@ fn generate_component_impl(shader: &ShaderOutput, split: bool) -> String {
     s.push_str("  }\n\n");
 
     s.push_str("  async _initRenderer() {\n");
-    s.push_str("    const gpu = new GameRenderer(this._canvas, WGSL_V, WGSL_F, UNIFORMS");
-    if has_passes {
-        s.push_str(", PASS_SHADERS");
+
+    if emit_webgpu && emit_webgl2 {
+        // Both: try WebGPU first, fall back to WebGL2
+        s.push_str("    const gpu = new GameRenderer(this._canvas, WGSL_V, WGSL_F, UNIFORMS");
+        if has_passes { s.push_str(", PASS_SHADERS"); }
+        if let Some(ct) = compute_type {
+            let ct_str = match ct {
+                super::helpers::ComputeType::React => "react",
+                super::helpers::ComputeType::Swarm => "swarm",
+                super::helpers::ComputeType::Flow => "flow",
+            };
+            s.push_str(&format!(", '{ct_str}'"));
+        }
+        s.push_str(");\n");
+        s.push_str("    if (await gpu.init()) {\n");
+        s.push_str("      this._renderer = gpu;\n");
+        s.push_str("    } else {\n");
+        s.push_str("      const gl = new GameRendererGL(this._canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
+        s.push_str("      if (gl.init()) {\n");
+        s.push_str("        this._renderer = gl;\n");
+        s.push_str("      } else {\n");
+        s.push_str(&format!("        console.warn('game-{tag}: no WebGPU or WebGL2 support');\n"));
+        s.push_str("        return;\n");
+        s.push_str("      }\n");
+        s.push_str("    }\n");
+    } else if emit_webgpu {
+        // WebGPU only
+        s.push_str("    const gpu = new GameRenderer(this._canvas, WGSL_V, WGSL_F, UNIFORMS");
+        if has_passes { s.push_str(", PASS_SHADERS"); }
+        if let Some(ct) = compute_type {
+            let ct_str = match ct {
+                super::helpers::ComputeType::React => "react",
+                super::helpers::ComputeType::Swarm => "swarm",
+                super::helpers::ComputeType::Flow => "flow",
+            };
+            s.push_str(&format!(", '{ct_str}'"));
+        }
+        s.push_str(");\n");
+        s.push_str("    if (!(await gpu.init())) {\n");
+        s.push_str(&format!("      console.warn('game-{tag}: WebGPU not supported');\n"));
+        s.push_str("      return;\n");
+        s.push_str("    }\n");
+        s.push_str("    this._renderer = gpu;\n");
+    } else {
+        // WebGL2 only
+        s.push_str("    const gl = new GameRendererGL(this._canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
+        s.push_str("    if (!gl.init()) {\n");
+        s.push_str(&format!("      console.warn('game-{tag}: WebGL2 not supported');\n"));
+        s.push_str("      return;\n");
+        s.push_str("    }\n");
+        s.push_str("    this._renderer = gl;\n");
     }
-    if let Some(ct) = compute_type {
-        let ct_str = match ct {
-            super::helpers::ComputeType::React => "react",
-            super::helpers::ComputeType::Swarm => "swarm",
-            super::helpers::ComputeType::Flow => "flow",
-        };
-        s.push_str(&format!(", '{ct_str}'"));
-    }
-    s.push_str(");\n");
-    s.push_str("    if (await gpu.init()) {\n");
-    s.push_str("      this._renderer = gpu;\n");
-    s.push_str("    } else {\n");
-    s.push_str("      const gl = new GameRendererGL(this._canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
-    s.push_str("      if (gl.init()) {\n");
-    s.push_str("        this._renderer = gl;\n");
-    s.push_str("      } else {\n");
-    s.push_str(&format!(
-        "        console.warn('game-{tag}: no WebGPU or WebGL2 support');\n"
-    ));
-    s.push_str("        return;\n");
-    s.push_str("      }\n");
-    s.push_str("    }\n");
     s.push_str("    this._resize();\n");
 
     // Initialize compute simulations (WebGPU only)
@@ -736,7 +772,7 @@ mod tests {
     #[test]
     fn component_has_custom_element_define() {
         let shader = make_shader("test-viz");
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(js.contains("customElements.define('game-test-viz'"));
         assert!(js.contains("class TestViz extends HTMLElement"));
     }
@@ -748,7 +784,7 @@ mod tests {
             name: "speed".into(),
             default: 1.0,
         }];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(js.contains("class GameRenderer"));
         assert!(js.contains("class GameRendererGL"));
         assert!(js.contains("{name:'speed',default:1}"));
@@ -758,7 +794,7 @@ mod tests {
     fn component_with_memory_includes_methods_inside_class() {
         let mut shader = make_shader("trails");
         shader.uses_memory = true;
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         // Memory methods should be inside GameRenderer class
         assert!(js.contains("_initMemory()"));
         assert!(js.contains("_swapMemory(encoder"));
@@ -775,7 +811,7 @@ mod tests {
     fn component_with_feedback_enables_memory() {
         let mut shader = make_shader("feedback-viz");
         shader.uses_feedback = true;
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(js.contains("_initMemory()"));
         assert!(js.contains("setBindGroup(1, this._memBindGroup)"));
     }
@@ -785,7 +821,7 @@ mod tests {
         let mut shader = make_shader("bloom");
         shader.pass_wgsl = vec!["// pass 0 shader".into(), "// pass 1 shader".into()];
         shader.pass_count = 2;
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         // Pass shader constants
         assert!(js.contains("PASS_WGSL_0"));
         assert!(js.contains("PASS_WGSL_1"));
@@ -807,7 +843,7 @@ mod tests {
         shader.uses_memory = true;
         shader.pass_wgsl = vec!["// blur pass".into()];
         shader.pass_count = 1;
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         // Memory captures from FBO (not canvas) when passes exist
         assert!(js.contains("this._swapMemory(encoder, this._passFBOs[0])"));
         // Both memory and pass features present
@@ -820,7 +856,7 @@ mod tests {
         let mut shader = make_shader("particles");
         shader.compute_wgsl = Some("// gravity compute shader".into());
         shader.js_modules = vec!["class GameGravitySim { dispatch(dt){} }".into()];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         // Compute WGSL constant
         assert!(js.contains("COMPUTE_WGSL"));
         // Compute init
@@ -836,7 +872,7 @@ mod tests {
         let mut shader = make_shader("turing");
         shader.react_wgsl = Some("// react compute shader".into());
         shader.js_modules = vec!["class GameReactionField { dispatch(n){} }".into()];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(js.contains("REACT_WGSL"));
         assert!(js.contains("new GameReactionField(dev, REACT_WGSL)"));
         assert!(js.contains("_reactSim"));
@@ -848,7 +884,7 @@ mod tests {
         shader.particles_sim_wgsl = Some("// particle sim shader".into());
         shader.particles_raster_wgsl = Some("// particle raster shader".into());
         shader.js_modules = vec!["class GameParticleSim { dispatch(dt){} }".into()];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         // Particle WGSL constants
         assert!(js.contains("PARTICLES_SIM_WGSL"));
         assert!(js.contains("PARTICLES_RASTER_WGSL"));
@@ -863,7 +899,7 @@ mod tests {
     #[test]
     fn component_without_features_has_simple_render() {
         let shader = make_shader("simple");
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         // Direct render to canvas
         assert!(js.contains("this.ctx.getCurrentTexture().createView()"));
         // No memory or pass references
@@ -876,7 +912,7 @@ mod tests {
     fn component_with_listen_includes_pipeline() {
         let mut shader = make_shader("audio-viz");
         shader.js_modules = vec!["class GameListenPipeline { /* listen */ }".into()];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(js.contains("GameListenPipeline"));
     }
 
@@ -895,7 +931,7 @@ mod tests {
             name: "fill_angle".into(),
             default: 0.0,
         }];
-        let js = generate_component(&with_fill);
+        let js = generate_component(&with_fill, ShaderTarget::Both);
         assert!(js.contains("set progress(v)"), "should have progress alias");
         assert!(
             js.contains("set fill_angle(v)"),
@@ -907,7 +943,7 @@ mod tests {
             name: "glow".into(),
             default: 1.0,
         }];
-        let js = generate_component(&without_fill);
+        let js = generate_component(&without_fill, ShaderTarget::Both);
         assert!(
             !js.contains("set progress(v)"),
             "should NOT have progress alias"
@@ -921,7 +957,7 @@ mod tests {
             name: "intensity".into(),
             default: 1.0,
         }];
-        let js = generate_component(&with_intensity);
+        let js = generate_component(&with_intensity, ShaderTarget::Both);
         assert!(js.contains("set health(v)"), "should have health alias");
 
         let mut without_intensity = make_shader("bars");
@@ -929,7 +965,7 @@ mod tests {
             name: "glow_val".into(),
             default: 1.0,
         }];
-        let js = generate_component(&without_intensity);
+        let js = generate_component(&without_intensity, ShaderTarget::Both);
         assert!(
             !js.contains("set health(v)"),
             "should NOT have health alias"
@@ -949,7 +985,7 @@ mod tests {
                 default: 0.0,
             },
         ];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         let count = js.matches("set progress(v)").count();
         assert_eq!(
             count, 1,
@@ -964,7 +1000,7 @@ mod tests {
         let mut shader = make_shader("button");
         shader.has_states = true;
         shader.js_modules.push("class GameStateMachine {}".into());
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         // State machine instantiated
         assert!(js.contains("new GameStateMachine()"));
         // Mouse event wiring
@@ -1004,7 +1040,7 @@ mod tests {
     #[test]
     fn split_component_smaller_than_normal() {
         let shader = make_shader("size-test");
-        let normal = generate_component(&shader);
+        let normal = generate_component(&shader, ShaderTarget::Both);
         let split = generate_component_split(&shader);
         assert!(
             split.len() < normal.len() / 2,
@@ -1018,7 +1054,7 @@ mod tests {
     fn normal_component_still_embeds_renderers() {
         // Ensure refactoring didn't break the default path
         let shader = make_shader("normal-check");
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(js.contains("class GameRenderer"));
         assert!(js.contains("class GameRendererGL"));
     }
@@ -1032,7 +1068,7 @@ mod tests {
             binding: 5,
             source: None,
         }];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(
             js.contains("async loadTexture(name, url)"),
             "should have loadTexture method"
@@ -1054,7 +1090,7 @@ mod tests {
     #[test]
     fn component_without_textures_has_no_load_methods() {
         let shader = make_shader("no-tex");
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(
             !js.contains("loadTexture"),
             "should NOT have loadTexture method when no textures"
@@ -1070,7 +1106,7 @@ mod tests {
             binding: 5,
             source: Some("https://example.com/bg.png".into()),
         }];
-        let js = generate_component(&shader);
+        let js = generate_component(&shader, ShaderTarget::Both);
         assert!(
             js.contains("this.loadTexture('bg', 'https://example.com/bg.png')"),
             "should auto-load texture with source URL"
