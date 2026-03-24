@@ -32,7 +32,7 @@ export class GalleryPanel {
       column,
       {
         enableScripts: true,
-        retainContextWhenHidden: true,
+        retainContextWhenHidden: false,
       }
     );
     GalleryPanel.currentPanel = new GalleryPanel(panel, extensionUri);

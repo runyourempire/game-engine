@@ -224,6 +224,74 @@ pub fn validate_pipeline(stages: &[Stage]) -> Result<ShaderState, CompileError> 
     validate_pipeline_with_fns(stages, &[])
 }
 
+/// Maximum positional argument count per builtin (only listed builtins are checked).
+fn max_arity(name: &str) -> Option<usize> {
+    match name {
+        // SDF Generators
+        "circle" => Some(1),
+        "ring" => Some(2),
+        "star" => Some(3),
+        "box" => Some(2),
+        "hex" => Some(1),
+        "fbm" => Some(4),
+        "simplex" => Some(1),
+        "voronoi" => Some(1),
+        "radial_fade" => Some(2),
+        "line" => Some(5),
+        "capsule" => Some(2),
+        "triangle" => Some(1),
+        "arc_sdf" => Some(3),
+        "cross" => Some(2),
+        "heart" => Some(1),
+        "egg" => Some(2),
+        "spiral" => Some(2),
+        "grid" => Some(2),
+        // morph and boolean ops take SDF sub-expressions — skip arity check
+        // Transforms
+        "translate" => Some(2),
+        "rotate" => Some(1),
+        "scale" => Some(1),
+        "warp" => Some(5),
+        "distort" => Some(3),
+        "polar" => Some(0),
+        "repeat" => Some(2),
+        "mirror" => Some(0),
+        "radial" => Some(1),
+        // Bridges
+        "glow" => Some(1),
+        "shade" => Some(3),
+        "palette" => Some(12),
+        "emissive" => Some(1),
+        // Color processors
+        "tint" => Some(3),
+        "bloom" => Some(2),
+        "grain" => Some(1),
+        "outline" => Some(1),
+        // SDF modifiers
+        "mask_arc" => Some(1),
+        "round" => Some(1),
+        "shell" => Some(1),
+        _ => None,
+    }
+}
+
+/// Check that a builtin stage is not called with more arguments than it accepts.
+fn validate_arity(stage: &Stage) -> Result<(), CompileError> {
+    if let Some(max) = max_arity(&stage.name) {
+        let count = stage.args.len();
+        if count > max {
+            return Err(CompileError::validation(format!(
+                "'{}' takes at most {} argument{}, got {}",
+                stage.name,
+                max,
+                if max == 1 { "" } else { "s" },
+                count
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Validate a pipeline with user-defined function awareness.
 pub fn validate_pipeline_with_fns(
     stages: &[Stage],
@@ -234,6 +302,7 @@ pub fn validate_pipeline_with_fns(
     for stage in stages {
         // Try builtin first
         if let Some(builtin) = builtins::lookup(&stage.name) {
+            validate_arity(stage)?;
             if builtin.input != state {
                 // Check for common Sdf→Color bridge mistake
                 if let Some(hint) = suggest_bridge(&stage.name, state) {
@@ -690,5 +759,120 @@ mod tests {
         assert!(result.contains("mouse_x"), "ident preserved in expression");
         assert!(result.contains("*"), "mul operator preserved");
         assert!(result.contains("-"), "sub operator preserved");
+    }
+
+    // ── Arity validation tests ─────────────────────────────────
+
+    fn stage_with_args(name: &str, n: usize) -> Stage {
+        Stage {
+            name: name.into(),
+            args: (0..n)
+                .map(|_| Arg {
+                    name: None,
+                    value: Expr::Number(0.5),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn arity_circle_too_many_args() {
+        let stages = vec![stage_with_args("circle", 3)];
+        let result = validate_pipeline(&stages);
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("'circle' takes at most 1 argument, got 3"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn arity_circle_exact() {
+        let stages = vec![stage_with_args("circle", 1), stage("glow")];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_ok(), "circle(1 arg) should be valid");
+    }
+
+    #[test]
+    fn arity_circle_zero_ok() {
+        let stages = vec![stage("circle"), stage("glow")];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_ok(), "circle(0 args) should use defaults");
+    }
+
+    #[test]
+    fn arity_tint_too_many() {
+        let stages = vec![
+            stage("circle"),
+            stage("glow"),
+            stage_with_args("tint", 5),
+        ];
+        let result = validate_pipeline(&stages);
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("'tint' takes at most 3 arguments, got 5"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn arity_glow_two_args_rejected() {
+        let stages = vec![stage("circle"), stage_with_args("glow", 2)];
+        let result = validate_pipeline(&stages);
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("'glow' takes at most 1 argument, got 2"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn arity_polar_zero_args_ok() {
+        let stages = vec![stage("polar"), stage("circle"), stage("glow")];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn arity_polar_one_arg_rejected() {
+        let stages = vec![stage_with_args("polar", 1), stage("circle"), stage("glow")];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn arity_named_args_counted() {
+        // Named args also count toward arity
+        let stages = vec![Stage {
+            name: "circle".into(),
+            args: vec![
+                Arg {
+                    name: Some("radius".into()),
+                    value: Expr::Number(0.3),
+                },
+                Arg {
+                    name: Some("extra".into()),
+                    value: Expr::Number(0.5),
+                },
+            ],
+        }];
+        let result = validate_pipeline(&stages);
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("'circle' takes at most 1 argument, got 2"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn arity_unknown_builtin_skipped() {
+        // onion is a builtin not in the arity table — should not error on arity
+        let stages = vec![
+            stage("circle"),
+            stage_with_args("onion", 5),
+            stage("glow"),
+        ];
+        let result = validate_pipeline(&stages);
+        assert!(result.is_ok(), "onion arity should not be checked");
     }
 }

@@ -1,16 +1,19 @@
 <script lang="ts">
-  import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+  interface Props {
+    tag: string;
+    src: string;
+    params?: Record<string, number>;
+    className?: string;
+    style?: string;
+    onReady?: (el: HTMLElement) => void;
+  }
 
-  export let tag: string;
-  export let src: string;
-  export let params: Record<string, number> = {};
-
-  const dispatch = createEventDispatcher<{ ready: HTMLElement }>();
+  let { tag, src, params = {}, className, style, onReady }: Props = $props();
 
   let containerEl: HTMLDivElement;
-  let gameEl: HTMLElement | null = null;
+  let gameEl: HTMLElement | null = $state(null);
 
-  onMount(() => {
+  $effect(() => {
     // Load script
     const existing = document.querySelector(`script[data-game-src="${src}"]`);
     if (!existing) {
@@ -21,29 +24,32 @@
     }
 
     // Create element
-    gameEl = document.createElement(tag);
-    gameEl.style.width = '100%';
-    gameEl.style.height = '100%';
-    containerEl.appendChild(gameEl);
+    const el = document.createElement(tag);
+    el.style.width = '100%';
+    el.style.height = '100%';
+    containerEl.appendChild(el);
+    gameEl = el;
 
     customElements.whenDefined(tag).then(() => {
-      if (gameEl) dispatch('ready', gameEl);
+      if (gameEl && onReady) onReady(gameEl);
     });
-  });
 
-  onDestroy(() => {
-    if (gameEl && containerEl.contains(gameEl)) {
-      containerEl.removeChild(gameEl);
-    }
-    gameEl = null;
+    return () => {
+      if (el && containerEl?.contains(el)) {
+        containerEl.removeChild(el);
+      }
+      gameEl = null;
+    };
   });
 
   // Reactive params
-  $: if (gameEl && params) {
-    for (const [name, value] of Object.entries(params)) {
-      (gameEl as any).setParam?.(name, value);
+  $effect(() => {
+    if (gameEl && params) {
+      for (const [name, value] of Object.entries(params)) {
+        (gameEl as any).setParam?.(name, value);
+      }
     }
-  }
+  });
 
   export function setParam(name: string, value: number) {
     (gameEl as any)?.setParam(name, value);
@@ -58,5 +64,5 @@
   }
 </script>
 
-<div bind:this={containerEl} style="width: 100%; height: 100%;">
+<div bind:this={containerEl} class={className} {style} style:width="100%" style:height="100%">
 </div>

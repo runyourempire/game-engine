@@ -33,7 +33,7 @@ cinematic "signal-waveform" {
 
   layer accent {
     ring(0.5, 0.006) | glow(relevance_avg)
-    | tint(0.25, 0.92, 0.80, freshness)
+    | tint(0.25, 0.92, 0.80)
   }
 
   layer config {

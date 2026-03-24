@@ -30,7 +30,7 @@ cinematic "knowledge-depth" {
 
   layer glow_center {
     circle(0.6) | glow(depth_val)
-    | tint(1.0, 0.9, 0.7, 0.2)
+    | tint(1.0, 0.9, 0.7)
   }
 
   layer config {

@@ -891,7 +891,7 @@ mod tests {
         let source = r#"
             cinematic "test" {
                 layer bg {
-                    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.03, 1.0)
+                    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.03)
                 }
                 react {
                     feed: 0.055
@@ -913,7 +913,7 @@ mod tests {
         let source = r#"
             cinematic "test" {
                 layer bg {
-                    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0, 1.0)
+                    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0)
                 }
                 swarm {
                     agents: 100000
@@ -940,7 +940,7 @@ mod tests {
         let source = r#"
             cinematic "test" {
                 layer bg {
-                    circle(0.5) | glow(1.5) | tint(0.01, 0.0, 0.02, 1.0)
+                    circle(0.5) | glow(1.5) | tint(0.01, 0.0, 0.02)
                 }
                 flow {
                     type: curl
@@ -1370,7 +1370,7 @@ mod tests {
 
     #[test]
     fn e2e_spatial_ops() {
-        for op in ["repeat", "mirror", "radial"] {
+        for op in ["repeat", "radial"] {
             let source = format!(
                 "cinematic \"test\" {{ layer bg {{ {op}(4) | circle(0.05) | glow(1.0) }} }}"
             );
@@ -1382,6 +1382,14 @@ mod tests {
                 result.err()
             );
         }
+        // mirror takes no args
+        let source = "cinematic \"test\" { layer bg { mirror() | circle(0.05) | glow(1.0) } }";
+        let result = compile(source, &default_config());
+        assert!(
+            result.is_ok(),
+            "spatial op 'mirror' should compile: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -1752,12 +1760,14 @@ mod tests {
     }
 
     #[test]
-    fn ai_extra_args_tolerated() {
-        // AI passes extra args — should not crash
+    fn ai_extra_args_rejected() {
+        // Extra args beyond max arity should produce a validation error
         let source = r#"cinematic "t" {
-            layer main { circle(0.3, 0.5) | glow(2.0, 1.0) | tint(1.0, 0.5, 0.2) }
+            layer main { circle(0.3, 0.5) | glow(2.0) | tint(1.0, 0.5, 0.2) }
         }"#;
-        assert!(compile(source, &default_config()).is_ok());
+        let err = compile(source, &default_config()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("'circle' takes at most 1 argument, got 2"), "error: {}", msg);
     }
 
     #[test]

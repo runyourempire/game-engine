@@ -9,7 +9,7 @@
 cinematic "source-vitals" {
   layer cells memory: 0.85 {
     hex(0.35) | glow(0.6)
-    | tint(health_avg, health_avg, health_avg, 0.4)
+    | tint(health_avg, health_avg, health_avg)
   }
 
   layer vitality {
@@ -36,7 +36,7 @@ cinematic "source-vitals" {
 
   layer core {
     circle(0.25) | glow(1.2)
-    | tint(0.6, 0.9, 0.5, active_ratio)
+    | tint(0.6, 0.9, 0.5)
   }
 
   layer config {

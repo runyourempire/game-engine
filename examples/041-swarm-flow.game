@@ -5,7 +5,7 @@
 // Dense physarum network with high persistence
 cinematic "mycelium" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0)
   }
 
   swarm {
@@ -24,7 +24,7 @@ cinematic "mycelium" {
 // Turbulent curl noise flow field
 cinematic "stellar-wind" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.01, 0.0, 0.02, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.01, 0.0, 0.02)
   }
 
   flow {
@@ -39,7 +39,7 @@ cinematic "stellar-wind" {
 // Vortex flow with rotation center
 cinematic "black-hole" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0)
   }
 
   flow {

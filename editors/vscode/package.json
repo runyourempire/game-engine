@@ -26,9 +26,6 @@
     "generative",
     "4da"
   ],
-  "activationEvents": [
-    "onLanguage:game"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [

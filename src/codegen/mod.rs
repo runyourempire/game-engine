@@ -259,6 +259,14 @@ fn extract_uniforms(cinematic: &Cinematic) -> Vec<UniformInfo> {
 
 /// Validate all pipeline layers in a cinematic.
 pub fn validate(cinematic: &Cinematic, fns: &[FnDef]) -> Result<(), CompileError> {
+    // Check component name length
+    if cinematic.name.len() > 100 {
+        return Err(CompileError::validation(format!(
+            "component name '{}' is too long (max 100 characters)",
+            cinematic.name
+        )));
+    }
+
     // Check for duplicate layer names
     let mut seen_names = std::collections::HashSet::new();
     for layer in &cinematic.layers {
@@ -1275,5 +1283,41 @@ mod tests {
             .iter()
             .any(|m| m.contains("GameFlowField"));
         assert!(has_runtime, "Should have flow field runtime");
+    }
+
+    #[test]
+    fn name_too_long_rejected() {
+        let mut cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        cin.name = "a".repeat(101);
+        let result = validate(&cin, &[]);
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("too long"), "got: {err}");
+        assert!(err.contains("max 100 characters"), "got: {err}");
+    }
+
+    #[test]
+    fn name_at_limit_accepted() {
+        let mut cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        cin.name = "a".repeat(100);
+        let result = validate(&cin, &[]);
+        assert!(result.is_ok(), "100-char name should be accepted");
     }
 }

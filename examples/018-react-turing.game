@@ -4,7 +4,7 @@
 
 cinematic "turing-patterns" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.02, 0.02, 0.05, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.02, 0.02, 0.05)
   }
 
   // Classic coral/spot pattern
@@ -20,7 +20,7 @@ cinematic "turing-patterns" {
 // Mitosis pattern — cell-like splitting
 cinematic "mitosis" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.03, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.03)
   }
 
   react {
@@ -35,7 +35,7 @@ cinematic "mitosis" {
 // Labyrinth pattern — maze-like structures
 cinematic "labyrinth" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.03, 0.01, 0.02, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.03, 0.01, 0.02)
   }
 
   react {

@@ -23,7 +23,7 @@ export class AiPanel {
       "gameAi",
       "GAME AI",
       column,
-      { enableScripts: true, retainContextWhenHidden: true }
+      { enableScripts: true, retainContextWhenHidden: false }
     );
     AiPanel.currentPanel = new AiPanel(panel, extensionUri, secrets);
   }

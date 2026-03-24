@@ -29,7 +29,7 @@ name = "game"
 path = "src/main.rs"
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["cdylib", "rlib"]
 name = "game_compiler"
 path = "src/lib.rs"
 

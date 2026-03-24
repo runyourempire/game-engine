@@ -4,7 +4,7 @@
 
 cinematic "physarum-network" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0)
   }
 
   swarm {
@@ -23,7 +23,7 @@ cinematic "physarum-network" {
 // Tighter clustering — more defined veins
 cinematic "physarum-veins" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.0, 0.0, 0.0)
   }
 
   swarm {

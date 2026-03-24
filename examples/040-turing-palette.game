@@ -4,7 +4,7 @@
 
 cinematic "turing-ocean" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.0, 0.02, 0.05, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.0, 0.02, 0.05)
   }
 
   react {
@@ -19,7 +19,7 @@ cinematic "turing-ocean" {
 // Fire Turing — aggressive feed rate, warm palette
 cinematic "turing-fire" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.05, 0.01, 0.0, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.05, 0.01, 0.0)
   }
 
   react {
@@ -34,7 +34,7 @@ cinematic "turing-fire" {
 // Crystal Turing — slow, hexagonal, cold
 cinematic "turing-crystal" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.02, 0.02, 0.06, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.02, 0.02, 0.06)
   }
 
   react {

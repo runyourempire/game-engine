@@ -3,7 +3,7 @@
 
 cinematic "smoke" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.02, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.02)
   }
 
   flow {
@@ -18,7 +18,7 @@ cinematic "smoke" {
 // Vortex field — rotational flow around center with turbulence
 cinematic "vortex" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.02, 0.0, 0.03, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.02, 0.0, 0.03)
   }
 
   flow {
@@ -33,7 +33,7 @@ cinematic "vortex" {
 // Perlin flow — chaotic, non-divergence-free
 cinematic "chaos-wind" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.0, 0.01, 0.02, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.0, 0.01, 0.02)
   }
 
   flow {

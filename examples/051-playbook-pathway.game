@@ -31,7 +31,7 @@ cinematic "playbook-pathway" {
 
   layer active_pulse {
     circle(0.15) | glow(momentum)
-    | tint(1.0, 0.9, 0.6, streak)
+    | tint(1.0, 0.9, 0.6)
   }
 
   layer config {

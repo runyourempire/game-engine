@@ -4,7 +4,7 @@
 
 cinematic "reaction-field" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.03, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.01, 0.01, 0.03)
   }
 
   react {
@@ -19,7 +19,7 @@ cinematic "reaction-field" {
 // Worm-like pattern with scattered seeds
 cinematic "worm-trails" {
   layer bg {
-    circle(0.5) | glow(1.5) | tint(0.02, 0.0, 0.03, 1.0)
+    circle(0.5) | glow(1.5) | tint(0.02, 0.0, 0.03)
   }
 
   react {

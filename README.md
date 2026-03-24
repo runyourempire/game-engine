@@ -126,7 +126,7 @@ palette(...)                    // Cosine palette (12 params: a,b,c,d RGB)
 tint(0.83, 0.69, 0.22)         // Multiply by RGB color
 bloom(0.3, 2.0)                // High-pass bloom, threshold + strength
 grain(0.05)                    // Film grain noise
-outline(0.5, 0.8, 1.0, 0.02)  // Edge outline, RGB + width
+outline(0.01)                  // Edge outline, width
 ```
 
 ### Transforms
