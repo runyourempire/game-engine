@@ -263,6 +263,7 @@ pub fn validate(cinematic: &Cinematic, fns: &[FnDef]) -> Result<(), CompileError
         match &layer.body {
             LayerBody::Pipeline(pipeline) => {
                 stages::validate_pipeline_with_fns(pipeline, fns)?;
+                validate_palette_names(pipeline)?;
             }
             LayerBody::Conditional {
                 then_branch,
@@ -277,12 +278,39 @@ pub fn validate(cinematic: &Cinematic, fns: &[FnDef]) -> Result<(), CompileError
                         then_state, else_state
                     )));
                 }
+                validate_palette_names(then_branch)?;
+                validate_palette_names(else_branch)?;
             }
             LayerBody::Params(_) => {}
         }
     }
     // Cast type validation (checks pipeline output matches declared cast)
     cast::validate_casts(cinematic)?;
+    Ok(())
+}
+
+/// Validate that palette() calls with a single identifier use a known palette name.
+/// `palette(fire)` is valid, `palette(doesnotexist)` is an error.
+/// `palette(0.5, 0.5, ...)` (inline cosine params) is always valid.
+/// `palette(my_param, my_param, ...)` (config param refs) is valid when multiple args.
+fn validate_palette_names(
+    stages: &[crate::ast::Stage],
+) -> Result<(), CompileError> {
+    for stage in stages {
+        if stage.name == "palette" && stage.args.len() == 1 {
+            if let Expr::Ident(name) = &stage.args[0].value {
+                if !is_palette_name(name) {
+                    return Err(CompileError::validation(format!(
+                        "unknown palette '{}'. Available palettes: fire, ocean, neon, aurora, \
+                         sunset, ice, ember, lava, magma, inferno, plasma, electric, cyber, \
+                         matrix, forest, moss, earth, desert, blood, rose, candy, royal, \
+                         deep_sea, coral, arctic, twilight, vapor, gold, silver, monochrome",
+                        name
+                    )));
+                }
+            }
+        }
+    }
     Ok(())
 }
 

@@ -753,6 +753,14 @@ fn main() -> Result<()> {
                 anyhow::bail!("file already exists: {}", out_path.display());
             }
 
+            // Create parent directories if they don't exist
+            if let Some(parent) = out_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("create directory: {}", parent.display()))?;
+                }
+            }
+
             std::fs::write(&out_path, content)
                 .with_context(|| format!("write: {}", out_path.display()))?;
             eprintln!(
@@ -767,6 +775,15 @@ fn main() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("read: {}: {}", input.display(), e))?;
             match game_compiler::compile_to_ast(&source) {
                 Ok(program) => {
+                    if program.cinematics.is_empty()
+                        && program.breeds.is_empty()
+                        && program.scenes.is_empty()
+                    {
+                        eprintln!(
+                            "warning: {} contains no components",
+                            input.display()
+                        );
+                    }
                     // Also validate each cinematic's pipeline
                     for cinematic in &program.cinematics {
                         game_compiler::codegen::validate(cinematic, &program.fns)?;
