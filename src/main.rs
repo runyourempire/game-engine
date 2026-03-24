@@ -34,6 +34,10 @@ enum Command {
         /// Shader target.
         #[arg(short, long, default_value = "both")]
         target: TargetArg,
+
+        /// Treat warnings as errors.
+        #[arg(long)]
+        strict: bool,
     },
 
     /// Compile and serve a live preview with hot reload.
@@ -651,7 +655,9 @@ fn main() -> Result<()> {
             output_dir,
             format,
             target,
+            strict,
         } => {
+            let mut had_warnings = false;
             let config = CompileConfig {
                 output_format: match format {
                     FormatArg::Component => OutputFormat::Component,
@@ -683,6 +689,7 @@ fn main() -> Result<()> {
                 // File extension warning
                 if path.extension().map_or(true, |ext| ext != "game") {
                     eprintln!("warning: {} does not have a .game extension", path.display());
+                    had_warnings = true;
                 }
 
                 eprintln!("[game] compiling {}", path.display());
@@ -707,12 +714,14 @@ fn main() -> Result<()> {
                     }).count();
                     if visual_layers == 0 {
                         eprintln!("warning: cinematic \"{}\" has no visual layers", cin.name);
+                        had_warnings = true;
                     }
                 }
 
                 // Warn on project blocks (not yet implemented)
                 for _proj in &program.projects {
                     eprintln!("warning: project blocks are not yet implemented — no output generated");
+                    had_warnings = true;
                 }
 
                 let results =
@@ -725,7 +734,13 @@ fn main() -> Result<()> {
                     let js_path = output_dir.join(format!("{stem}.js"));
                     std::fs::write(&js_path, &output.js)
                         .with_context(|| format!("write: {}", js_path.display()))?;
-                    eprintln!("[game] wrote {}", js_path.display());
+                    let js_size = output.js.len();
+                    let size_str = if js_size > 1024 {
+                        format!("{:.1}KB", js_size as f64 / 1024.0)
+                    } else {
+                        format!("{}B", js_size)
+                    };
+                    eprintln!("[game] wrote {} ({})", js_path.display(), size_str);
 
                     // Write TypeScript definitions
                     if let Some(dts) = &output.dts {
@@ -755,6 +770,10 @@ fn main() -> Result<()> {
                             .with_context(|| format!("write: {}", glsl_path.display()))?;
                     }
                 }
+            }
+
+            if strict && had_warnings {
+                anyhow::bail!("--strict: warnings treated as errors");
             }
         }
 

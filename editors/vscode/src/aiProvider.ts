@@ -104,7 +104,10 @@ export class AiProvider {
 
   private _parseResponse(response: string): AiGenerationResult {
     let code = response;
-    const codeBlock = response.match(/```(?:game)?\s*\n([\s\S]*?)```/);
+    // Match code blocks — try with newline first, then without (handles both)
+    const codeBlock =
+      response.match(/```(?:game)?\s*\n([\s\S]*?)```/) ||
+      response.match(/```(?:game)?\s+([\s\S]*?)```/);
     if (codeBlock) {
       code = codeBlock[1].trim();
     }

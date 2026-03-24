@@ -47,6 +47,10 @@ export function detectTunableToken(
   const line = document.lineAt(position.line).text;
   const cursor = position.character;
 
+  // Skip if cursor is inside a comment
+  const commentStart = line.indexOf("//");
+  if (commentStart >= 0 && cursor >= commentStart) return null;
+
   // Check palette(name) — cursor inside the parentheses
   const paletteMatch = /palette\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/.exec(line);
   if (paletteMatch) {
@@ -109,14 +113,21 @@ export function detectTunableToken(
       // Determine context from the function call surrounding this number
       const prefix = line.substring(0, start).trimEnd();
       let context = "unknown";
+      // Match: funcname( or funcname(arg, or funcname(name: (named params)
       const fnCall = /([a-zA-Z_]\w*)\s*\(\s*$/.exec(prefix);
       if (fnCall) {
         context = fnCall[1];
       } else {
-        // Check if after a comma inside a function call
-        const fnComma = /([a-zA-Z_]\w*)\s*\([^)]*,\s*$/.exec(prefix);
-        if (fnComma) {
-          context = fnComma[1];
+        // Named parameter: funcname(name: value) or funcname(..., name: value)
+        const fnNamed = /([a-zA-Z_]\w*)\s*\([^)]*\w+\s*:\s*$/.exec(prefix);
+        if (fnNamed) {
+          context = fnNamed[1];
+        } else {
+          // Positional after comma: funcname(val, val,
+          const fnComma = /([a-zA-Z_]\w*)\s*\([^)]*,\s*$/.exec(prefix);
+          if (fnComma) {
+            context = fnComma[1];
+          }
         }
       }
 
