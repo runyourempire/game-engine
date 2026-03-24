@@ -57,6 +57,60 @@
         "path": "./snippets/game.json"
       }
     ],
+    "commands": [
+      {
+        "command": "game.openPreview",
+        "title": "GAME: Open Preview",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "game.export",
+        "title": "GAME: Export Component",
+        "icon": "$(export)"
+      },
+      {
+        "command": "game.exportCopyJs",
+        "title": "GAME: Copy JS to Clipboard"
+      },
+      {
+        "command": "game.exportCopyHtml",
+        "title": "GAME: Copy HTML Embed"
+      },
+      {
+        "command": "game.exportCopyReact",
+        "title": "GAME: Copy React Usage"
+      },
+      {
+        "command": "game.exportSaveJs",
+        "title": "GAME: Save JS File"
+      },
+      {
+        "command": "game.exportSaveHtml",
+        "title": "GAME: Save Standalone HTML"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "game.openPreview",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g",
+        "when": "editorLangId == game"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "game.openPreview",
+          "when": "editorLangId == game",
+          "group": "navigation"
+        },
+        {
+          "command": "game.export",
+          "when": "editorLangId == game",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "GAME Language",
       "properties": {
@@ -79,7 +133,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "echo skipped",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package"

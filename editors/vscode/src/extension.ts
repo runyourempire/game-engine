@@ -1,4 +1,5 @@
 import * as path from "path";
+import * as vscode from "vscode";
 import { workspace, ExtensionContext, window } from "vscode";
 import {
   LanguageClient,
@@ -7,9 +8,40 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 
+import { PreviewPanel } from "./previewPanel";
+import { registerExportCommands } from "./exportCommands";
+
 let client: LanguageClient | undefined;
 
 export function activate(context: ExtensionContext): void {
+  // Live Preview command
+  const previewCommand = vscode.commands.registerCommand(
+    "game.openPreview",
+    () => {
+      PreviewPanel.createOrShow(context.extensionUri);
+    }
+  );
+  context.subscriptions.push(previewCommand);
+
+  // Watch for editor text changes
+  const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+    if (e.document.languageId === "game") {
+      PreviewPanel.updateCode(e.document.getText());
+    }
+  });
+  context.subscriptions.push(changeListener);
+
+  // Watch for active editor switches
+  const editorListener = vscode.window.onDidChangeActiveTextEditor(
+    (editor) => {
+      if (editor?.document.languageId === "game") {
+        PreviewPanel.updateCode(editor.document.getText());
+      }
+    }
+  );
+  context.subscriptions.push(editorListener);
+
+  // LSP setup
   const config = workspace.getConfiguration("game");
   const serverPath = config.get<string>("serverPath", "game");
 
@@ -62,6 +94,8 @@ export function activate(context: ExtensionContext): void {
       }
     },
   });
+
+  registerExportCommands(context);
 }
 
 export function deactivate(): Thenable<void> | undefined {
