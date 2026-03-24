@@ -246,6 +246,8 @@ mod tests {
             has_arc_exit: false,
             has_arc_hover: false,
             textures: vec![],
+            has_states: false,
+            states_js: None,
             particles_sim_wgsl: None,
             particles_raster_wgsl: None,
         };

@@ -146,6 +146,7 @@ mod tests {
             role: Some("alert".into()),
             scene3d: None,
             textures: vec![],
+            states: vec![],
         }
     }
 
@@ -196,6 +197,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let (html, css) = generate_dom(&cin);
         assert!(html.is_none());
@@ -238,6 +240,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();
@@ -281,6 +284,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();
@@ -331,6 +335,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let (html, css) = generate_dom(&cin);
         let html = html.unwrap();
@@ -375,6 +380,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();
@@ -420,6 +426,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let (_, css) = generate_dom(&cin);
         let css = css.unwrap();

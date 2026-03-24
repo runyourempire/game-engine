@@ -63,6 +63,8 @@ pub struct Cinematic {
     pub scene3d: Option<Scene3dBlock>,
     /// Texture inputs (external images bound to shader samplers).
     pub textures: Vec<TextureDecl>,
+    /// Visual state machine blocks for interactive state transitions.
+    pub states: Vec<StateBlock>,
 }
 
 // ── 3D Ray Marching ─────────────────────────────────────
@@ -596,6 +598,28 @@ pub struct MatrixTransitions {
     pub states: Vec<String>,
     pub weights: Vec<f64>,
     pub hold: Duration,
+}
+
+// ── Visual State Machine ─────────────────────────────────
+
+/// `state name [from parent] [over duration easing] { layers, overrides }`
+/// A named visual state within a cinematic, enabling interactive state transitions.
+#[derive(Debug, Clone)]
+pub struct StateBlock {
+    pub name: String,
+    pub parent: Option<String>,
+    pub transition_duration: Option<Duration>,
+    pub transition_easing: Option<String>,
+    pub layers: Vec<Layer>,
+    pub overrides: Vec<StateOverride>,
+}
+
+/// `layer.param: value` — a parameter override within a state block.
+#[derive(Debug, Clone)]
+pub struct StateOverride {
+    pub layer: String,
+    pub param: String,
+    pub value: Expr,
 }
 
 // ── Phase v0.8: Component UI Layer ──────────────────────

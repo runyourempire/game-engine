@@ -568,6 +568,7 @@ impl Parser {
         let mut role = None;
         let mut scene3d = None;
         let mut textures = Vec::new();
+        let mut states = Vec::new();
 
         while !self.at_end() && !self.check(&Token::RBrace) {
             match self.peek() {
@@ -611,6 +612,9 @@ impl Parser {
                 Some(Token::Ident(s)) if s == "scene3d" => {
                     scene3d = Some(self.parse_scene3d_block()?);
                 }
+                Some(Token::Ident(s)) if s == "state" => {
+                    states.push(self.parse_state_block()?);
+                }
                 Some(Token::Ident(s)) if s == "texture" => {
                     textures.push(self.parse_texture_decl()?);
                 }
@@ -618,7 +622,7 @@ impl Parser {
                     let (line, col) = self.current_pos();
                     return Err(CompileError::ParseError {
                         message: format!(
-                            "expected `layer`, `arc`, `resonate`, `listen`, `voice`, `score`, `gravity`, `react`, `swarm`, `flow`, `particles`, `pass`, `use`, `matrix`, `props`, `dom`, `on`, `role`, `scene3d`, or `texture` inside cinematic, found `{}`",
+                            "expected `layer`, `arc`, `resonate`, `listen`, `voice`, `score`, `gravity`, `react`, `swarm`, `flow`, `particles`, `pass`, `use`, `matrix`, `props`, `dom`, `on`, `role`, `scene3d`, `state`, or `texture` inside cinematic, found `{}`",
                             self.peek().map_or("EOF".into(), |t| t.to_string())
                         ),
                         line,
@@ -652,6 +656,7 @@ impl Parser {
             role,
             scene3d,
             textures,
+            states,
         })
     }
 
@@ -2716,6 +2721,79 @@ impl Parser {
         };
 
         Ok(TextureDecl { name, source })
+    }
+
+    // ======================================================================
+    // state name [from parent] [over duration easing] { layers | overrides }
+    // ======================================================================
+
+    fn parse_state_block(&mut self) -> Result<StateBlock, CompileError> {
+        // Consume the "state" identifier
+        self.advance();
+        let name = self.expect_ident_or_keyword()?;
+
+        // Optional `from <parent>` clause
+        let parent = if matches!(self.peek(), Some(Token::From)) {
+            self.advance(); // consume `from`
+            Some(self.expect_ident_or_keyword()?)
+        } else {
+            None
+        };
+
+        // Optional `over <duration> [easing]` clause
+        let (transition_duration, transition_easing) = if matches!(self.peek(), Some(Token::Over))
+        {
+            self.advance(); // consume `over`
+            let dur = self.parse_duration()?;
+            let easing = if matches!(self.peek(), Some(Token::Ident(_))) {
+                // Check it's not `{` — only consume if it looks like an easing name
+                Some(self.expect_easing()?)
+            } else {
+                None
+            };
+            (Some(dur), easing)
+        } else {
+            (None, None)
+        };
+
+        self.expect(&Token::LBrace)?;
+
+        let mut layers = Vec::new();
+        let mut overrides = Vec::new();
+
+        while !self.at_end() && !self.check(&Token::RBrace) {
+            if matches!(self.peek(), Some(Token::Layer)) {
+                // Full layer block: `layer name { ... }`
+                layers.push(self.parse_layer()?);
+            } else {
+                // Override: `layer_name.param: value`
+                overrides.push(self.parse_state_override()?);
+            }
+        }
+
+        self.expect(&Token::RBrace)?;
+        Ok(StateBlock {
+            name,
+            parent,
+            transition_duration,
+            transition_easing,
+            layers,
+            overrides,
+        })
+    }
+
+    fn parse_state_override(&mut self) -> Result<StateOverride, CompileError> {
+        // Parse `layer.param: value`
+        let layer = self.expect_ident_or_keyword()?;
+        self.expect(&Token::Dot)?;
+        let param = self.expect_ident_or_keyword()?;
+        self.expect(&Token::Colon)?;
+        let value = self.parse_expr()?;
+        Ok(StateOverride {
+            layer,
+            param,
+            value,
+        })
     }
 }
 

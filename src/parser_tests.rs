@@ -2366,3 +2366,165 @@ fn parse_keyword_in_expression() {
         _ => panic!("expected Pipeline body for core layer"),
     }
 }
+
+// ===================================================================
+// State blocks (visual state machine)
+// ===================================================================
+
+#[test]
+fn parse_state_idle_with_layer() {
+    // state idle { layer bg { circle(0.3) | glow(1.5) } }
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("btn".into())),
+        s(Token::LBrace),
+        s(Token::Ident("state".into())),
+        s(Token::Ident("idle".into())),
+        s(Token::LBrace),
+        s(Token::Layer),
+        s(Token::Ident("bg".into())),
+        s(Token::LBrace),
+        s(Token::Ident("circle".into())),
+        s(Token::LParen),
+        s(Token::Float(0.3)),
+        s(Token::RParen),
+        s(Token::Pipe),
+        s(Token::Ident("glow".into())),
+        s(Token::LParen),
+        s(Token::Float(1.5)),
+        s(Token::RParen),
+        s(Token::RBrace),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse");
+    let cin = &prog.cinematics[0];
+    assert_eq!(cin.states.len(), 1);
+    let state = &cin.states[0];
+    assert_eq!(state.name, "idle");
+    assert!(state.parent.is_none());
+    assert!(state.transition_duration.is_none());
+    assert!(state.transition_easing.is_none());
+    assert_eq!(state.layers.len(), 1);
+    assert_eq!(state.layers[0].name, "bg");
+    assert!(state.overrides.is_empty());
+}
+
+#[test]
+fn parse_state_hover_with_transition_and_overrides() {
+    // state hover from idle over 150ms ease-out { glow.intensity: 1.2 }
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("btn".into())),
+        s(Token::LBrace),
+        s(Token::Ident("state".into())),
+        s(Token::Ident("hover".into())),
+        s(Token::From),
+        s(Token::Ident("idle".into())),
+        s(Token::Over),
+        s(Token::Millis(150.0)),
+        s(Token::Ident("ease".into())),
+        s(Token::Minus),
+        s(Token::Ident("out".into())),
+        s(Token::LBrace),
+        s(Token::Ident("glow".into())),
+        s(Token::Dot),
+        s(Token::Ident("intensity".into())),
+        s(Token::Colon),
+        s(Token::Float(1.2)),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse");
+    let cin = &prog.cinematics[0];
+    assert_eq!(cin.states.len(), 1);
+    let state = &cin.states[0];
+    assert_eq!(state.name, "hover");
+    assert_eq!(state.parent.as_deref(), Some("idle"));
+    assert_eq!(state.transition_duration, Some(Duration::Millis(150.0)));
+    assert_eq!(state.transition_easing.as_deref(), Some("ease-out"));
+    assert_eq!(state.overrides.len(), 1);
+    assert_eq!(state.overrides[0].layer, "glow");
+    assert_eq!(state.overrides[0].param, "intensity");
+    assert!(matches!(state.overrides[0].value, Expr::Number(v) if (v - 1.2).abs() < 0.001));
+}
+
+#[test]
+fn parse_state_active_from_hover() {
+    // state active from hover over 50ms ease-in { glow.intensity: 0.3 }
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("btn".into())),
+        s(Token::LBrace),
+        s(Token::Ident("state".into())),
+        s(Token::Ident("active".into())),
+        s(Token::From),
+        s(Token::Ident("hover".into())),
+        s(Token::Over),
+        s(Token::Millis(50.0)),
+        s(Token::Ident("ease".into())),
+        s(Token::Minus),
+        s(Token::Ident("in".into())),
+        s(Token::LBrace),
+        s(Token::Ident("glow".into())),
+        s(Token::Dot),
+        s(Token::Ident("intensity".into())),
+        s(Token::Colon),
+        s(Token::Float(0.3)),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse");
+    let cin = &prog.cinematics[0];
+    assert_eq!(cin.states.len(), 1);
+    let state = &cin.states[0];
+    assert_eq!(state.name, "active");
+    assert_eq!(state.parent.as_deref(), Some("hover"));
+    assert_eq!(state.transition_duration, Some(Duration::Millis(50.0)));
+    assert_eq!(state.transition_easing.as_deref(), Some("ease-in"));
+}
+
+#[test]
+fn parse_multiple_states() {
+    // cinematic "btn" {
+    //   state idle { }
+    //   state hover from idle over 150ms ease-out { glow.intensity: 1.2 }
+    // }
+    let tokens = vec![
+        s(Token::Cinematic),
+        s(Token::StringLit("btn".into())),
+        s(Token::LBrace),
+        // state idle {}
+        s(Token::Ident("state".into())),
+        s(Token::Ident("idle".into())),
+        s(Token::LBrace),
+        s(Token::RBrace),
+        // state hover from idle over 150ms ease-out { glow.intensity: 1.2 }
+        s(Token::Ident("state".into())),
+        s(Token::Ident("hover".into())),
+        s(Token::From),
+        s(Token::Ident("idle".into())),
+        s(Token::Over),
+        s(Token::Millis(150.0)),
+        s(Token::Ident("ease".into())),
+        s(Token::Minus),
+        s(Token::Ident("out".into())),
+        s(Token::LBrace),
+        s(Token::Ident("glow".into())),
+        s(Token::Dot),
+        s(Token::Ident("intensity".into())),
+        s(Token::Colon),
+        s(Token::Float(1.2)),
+        s(Token::RBrace),
+        s(Token::RBrace),
+    ];
+    let mut p = Parser::new(tokens);
+    let prog = p.parse().expect("should parse");
+    let cin = &prog.cinematics[0];
+    assert_eq!(cin.states.len(), 2);
+    assert_eq!(cin.states[0].name, "idle");
+    assert_eq!(cin.states[1].name, "hover");
+}

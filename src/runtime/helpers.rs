@@ -200,8 +200,14 @@ pub fn webgpu_renderer(
     s.push_str("  start() {\n");
     s.push_str("    if (this.running) return;\n");
     s.push_str("    this.running = true;\n");
+    s.push_str("    this._visible = true;\n");
+    s.push_str("    this._observer = new IntersectionObserver(([e]) => {\n");
+    s.push_str("      this._visible = e.isIntersecting;\n");
+    s.push_str("    }, { threshold: 0 });\n");
+    s.push_str("    this._observer.observe(this.canvas);\n");
     s.push_str("    const loop = () => {\n");
     s.push_str("      if (!this.running) return;\n");
+    s.push_str("      if (!this._visible) { requestAnimationFrame(loop); return; }\n");
     s.push_str("      this.render();\n");
     s.push_str("      requestAnimationFrame(loop);\n");
     s.push_str("    };\n");
@@ -433,6 +439,7 @@ pub fn webgpu_renderer(
     s.push_str("  setAudioData(d) { Object.assign(this.audioData, d); }\n");
     s.push_str("  destroy() {\n");
     s.push_str("    this.stop();\n");
+    s.push_str("    this._observer?.disconnect();\n");
     s.push_str("    this.canvas.removeEventListener('mousemove', this._onMouseMove);\n");
     s.push_str("    this.canvas.removeEventListener('mousedown', this._onMouseDown);\n");
     s.push_str("    this.canvas.removeEventListener('mouseup', this._onMouseUp);\n");
@@ -566,8 +573,14 @@ pub fn webgl2_renderer(needs_prev_frame: bool) -> String {
     s.push_str("  start() {\n");
     s.push_str("    if (this.running) return;\n");
     s.push_str("    this.running = true;\n");
+    s.push_str("    this._visible = true;\n");
+    s.push_str("    this._observer = new IntersectionObserver(([e]) => {\n");
+    s.push_str("      this._visible = e.isIntersecting;\n");
+    s.push_str("    }, { threshold: 0 });\n");
+    s.push_str("    this._observer.observe(this.canvas);\n");
     s.push_str("    const loop = () => {\n");
     s.push_str("      if (!this.running) return;\n");
+    s.push_str("      if (!this._visible) { requestAnimationFrame(loop); return; }\n");
     s.push_str("      this.render();\n");
     s.push_str("      requestAnimationFrame(loop);\n");
     s.push_str("    };\n");
@@ -674,6 +687,7 @@ pub fn webgl2_renderer(needs_prev_frame: bool) -> String {
     s.push_str("  setAudioData(d) { Object.assign(this.audioData, d); }\n");
     s.push_str("  destroy() {\n");
     s.push_str("    this.stop();\n");
+    s.push_str("    this._observer?.disconnect();\n");
     s.push_str("    this.canvas.removeEventListener('mousemove', this._onMouseMove);\n");
     s.push_str("    this.canvas.removeEventListener('mousedown', this._onMouseDown);\n");
     s.push_str("    this.canvas.removeEventListener('mouseup', this._onMouseUp);\n");

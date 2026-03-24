@@ -74,6 +74,18 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     if let Some(ref wgsl) = shader.flow_wgsl {
         s.push_str(&format!("const FLOW_WGSL = `{}`;\n", escape_js(wgsl)));
     }
+    if let Some(ref wgsl) = shader.particles_sim_wgsl {
+        s.push_str(&format!(
+            "const PARTICLES_SIM_WGSL = `{}`;\n",
+            escape_js(wgsl)
+        ));
+    }
+    if let Some(ref wgsl) = shader.particles_raster_wgsl {
+        s.push_str(&format!(
+            "const PARTICLES_RASTER_WGSL = `{}`;\n",
+            escape_js(wgsl)
+        ));
+    }
     s.push('\n');
 
     // Determine compute type for fragment shader wiring
@@ -205,6 +217,31 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
         s.push_str("    });\n");
     }
 
+    // State machine: instantiate and wire mouse events
+    if shader.has_states {
+        s.push_str("    this._stateMachine = new GameStateMachine();\n");
+        s.push_str("    this.addEventListener('mouseenter', () => {\n");
+        s.push_str("      if (this._stateMachine && this._renderer) {\n");
+        s.push_str("        this._stateMachine.transition('hover', this._renderer._elapsed || 0);\n");
+        s.push_str("      }\n");
+        s.push_str("    });\n");
+        s.push_str("    this.addEventListener('mouseleave', () => {\n");
+        s.push_str("      if (this._stateMachine && this._renderer) {\n");
+        s.push_str("        this._stateMachine.transition('idle', this._renderer._elapsed || 0);\n");
+        s.push_str("      }\n");
+        s.push_str("    });\n");
+        s.push_str("    this.addEventListener('mousedown', () => {\n");
+        s.push_str("      if (this._stateMachine && this._renderer) {\n");
+        s.push_str("        this._stateMachine.transition('active', this._renderer._elapsed || 0);\n");
+        s.push_str("      }\n");
+        s.push_str("    });\n");
+        s.push_str("    this.addEventListener('mouseup', () => {\n");
+        s.push_str("      if (this._stateMachine && this._renderer) {\n");
+        s.push_str("        this._stateMachine.transition('hover', this._renderer._elapsed || 0);\n");
+        s.push_str("      }\n");
+        s.push_str("    });\n");
+    }
+
     s.push_str("    this._initRenderer();\n");
     s.push_str("    this._resizeObserver = new ResizeObserver(() => this._resize());\n");
     s.push_str("    this._resizeObserver.observe(this);\n");
@@ -255,7 +292,8 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
     let has_compute = shader.compute_wgsl.is_some()
         || shader.react_wgsl.is_some()
         || shader.swarm_agent_wgsl.is_some()
-        || shader.flow_wgsl.is_some();
+        || shader.flow_wgsl.is_some()
+        || shader.particles_sim_wgsl.is_some();
     if has_compute {
         s.push_str("    if (this._renderer.device) {\n");
         s.push_str("      const dev = this._renderer.device;\n");
@@ -300,6 +338,13 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
             }
             s.push_str("      }\n");
         }
+        if shader.particles_sim_wgsl.is_some() {
+            s.push_str("      if (typeof PARTICLES_SIM_WGSL !== 'undefined') {\n");
+            s.push_str("        const sim = new GameParticleSim(dev, PARTICLES_SIM_WGSL, PARTICLES_RASTER_WGSL);\n");
+            s.push_str("        await sim.init();\n");
+            s.push_str("        this._particleSim = sim;\n");
+            s.push_str("      }\n");
+        }
         // Wire pre-render dispatch + buffer updates
         s.push_str("      this._renderer._preRender = () => {\n");
         s.push_str("        const dt = 1/60;\n");
@@ -330,6 +375,9 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
             }
             s.push_str("        }\n");
         }
+        if shader.particles_sim_wgsl.is_some() {
+            s.push_str("        if (this._particleSim) this._particleSim.dispatch(dt);\n");
+        }
         s.push_str("      };\n");
         s.push_str("    }\n");
     }
@@ -349,6 +397,25 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
         s.push_str("        }\n");
         s.push_str("      }\n");
         s.push_str("    };\n");
+    }
+
+    // State machine: evaluate on each frame and apply overrides
+    if shader.has_states {
+        s.push_str("    {\n");
+        s.push_str("      const existingPreRender = this._renderer._preRender;\n");
+        s.push_str("      const comp = this;\n");
+        s.push_str("      this._renderer._preRender = () => {\n");
+        s.push_str("        if (existingPreRender) existingPreRender();\n");
+        s.push_str("        if (comp._stateMachine && comp._renderer) {\n");
+        s.push_str("          const elapsed = comp._renderer._elapsed || 0;\n");
+        s.push_str("          const overrides = comp._stateMachine.evaluate(elapsed);\n");
+        s.push_str("          for (const [key, value] of Object.entries(overrides)) {\n");
+        s.push_str("            const parts = key.split('.');\n");
+        s.push_str("            if (parts.length === 2) comp.setParam(parts[1], value);\n");
+        s.push_str("          }\n");
+        s.push_str("        }\n");
+        s.push_str("      };\n");
+        s.push_str("    }\n");
     }
 
     // Apply any params set before renderer was ready
@@ -391,6 +458,15 @@ pub fn generate_component(shader: &ShaderOutput) -> String {
         if shader.has_arc_hover {
             s.push_str("    if (name === 'hover') { if (this._arcHover) this._arcHover.enter(t); }\n");
         }
+        s.push_str("  }\n\n");
+    }
+
+    // transitionState(name) — programmatic state machine transition
+    if shader.has_states {
+        s.push_str("  transitionState(name) {\n");
+        s.push_str("    if (this._stateMachine) {\n");
+        s.push_str("      this._stateMachine.transition(name, this._renderer?._elapsed || 0);\n");
+        s.push_str("    }\n");
         s.push_str("  }\n\n");
     }
 
@@ -579,6 +655,8 @@ mod tests {
             has_arc_exit: false,
             has_arc_hover: false,
             textures: vec![],
+            has_states: false,
+            states_js: None,
             particles_sim_wgsl: None,
             particles_raster_wgsl: None,
         }
@@ -694,6 +772,24 @@ mod tests {
     }
 
     #[test]
+    fn component_with_particles_has_dispatch() {
+        let mut shader = make_shader("sparks");
+        shader.particles_sim_wgsl = Some("// particle sim shader".into());
+        shader.particles_raster_wgsl = Some("// particle raster shader".into());
+        shader.js_modules = vec!["class GameParticleSim { dispatch(dt){} }".into()];
+        let js = generate_component(&shader);
+        // Particle WGSL constants
+        assert!(js.contains("PARTICLES_SIM_WGSL"));
+        assert!(js.contains("PARTICLES_RASTER_WGSL"));
+        // Particle init
+        assert!(js.contains("new GameParticleSim(dev, PARTICLES_SIM_WGSL, PARTICLES_RASTER_WGSL)"));
+        assert!(js.contains("this._particleSim"));
+        // Pre-render dispatch
+        assert!(js.contains("_particleSim"));
+        assert!(js.contains("_preRender"));
+    }
+
+    #[test]
     fn component_without_features_has_simple_render() {
         let shader = make_shader("simple");
         let js = generate_component(&shader);
@@ -790,5 +886,27 @@ mod tests {
         );
         assert!(js.contains("set progress(v) { this.setParam('progress', v); }"));
         assert!(!js.contains("this.fill_angle"));
+    }
+
+    #[test]
+    fn component_with_states_has_state_machine() {
+        let mut shader = make_shader("button");
+        shader.has_states = true;
+        shader.js_modules.push("class GameStateMachine {}".into());
+        let js = generate_component(&shader);
+        // State machine instantiated
+        assert!(js.contains("new GameStateMachine()"));
+        // Mouse event wiring
+        assert!(js.contains("mouseenter"));
+        assert!(js.contains("mouseleave"));
+        assert!(js.contains("mousedown"));
+        assert!(js.contains("mouseup"));
+        assert!(js.contains("transition('hover'"));
+        assert!(js.contains("transition('idle'"));
+        assert!(js.contains("transition('active'"));
+        // Pre-render evaluation
+        assert!(js.contains("_stateMachine.evaluate("));
+        // Programmatic transition method
+        assert!(js.contains("transitionState(name)"));
     }
 }

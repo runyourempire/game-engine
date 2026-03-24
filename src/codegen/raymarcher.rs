@@ -161,6 +161,11 @@ pub fn generate_fragment_3d(cinematic: &Cinematic, uniforms: &[UniformInfo]) -> 
     s
 }
 
+/// Public accessor for extracting base color (used by GLSL 3D fallback).
+pub fn extract_color_from_layers_pub(cinematic: &Cinematic) -> (f64, f64, f64) {
+    extract_color_from_layers(cinematic)
+}
+
 /// Extract base color from the cinematic's layers (tint or shade args).
 fn extract_color_from_layers(cinematic: &Cinematic) -> (f64, f64, f64) {
     for layer in &cinematic.layers {
@@ -226,6 +231,7 @@ mod tests {
                 distance: 3.0,
             }),
             textures: vec![],
+            states: vec![],
         };
         (cin, vec![])
     }

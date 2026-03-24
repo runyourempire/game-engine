@@ -2,7 +2,6 @@
 
 use crate::ast::*;
 use crate::codegen::memory;
-use crate::codegen::stages::get_arg;
 use crate::codegen::UniformInfo;
 
 /// Named color preset definitions (a, b, c, d vectors for cosine palette).
@@ -262,7 +261,7 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
         "blur" | "gaussian_blur" => {
             // Simple box blur approximation
             let radius = if !args.is_empty() {
-                get_arg(args, "radius", 0, "blur")
+                get_arg_wgsl(args, "radius", 0, "blur")
             } else {
                 "2.0".to_string()
             };
@@ -288,7 +287,7 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "threshold" => {
             let t = if !args.is_empty() {
-                get_arg(args, "value", 0, "threshold")
+                get_arg_wgsl(args, "value", 0, "threshold")
             } else {
                 "0.5".to_string()
             };
@@ -311,7 +310,7 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "vignette" => {
             let strength = if !args.is_empty() {
-                get_arg(args, "strength", 0, "vignette")
+                get_arg_wgsl(args, "strength", 0, "vignette")
             } else {
                 "0.5".to_string()
             };
@@ -324,7 +323,7 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "chromatic" | "chromatic_aberration" => {
             let strength = if !args.is_empty() {
-                get_arg(args, "strength", 0, "chromatic")
+                get_arg_wgsl(args, "strength", 0, "chromatic")
             } else {
                 "0.005".to_string()
             };
@@ -345,7 +344,7 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "sharpen" => {
             let amount = if !args.is_empty() {
-                get_arg(args, "amount", 0, "sharpen")
+                get_arg_wgsl(args, "amount", 0, "sharpen")
             } else {
                 "0.5".to_string()
             };
@@ -362,7 +361,7 @@ fn emit_pass_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         "film_grain" => {
             let amount = if !args.is_empty() {
-                get_arg(args, "amount", 0, "film_grain")
+                get_arg_wgsl(args, "amount", 0, "film_grain")
             } else {
                 "0.05".to_string()
             };
@@ -923,6 +922,18 @@ fn emit_wgsl_layer(
     }
 }
 
+/// Check if a function name is a recognized GPU math function (valid in WGSL/GLSL).
+fn is_gpu_math_fn(name: &str) -> bool {
+    matches!(
+        name,
+        "sin" | "cos" | "tan" | "asin" | "acos" | "atan"
+            | "abs" | "sign" | "floor" | "ceil" | "fract"
+            | "sqrt" | "min" | "max" | "clamp" | "mix"
+            | "step" | "smoothstep" | "pow" | "exp" | "log"
+            | "length" | "normalize" | "dot"
+    )
+}
+
 /// Emit a WGSL expression string from an AST Expr.
 pub fn emit_wgsl_expr(expr: &Expr) -> String {
     match expr {
@@ -974,9 +985,64 @@ pub fn emit_wgsl_expr(expr: &Expr) -> String {
         }
         Expr::Call { name, args } => {
             let arg_strs: Vec<String> = args.iter().map(|a| emit_wgsl_expr(&a.value)).collect();
-            format!("{}({})", name, arg_strs.join(", "))
+            if is_gpu_math_fn(name) {
+                // Emit directly as a WGSL built-in function call
+                format!("{}({})", name, arg_strs.join(", "))
+            } else {
+                // Unknown function — emit as-is (user-defined or SDF helper)
+                format!("{}({})", name, arg_strs.join(", "))
+            }
         }
         _ => "0.0".to_string(),
+    }
+}
+
+/// Resolve a pipeline arg to a WGSL expression string.
+///
+/// Looks up by name first, then by position, then falls back to the builtin default.
+/// Unlike `get_arg` (which uses the target-agnostic `emit_expr`), this uses
+/// `emit_wgsl_expr` so identifiers like `bass` correctly become `u.audio_bass`
+/// and function calls like `sin(time)` are emitted as proper WGSL.
+fn get_arg_wgsl(args: &[Arg], name: &str, pos: usize, stage_name: &str) -> String {
+    // Try named first
+    for arg in args {
+        if arg.name.as_deref() == Some(name) {
+            return resolve_arg_wgsl(arg, pos);
+        }
+    }
+    // Hex color expansion: tint(#RRGGBB) distributes r/g/b across pos 0/1/2
+    if pos > 0 && !args.is_empty() {
+        if let Expr::Color(r, g, b) = &args[0].value {
+            return match pos {
+                0 => format!("{r:.6}"),
+                1 => format!("{g:.6}"),
+                2 => format!("{b:.6}"),
+                _ => "0.0".to_string(),
+            };
+        }
+    }
+    // Try positional
+    if let Some(arg) = args.get(pos) {
+        return resolve_arg_wgsl(arg, pos);
+    }
+    // Fallback to builtin default
+    crate::builtins::lookup(stage_name)
+        .and_then(|b| b.params.get(pos))
+        .and_then(|p| p.default)
+        .map(|d| format!("{d:.6}"))
+        .unwrap_or_else(|| "0.0".into())
+}
+
+/// Resolve a single arg value to a WGSL expression string.
+fn resolve_arg_wgsl(arg: &Arg, idx: usize) -> String {
+    match &arg.value {
+        Expr::Number(v) => format!("{v:.6}"),
+        Expr::Color(r, g, b) => match idx % 3 {
+            0 => format!("{r:.6}"),
+            1 => format!("{g:.6}"),
+            _ => format!("{b:.6}"),
+        },
+        other => emit_wgsl_expr(other),
     }
 }
 
@@ -1044,35 +1110,35 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
     let args = &stage.args;
     match stage.name.as_str() {
         "circle" => {
-            let r = get_arg(args, "radius", 0, "circle");
+            let r = get_arg_wgsl(args, "radius", 0, "circle");
             s.push_str(&format!("{indent}var sdf_result = sdf_circle(p, {r});\n"));
         }
         "ring" => {
-            let r = get_arg(args, "radius", 0, "ring");
-            let w = get_arg(args, "width", 1, "ring");
+            let r = get_arg_wgsl(args, "radius", 0, "ring");
+            let w = get_arg_wgsl(args, "width", 1, "ring");
             s.push_str(&format!(
                 "{indent}var sdf_result = abs(length(p) - {r}) - {w};\n"
             ));
         }
         "star" => {
-            let n = get_arg(args, "points", 0, "star");
-            let r = get_arg(args, "radius", 1, "star");
-            let ir = get_arg(args, "inner", 2, "star");
+            let n = get_arg_wgsl(args, "points", 0, "star");
+            let r = get_arg_wgsl(args, "radius", 1, "star");
+            let ir = get_arg_wgsl(args, "inner", 2, "star");
             s.push_str(&format!(
                 "{indent}var sdf_result = sdf_star(p, {n}, {r}, {ir});\n"
             ));
         }
         "box" => {
-            let w = get_arg(args, "width", 0, "box");
-            let h = get_arg(args, "height", 1, "box");
+            let w = get_arg_wgsl(args, "width", 0, "box");
+            let h = get_arg_wgsl(args, "height", 1, "box");
             s.push_str(&format!("{indent}var sdf_result = sdf_box(p, {w}, {h});\n"));
         }
         "hex" => {
-            let r = get_arg(args, "radius", 0, "hex");
+            let r = get_arg_wgsl(args, "radius", 0, "hex");
             s.push_str(&format!("{indent}var sdf_result = sdf_hex(p, {r});\n"));
         }
         "glow" => {
-            let intensity = get_arg(args, "intensity", 0, "glow");
+            let intensity = get_arg_wgsl(args, "intensity", 0, "glow");
             s.push_str(&format!(
                 "{indent}let glow_pulse = {intensity} * (0.9 + 0.1 * sin(time * 2.0));\n"
             ));
@@ -1084,21 +1150,21 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "tint" => {
-            let r = get_arg(args, "r", 0, "tint");
-            let g = get_arg(args, "g", 1, "tint");
-            let b = get_arg(args, "b", 2, "tint");
+            let r = get_arg_wgsl(args, "r", 0, "tint");
+            let g = get_arg_wgsl(args, "g", 1, "tint");
+            let b = get_arg_wgsl(args, "b", 2, "tint");
             s.push_str(&format!("{indent}color_result = vec4<f32>(color_result.rgb * vec3<f32>({r}, {g}, {b}), color_result.a);\n"));
         }
         "bloom" => {
-            let thresh = get_arg(args, "threshold", 0, "bloom");
-            let strength = get_arg(args, "strength", 1, "bloom");
+            let thresh = get_arg_wgsl(args, "threshold", 0, "bloom");
+            let strength = get_arg_wgsl(args, "strength", 1, "bloom");
             s.push_str(&format!(
                 "{indent}let pp_lum = dot(color_result.rgb, vec3<f32>(0.299, 0.587, 0.114));\n"
             ));
             s.push_str(&format!("{indent}color_result = vec4<f32>(color_result.rgb + max(pp_lum - {thresh}, 0.0) * {strength}, color_result.a);\n"));
         }
         "rotate" => {
-            let speed = get_arg(args, "speed", 0, "rotate");
+            let speed = get_arg_wgsl(args, "speed", 0, "rotate");
             s.push_str(&format!(
                 "{indent}{{ let ra = time * {speed}; let rc = cos(ra); let rs = sin(ra);\n"
             ));
@@ -1107,16 +1173,16 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "translate" => {
-            let x = get_arg(args, "x", 0, "translate");
-            let y = get_arg(args, "y", 1, "translate");
+            let x = get_arg_wgsl(args, "x", 0, "translate");
+            let y = get_arg_wgsl(args, "y", 1, "translate");
             s.push_str(&format!("{indent}p = p - vec2<f32>({x}, {y});\n"));
         }
         "scale" => {
-            let sc = get_arg(args, "s", 0, "scale");
+            let sc = get_arg_wgsl(args, "s", 0, "scale");
             s.push_str(&format!("{indent}p = p / {sc};\n"));
         }
         "mask_arc" => {
-            let angle = get_arg(args, "angle", 0, "mask_arc");
+            let angle = get_arg_wgsl(args, "angle", 0, "mask_arc");
             s.push_str(&format!(
                 "{indent}let arc_theta = atan2(p.x, p.y) + 3.14159265359;\n"
             ));
@@ -1125,9 +1191,9 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "shade" => {
-            let r = get_arg(args, "r", 0, "shade");
-            let g = get_arg(args, "g", 1, "shade");
-            let b = get_arg(args, "b", 2, "shade");
+            let r = get_arg_wgsl(args, "r", 0, "shade");
+            let g = get_arg_wgsl(args, "g", 1, "shade");
+            let b = get_arg_wgsl(args, "b", 2, "shade");
             s.push_str(&format!(
                 "{indent}let shade_fw = fwidth(sdf_result);
 {indent}let shade_alpha = 1.0 - smoothstep(-shade_fw, shade_fw, sdf_result);
@@ -1135,7 +1201,7 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "emissive" => {
-            let intensity = get_arg(args, "intensity", 0, "emissive");
+            let intensity = get_arg_wgsl(args, "intensity", 0, "emissive");
             s.push_str(&format!(
                 "{indent}let glow_result = apply_glow(sdf_result, {intensity});\n"
             ));
@@ -1144,31 +1210,31 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "fbm" => {
-            let sc = get_arg(args, "scale", 0, "fbm");
-            let oct = get_arg(args, "octaves", 1, "fbm");
-            let pers = get_arg(args, "persistence", 2, "fbm");
-            let lac = get_arg(args, "lacunarity", 3, "fbm");
+            let sc = get_arg_wgsl(args, "scale", 0, "fbm");
+            let oct = get_arg_wgsl(args, "octaves", 1, "fbm");
+            let pers = get_arg_wgsl(args, "persistence", 2, "fbm");
+            let lac = get_arg_wgsl(args, "lacunarity", 3, "fbm");
             s.push_str(&format!(
                 "{indent}var sdf_result = fbm2((p * {sc} + vec2<f32>(time * 0.1, time * 0.07)), i32({oct}), {pers}, {lac});\n"
             ));
         }
         "grain" => {
-            let amount = get_arg(args, "amount", 0, "grain");
+            let amount = get_arg_wgsl(args, "amount", 0, "grain");
             s.push_str(&format!("{indent}let grain_noise = fract(sin(dot(p, vec2<f32>(12.9898, 78.233)) + time) * 43758.5453);\n"));
             s.push_str(&format!("{indent}color_result = vec4<f32>(color_result.rgb + (grain_noise - 0.5) * {amount}, color_result.a);\n"));
         }
         "simplex" => {
-            let sc = get_arg(args, "scale", 0, "simplex");
+            let sc = get_arg_wgsl(args, "scale", 0, "simplex");
             s.push_str(&format!(
                 "{indent}var sdf_result = noise2(p * {sc} + vec2<f32>(time * 0.1, time * 0.07));\n"
             ));
         }
         "warp" => {
-            let sc = get_arg(args, "scale", 0, "warp");
-            let oct = get_arg(args, "octaves", 1, "warp");
-            let pers = get_arg(args, "persistence", 2, "warp");
-            let lac = get_arg(args, "lacunarity", 3, "warp");
-            let str_ = get_arg(args, "strength", 4, "warp");
+            let sc = get_arg_wgsl(args, "scale", 0, "warp");
+            let oct = get_arg_wgsl(args, "octaves", 1, "warp");
+            let pers = get_arg_wgsl(args, "persistence", 2, "warp");
+            let lac = get_arg_wgsl(args, "lacunarity", 3, "warp");
+            let str_ = get_arg_wgsl(args, "strength", 4, "warp");
             s.push_str(&format!(
                 "{indent}{{ let warp_x = fbm2(p * {sc} + vec2<f32>(0.0, 1.3), i32({oct}), {pers}, {lac});\n"
             ));
@@ -1180,9 +1246,9 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "distort" => {
-            let sc = get_arg(args, "scale", 0, "distort");
-            let speed = get_arg(args, "speed", 1, "distort");
-            let str_ = get_arg(args, "strength", 2, "distort");
+            let sc = get_arg_wgsl(args, "scale", 0, "distort");
+            let speed = get_arg_wgsl(args, "speed", 1, "distort");
+            let str_ = get_arg_wgsl(args, "strength", 2, "distort");
             s.push_str(&format!(
                 "{indent}p = p + vec2<f32>(sin(p.y * {sc} + time * {speed}), cos(p.x * {sc} + time * {speed})) * {str_};\n"
             ));
@@ -1193,12 +1259,12 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "voronoi" => {
-            let sc = get_arg(args, "scale", 0, "voronoi");
+            let sc = get_arg_wgsl(args, "scale", 0, "voronoi");
             s.push_str(&format!("{indent}var sdf_result = voronoi2(p * {sc} + vec2<f32>(time * 0.05, time * 0.03));\n"));
         }
         "radial_fade" => {
-            let inner = get_arg(args, "inner", 0, "radial_fade");
-            let outer = get_arg(args, "outer", 1, "radial_fade");
+            let inner = get_arg_wgsl(args, "inner", 0, "radial_fade");
+            let outer = get_arg_wgsl(args, "outer", 1, "radial_fade");
             s.push_str(&format!(
                 "{indent}let sdf_result = smoothstep({inner}, {outer}, length(p));\n"
             ));
@@ -1217,18 +1283,18 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
                     "{indent}let pal_rgb = cosine_palette(sdf_result, {a}, {b}, {c}, {d});\n{indent}var color_result = vec4<f32>(pal_rgb, clamp(dot(pal_rgb, vec3<f32>(0.299, 0.587, 0.114)) * 2.0, 0.0, 1.0));\n"
                 ));
             } else {
-                let a_r = get_arg(args, "a_r", 0, "palette");
-                let a_g = get_arg(args, "a_g", 1, "palette");
-                let a_b = get_arg(args, "a_b", 2, "palette");
-                let b_r = get_arg(args, "b_r", 3, "palette");
-                let b_g = get_arg(args, "b_g", 4, "palette");
-                let b_b = get_arg(args, "b_b", 5, "palette");
-                let c_r = get_arg(args, "c_r", 6, "palette");
-                let c_g = get_arg(args, "c_g", 7, "palette");
-                let c_b = get_arg(args, "c_b", 8, "palette");
-                let d_r = get_arg(args, "d_r", 9, "palette");
-                let d_g = get_arg(args, "d_g", 10, "palette");
-                let d_b = get_arg(args, "d_b", 11, "palette");
+                let a_r = get_arg_wgsl(args, "a_r", 0, "palette");
+                let a_g = get_arg_wgsl(args, "a_g", 1, "palette");
+                let a_b = get_arg_wgsl(args, "a_b", 2, "palette");
+                let b_r = get_arg_wgsl(args, "b_r", 3, "palette");
+                let b_g = get_arg_wgsl(args, "b_g", 4, "palette");
+                let b_b = get_arg_wgsl(args, "b_b", 5, "palette");
+                let c_r = get_arg_wgsl(args, "c_r", 6, "palette");
+                let c_g = get_arg_wgsl(args, "c_g", 7, "palette");
+                let c_b = get_arg_wgsl(args, "c_b", 8, "palette");
+                let d_r = get_arg_wgsl(args, "d_r", 9, "palette");
+                let d_g = get_arg_wgsl(args, "d_g", 10, "palette");
+                let d_b = get_arg_wgsl(args, "d_b", 11, "palette");
                 s.push_str(&format!(
                     "{indent}let pal_rgb = cosine_palette(sdf_result, vec3<f32>({a_r}, {a_g}, {a_b}), vec3<f32>({b_r}, {b_g}, {b_b}), vec3<f32>({c_r}, {c_g}, {c_b}), vec3<f32>({d_r}, {d_g}, {d_b}));\n{indent}var color_result = vec4<f32>(pal_rgb, clamp(dot(pal_rgb, vec3<f32>(0.299, 0.587, 0.114)) * 2.0, 0.0, 1.0));\n"
                 ));
@@ -1247,8 +1313,8 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         // ── Spatial operations ──────────────────────────
         "repeat" => {
-            let sx = get_arg(args, "spacing_x", 0, "repeat");
-            let sy = get_arg(args, "spacing_y", 1, "repeat");
+            let sx = get_arg_wgsl(args, "spacing_x", 0, "repeat");
+            let sy = get_arg_wgsl(args, "spacing_y", 1, "repeat");
             s.push_str(&format!(
                 "{indent}p = vec2<f32>(game_mod(p.x + {sx} * 0.5, {sx}) - {sx} * 0.5, game_mod(p.y + {sy} * 0.5, {sy}) - {sy} * 0.5);\n"
             ));
@@ -1257,7 +1323,7 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             s.push_str(&format!("{indent}p = vec2<f32>(abs(p.x), p.y);\n"));
         }
         "radial" => {
-            let count = get_arg(args, "count", 0, "radial");
+            let count = get_arg_wgsl(args, "count", 0, "radial");
             s.push_str(&format!("{indent}{{ let r_angle = atan2(p.y, p.x);\n"));
             s.push_str(&format!("{indent}let r_sector = 6.28318 / {count};\n"));
             s.push_str(&format!(
@@ -1270,22 +1336,22 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         // ── Shape modifiers ─────────────────────────────
         "round" => {
-            let r = get_arg(args, "radius", 0, "round");
+            let r = get_arg_wgsl(args, "radius", 0, "round");
             s.push_str(&format!("{indent}sdf_result = sdf_result - {r};\n"));
         }
         "shell" => {
-            let w = get_arg(args, "width", 0, "shell");
+            let w = get_arg_wgsl(args, "width", 0, "shell");
             s.push_str(&format!("{indent}sdf_result = abs(sdf_result) - {w};\n"));
         }
         "onion" => {
-            let count = get_arg(args, "count", 0, "onion");
-            let w = get_arg(args, "width", 1, "onion");
+            let count = get_arg_wgsl(args, "count", 0, "onion");
+            let w = get_arg_wgsl(args, "width", 1, "onion");
             s.push_str(&format!(
                 "{indent}for (var onion_i: i32 = 0; onion_i < i32({count}); onion_i = onion_i + 1) {{ sdf_result = abs(sdf_result) - {w}; }}\n"
             ));
         }
         "outline" => {
-            let w = get_arg(args, "width", 0, "outline");
+            let w = get_arg_wgsl(args, "width", 0, "outline");
             // outline is Color->Color: use the sdf approach on the color's luminance
             s.push_str(&format!(
                 "{indent}{{ let out_lum = dot(color_result.rgb, vec3<f32>(0.299, 0.587, 0.114));\n"
@@ -1296,55 +1362,55 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
         }
         // ── New SDF primitives ──────────────────────────
         "line" => {
-            let x1 = get_arg(args, "x1", 0, "line");
-            let y1 = get_arg(args, "y1", 1, "line");
-            let x2 = get_arg(args, "x2", 2, "line");
-            let y2 = get_arg(args, "y2", 3, "line");
-            let w = get_arg(args, "width", 4, "line");
+            let x1 = get_arg_wgsl(args, "x1", 0, "line");
+            let y1 = get_arg_wgsl(args, "y1", 1, "line");
+            let x2 = get_arg_wgsl(args, "x2", 2, "line");
+            let y2 = get_arg_wgsl(args, "y2", 3, "line");
+            let w = get_arg_wgsl(args, "width", 4, "line");
             s.push_str(&format!(
                 "{indent}var sdf_result = sdf_line(p, vec2<f32>({x1}, {y1}), vec2<f32>({x2}, {y2})) - {w};\n"
             ));
         }
         "capsule" => {
-            let len = get_arg(args, "length", 0, "capsule");
-            let r = get_arg(args, "radius", 1, "capsule");
+            let len = get_arg_wgsl(args, "length", 0, "capsule");
+            let r = get_arg_wgsl(args, "radius", 1, "capsule");
             s.push_str(&format!(
                 "{indent}var sdf_result = sdf_line(p, vec2<f32>(-{len} * 0.5, 0.0), vec2<f32>({len} * 0.5, 0.0)) - {r};\n"
             ));
         }
         "triangle" => {
-            let sz = get_arg(args, "size", 0, "triangle");
+            let sz = get_arg_wgsl(args, "size", 0, "triangle");
             s.push_str(&format!(
                 "{indent}var sdf_result = sdf_triangle(p, {sz});\n"
             ));
         }
         "arc_sdf" => {
-            let r = get_arg(args, "radius", 0, "arc_sdf");
-            let angle = get_arg(args, "angle", 1, "arc_sdf");
-            let w = get_arg(args, "width", 2, "arc_sdf");
+            let r = get_arg_wgsl(args, "radius", 0, "arc_sdf");
+            let angle = get_arg_wgsl(args, "angle", 1, "arc_sdf");
+            let w = get_arg_wgsl(args, "width", 2, "arc_sdf");
             s.push_str(&format!(
                 "{indent}var sdf_result = sdf_arc(p, {r}, {angle}, {w});\n"
             ));
         }
         "cross" => {
-            let sz = get_arg(args, "size", 0, "cross");
-            let aw = get_arg(args, "arm_width", 1, "cross");
+            let sz = get_arg_wgsl(args, "size", 0, "cross");
+            let aw = get_arg_wgsl(args, "arm_width", 1, "cross");
             s.push_str(&format!(
                 "{indent}var sdf_result = min(sdf_box(p, {sz}, {aw}), sdf_box(p, {aw}, {sz}));\n"
             ));
         }
         "heart" => {
-            let sz = get_arg(args, "size", 0, "heart");
+            let sz = get_arg_wgsl(args, "size", 0, "heart");
             s.push_str(&format!("{indent}var sdf_result = sdf_heart(p, {sz});\n"));
         }
         "egg" => {
-            let r = get_arg(args, "radius", 0, "egg");
-            let k = get_arg(args, "k", 1, "egg");
+            let r = get_arg_wgsl(args, "radius", 0, "egg");
+            let k = get_arg_wgsl(args, "k", 1, "egg");
             s.push_str(&format!("{indent}var sdf_result = sdf_egg(p, {r}, {k});\n"));
         }
         "spiral" => {
-            let turns = get_arg(args, "turns", 0, "spiral");
-            let w = get_arg(args, "width", 1, "spiral");
+            let turns = get_arg_wgsl(args, "turns", 0, "spiral");
+            let w = get_arg_wgsl(args, "width", 1, "spiral");
             s.push_str(&format!("{indent}let sp_r = length(p);\n"));
             s.push_str(&format!("{indent}let sp_a = atan2(p.y, p.x);\n"));
             s.push_str(&format!(
@@ -1355,8 +1421,8 @@ fn emit_wgsl_stage(s: &mut String, stage: &Stage, indent: &str) {
             ));
         }
         "grid" => {
-            let spacing = get_arg(args, "spacing", 0, "grid");
-            let w = get_arg(args, "width", 1, "grid");
+            let spacing = get_arg_wgsl(args, "spacing", 0, "grid");
+            let w = get_arg_wgsl(args, "width", 1, "grid");
             s.push_str(&format!("{indent}let gx = abs(game_mod(p.x + {spacing} * 0.5, {spacing}) - {spacing} * 0.5) - {w};\n"));
             s.push_str(&format!("{indent}let gy = abs(game_mod(p.y + {spacing} * 0.5, {spacing}) - {spacing} * 0.5) - {w};\n"));
             s.push_str(&format!("{indent}var sdf_result = min(gx, gy);\n"));
@@ -1373,63 +1439,63 @@ fn emit_wgsl_sub_sdf(s: &mut String, expr: &Expr, var_name: &str, indent: &str) 
         let sub_args: Vec<crate::ast::Arg> = args.clone();
         match name.as_str() {
             "circle" => {
-                let r = get_arg(&sub_args, "radius", 0, "circle");
+                let r = get_arg_wgsl(&sub_args, "radius", 0, "circle");
                 s.push_str(&format!("{indent}let {var_name} = sdf_circle(p, {r});\n"));
             }
             "ring" => {
-                let r = get_arg(&sub_args, "radius", 0, "ring");
-                let w = get_arg(&sub_args, "width", 1, "ring");
+                let r = get_arg_wgsl(&sub_args, "radius", 0, "ring");
+                let w = get_arg_wgsl(&sub_args, "width", 1, "ring");
                 s.push_str(&format!(
                     "{indent}let {var_name} = abs(length(p) - {r}) - {w};\n"
                 ));
             }
             "star" => {
-                let n = get_arg(&sub_args, "points", 0, "star");
-                let r = get_arg(&sub_args, "radius", 1, "star");
-                let ir = get_arg(&sub_args, "inner", 2, "star");
+                let n = get_arg_wgsl(&sub_args, "points", 0, "star");
+                let r = get_arg_wgsl(&sub_args, "radius", 1, "star");
+                let ir = get_arg_wgsl(&sub_args, "inner", 2, "star");
                 s.push_str(&format!(
                     "{indent}let {var_name} = sdf_star(p, {n}, {r}, {ir});\n"
                 ));
             }
             "box" => {
-                let w = get_arg(&sub_args, "width", 0, "box");
-                let h = get_arg(&sub_args, "height", 1, "box");
+                let w = get_arg_wgsl(&sub_args, "width", 0, "box");
+                let h = get_arg_wgsl(&sub_args, "height", 1, "box");
                 s.push_str(&format!("{indent}let {var_name} = sdf_box(p, {w}, {h});\n"));
             }
             "hex" => {
-                let r = get_arg(&sub_args, "radius", 0, "hex");
+                let r = get_arg_wgsl(&sub_args, "radius", 0, "hex");
                 s.push_str(&format!("{indent}let {var_name} = sdf_hex(p, {r});\n"));
             }
             "line" => {
-                let x1 = get_arg(&sub_args, "x1", 0, "line");
-                let y1 = get_arg(&sub_args, "y1", 1, "line");
-                let x2 = get_arg(&sub_args, "x2", 2, "line");
-                let y2 = get_arg(&sub_args, "y2", 3, "line");
-                let w = get_arg(&sub_args, "width", 4, "line");
+                let x1 = get_arg_wgsl(&sub_args, "x1", 0, "line");
+                let y1 = get_arg_wgsl(&sub_args, "y1", 1, "line");
+                let x2 = get_arg_wgsl(&sub_args, "x2", 2, "line");
+                let y2 = get_arg_wgsl(&sub_args, "y2", 3, "line");
+                let w = get_arg_wgsl(&sub_args, "width", 4, "line");
                 s.push_str(&format!(
                     "{indent}let {var_name} = sdf_line(p, vec2<f32>({x1}, {y1}), vec2<f32>({x2}, {y2})) - {w};\n"
                 ));
             }
             "capsule" => {
-                let len = get_arg(&sub_args, "length", 0, "capsule");
-                let r = get_arg(&sub_args, "radius", 1, "capsule");
+                let len = get_arg_wgsl(&sub_args, "length", 0, "capsule");
+                let r = get_arg_wgsl(&sub_args, "radius", 1, "capsule");
                 s.push_str(&format!(
                     "{indent}let {var_name} = sdf_line(p, vec2<f32>(-{len} * 0.5, 0.0), vec2<f32>({len} * 0.5, 0.0)) - {r};\n"
                 ));
             }
             "triangle" => {
-                let sz = get_arg(&sub_args, "size", 0, "triangle");
+                let sz = get_arg_wgsl(&sub_args, "size", 0, "triangle");
                 s.push_str(&format!(
                     "{indent}let {var_name} = sdf_triangle(p, {sz});\n"
                 ));
             }
             "heart" => {
-                let sz = get_arg(&sub_args, "size", 0, "heart");
+                let sz = get_arg_wgsl(&sub_args, "size", 0, "heart");
                 s.push_str(&format!("{indent}let {var_name} = sdf_heart(p, {sz});\n"));
             }
             "egg" => {
-                let r = get_arg(&sub_args, "radius", 0, "egg");
-                let k = get_arg(&sub_args, "k", 1, "egg");
+                let r = get_arg_wgsl(&sub_args, "radius", 0, "egg");
+                let k = get_arg_wgsl(&sub_args, "k", 1, "egg");
                 s.push_str(&format!("{indent}let {var_name} = sdf_egg(p, {r}, {k});\n"));
             }
             _ => {
@@ -1485,7 +1551,7 @@ fn emit_wgsl_smooth_bool_op(s: &mut String, stage: &Stage, indent: &str) {
     emit_wgsl_sub_sdf(s, &args[0].value, "sdf_a", indent);
     emit_wgsl_sub_sdf(s, &args[1].value, "sdf_b", indent);
     let k = if args.len() >= 3 {
-        get_arg(args, "k", 2, &stage.name)
+        get_arg_wgsl(args, "k", 2, &stage.name)
     } else {
         "0.100000".into()
     };
@@ -1594,6 +1660,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         }
     }
 
@@ -1746,6 +1813,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         }
     }
 
@@ -2363,6 +2431,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate_fragment(&cin, &[]);
         assert!(output.contains("select("), "conditional uses select()");
@@ -2728,6 +2797,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let frag = generate_fragment(&cin, &[]);
         // Both layers should have aspect-corrected p
@@ -2736,5 +2806,199 @@ mod tests {
             p_count == 2,
             "Each layer must have aspect-corrected p, found {p_count} in:\n{frag}"
         );
+    }
+
+    // ── Inline expression evaluation in pipeline args ─────────
+
+    #[test]
+    fn circle_expr_arg_emits_inline_wgsl() {
+        // circle(0.2 + sin(time) * 0.05) should emit the expression inline
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![Arg {
+                    name: None,
+                    value: Expr::BinOp {
+                        op: BinOp::Add,
+                        left: Box::new(Expr::Number(0.2)),
+                        right: Box::new(Expr::BinOp {
+                            op: BinOp::Mul,
+                            left: Box::new(Expr::Call {
+                                name: "sin".into(),
+                                args: vec![Arg {
+                                    name: None,
+                                    value: Expr::Ident("time".into()),
+                                }],
+                            }),
+                            right: Box::new(Expr::Number(0.05)),
+                        }),
+                    },
+                }],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let frag = generate_fragment(&cin, &[]);
+        assert!(
+            frag.contains("sin(time)"),
+            "WGSL must contain sin(time) call, got:\n{frag}"
+        );
+        assert!(
+            frag.contains("sdf_circle(p, (0.200000 + (sin(time) * 0.050000)))"),
+            "WGSL must emit expression inline in sdf_circle, got:\n{frag}"
+        );
+    }
+
+    #[test]
+    fn tint_mix_expr_emits_inline_wgsl() {
+        // tint(mix(0.93, 0.13, urgency), 0.5, 0.2)
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![Arg {
+                    name: None,
+                    value: Expr::Number(0.2),
+                }],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+            Stage {
+                name: "tint".into(),
+                args: vec![
+                    Arg {
+                        name: None,
+                        value: Expr::Call {
+                            name: "mix".into(),
+                            args: vec![
+                                Arg {
+                                    name: None,
+                                    value: Expr::Number(0.93),
+                                },
+                                Arg {
+                                    name: None,
+                                    value: Expr::Number(0.13),
+                                },
+                                Arg {
+                                    name: None,
+                                    value: Expr::Ident("urgency".into()),
+                                },
+                            ],
+                        },
+                    },
+                    Arg {
+                        name: None,
+                        value: Expr::Number(0.5),
+                    },
+                    Arg {
+                        name: None,
+                        value: Expr::Number(0.2),
+                    },
+                ],
+            },
+        ]);
+        let frag = generate_fragment(&cin, &[]);
+        assert!(
+            frag.contains("mix("),
+            "WGSL must contain mix() call, got:\n{frag}"
+        );
+        assert!(
+            frag.contains("mix(0.930000, 0.130000, urgency)"),
+            "WGSL must emit mix() with all args, got:\n{frag}"
+        );
+    }
+
+    #[test]
+    fn gpu_math_functions_in_emit_wgsl_expr() {
+        // Verify all GPU math functions pass through correctly
+        let funcs = [
+            "sin", "cos", "tan", "abs", "floor", "ceil", "fract",
+            "sqrt", "min", "max", "clamp", "mix", "step", "smoothstep",
+            "pow", "exp", "log", "length", "normalize", "dot",
+        ];
+        for func in funcs {
+            let expr = Expr::Call {
+                name: func.to_string(),
+                args: vec![Arg {
+                    name: None,
+                    value: Expr::Number(1.0),
+                }],
+            };
+            let result = emit_wgsl_expr(&expr);
+            assert!(
+                result.starts_with(&format!("{func}(")),
+                "{func} should emit as GPU math, got: {result}"
+            );
+        }
+    }
+
+    #[test]
+    fn bass_ident_in_expr_maps_to_uniform() {
+        // circle(0.2 + bass * 0.1) — bass must become u.audio_bass in WGSL
+        let cin = make_cinematic(vec![
+            Stage {
+                name: "circle".into(),
+                args: vec![Arg {
+                    name: None,
+                    value: Expr::BinOp {
+                        op: BinOp::Add,
+                        left: Box::new(Expr::Number(0.2)),
+                        right: Box::new(Expr::BinOp {
+                            op: BinOp::Mul,
+                            left: Box::new(Expr::Ident("bass".into())),
+                            right: Box::new(Expr::Number(0.1)),
+                        }),
+                    },
+                }],
+            },
+            Stage {
+                name: "glow".into(),
+                args: vec![],
+            },
+        ]);
+        let frag = generate_fragment(&cin, &[]);
+        assert!(
+            frag.contains("u.audio_bass"),
+            "WGSL must map bass to u.audio_bass, got:\n{frag}"
+        );
+        assert!(
+            !frag.contains("sdf_circle(p, bass)"),
+            "WGSL must NOT emit bare 'bass' ident in sdf_circle"
+        );
+    }
+
+    #[test]
+    fn get_arg_wgsl_falls_back_to_default() {
+        let args: Vec<Arg> = vec![];
+        let val = get_arg_wgsl(&args, "radius", 0, "circle");
+        assert_eq!(val, "0.200000", "should fall back to circle radius default");
+    }
+
+    #[test]
+    fn get_arg_wgsl_named_arg() {
+        let args = vec![Arg {
+            name: Some("radius".into()),
+            value: Expr::Number(0.75),
+        }];
+        let val = get_arg_wgsl(&args, "radius", 0, "circle");
+        assert_eq!(val, "0.750000");
+    }
+
+    #[test]
+    fn get_arg_wgsl_expr_arg() {
+        let args = vec![Arg {
+            name: None,
+            value: Expr::BinOp {
+                op: BinOp::Mul,
+                left: Box::new(Expr::Ident("time".into())),
+                right: Box::new(Expr::Number(2.0)),
+            },
+        }];
+        let val = get_arg_wgsl(&args, "speed", 0, "rotate");
+        assert!(val.contains("time"), "should contain time ident");
+        assert!(val.contains("*"), "should contain mul operator");
     }
 }

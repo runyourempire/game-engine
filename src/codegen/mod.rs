@@ -24,6 +24,7 @@ pub mod resonate;
 pub mod scene;
 pub mod score;
 pub mod stages;
+pub mod state_machine;
 pub mod swarm;
 pub mod temporal;
 pub mod voice;
@@ -101,6 +102,10 @@ pub struct ShaderOutput {
     pub has_arc_hover: bool,
     /// Texture inputs declared in this cinematic (for image sampling).
     pub textures: Vec<TextureInfo>,
+    /// Whether this cinematic has visual state machine blocks.
+    pub has_states: bool,
+    /// Generated JS state machine class (if states are present).
+    pub states_js: Option<String>,
 }
 
 /// A string-typed property for DOM binding.
@@ -320,7 +325,11 @@ pub fn generate_with_fns(
     } else {
         wgsl::generate_fragment_with_fns(cinematic, &uniforms, fns)
     };
-    let glsl_fragment = glsl::generate_fragment_with_fns(cinematic, &uniforms, fns);
+    let glsl_fragment = if is_3d {
+        glsl::generate_fragment_3d_glsl(cinematic, &uniforms)
+    } else {
+        glsl::generate_fragment_with_fns(cinematic, &uniforms, fns)
+    };
 
     let uses_memory = memory::any_layer_uses_memory(&cinematic.layers);
 
@@ -448,6 +457,11 @@ pub fn generate_with_fns(
         .collect();
     let aria_role = cinematic.role.clone();
 
+    // State machine → GameStateMachine JS class
+    if !cinematic.states.is_empty() {
+        js_modules.push(state_machine::generate_state_machine_js(&cinematic.states));
+    }
+
     // Extract texture declarations — assign binding slots
     // Each texture uses 2 bindings (texture + sampler), starting after
     // the last used binding in the main bind group (binding 0 = uniforms).
@@ -489,6 +503,12 @@ pub fn generate_with_fns(
         has_arc_exit: arc::has_arc_state(&cinematic.arcs, "exit"),
         has_arc_hover: arc::has_arc_state(&cinematic.arcs, "hover"),
         textures,
+        has_states: !cinematic.states.is_empty(),
+        states_js: if cinematic.states.is_empty() {
+            None
+        } else {
+            Some(state_machine::generate_state_machine_js(&cinematic.states))
+        },
         particles_sim_wgsl,
         particles_raster_wgsl,
     })
@@ -532,6 +552,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         }
     }
 
@@ -622,6 +643,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let uniforms = extract_uniforms(&cin);
         assert_eq!(uniforms.len(), 1);
@@ -666,6 +688,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         assert!(generate(&cin).is_ok());
     }
@@ -713,6 +736,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let err = generate(&cin).unwrap_err();
         assert!(err.to_string().contains("cast as 'sdf'"));
@@ -767,6 +791,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         assert_eq!(output.js_modules.len(), 1);
@@ -821,6 +846,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.compute_wgsl.is_some());
@@ -898,6 +924,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output
@@ -958,6 +985,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output
@@ -1026,6 +1054,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         let has_resonate = output
@@ -1083,6 +1112,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.react_wgsl.is_some());
@@ -1140,6 +1170,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.swarm_agent_wgsl.is_some());
@@ -1192,6 +1223,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let output = generate(&cin).unwrap();
         assert!(output.flow_wgsl.is_some());

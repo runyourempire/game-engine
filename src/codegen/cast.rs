@@ -190,6 +190,7 @@ mod tests {
             role: None,
             scene3d: None,
             textures: vec![],
+            states: vec![],
         };
         let err = validate_casts(&cin).unwrap_err();
         assert!(err.to_string().contains("layer 'b'"));
