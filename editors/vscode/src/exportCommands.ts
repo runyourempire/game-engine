@@ -29,9 +29,13 @@ async function compileCurrentFile(): Promise<CompileResult | null> {
   fs.mkdirSync(outputDir, { recursive: true });
 
   return new Promise((resolve) => {
-    cp.exec(`"${serverPath}" build "${inputPath}" -o "${outputDir}"`, (err, _stdout, stderr) => {
+    cp.exec(`"${serverPath}" build "${inputPath}" -o "${outputDir}"`, { timeout: 10000 }, (err, _stdout, stderr) => {
       if (err) {
-        vscode.window.showErrorMessage(`Compile failed: ${stderr || err.message}`);
+        let msg = stderr || err.message;
+        if (msg.includes('ENOENT') || msg.includes('not found') || msg.includes('not recognized')) {
+          msg = 'GAME compiler not found. Set game.serverPath in VS Code settings.';
+        }
+        vscode.window.showErrorMessage(`Compile failed: ${msg}`);
         resolve(null);
         return;
       }

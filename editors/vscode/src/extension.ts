@@ -42,7 +42,10 @@ export function activate(context: ExtensionContext): void {
   context.subscriptions.push(aiCommand);
 
   // Parameter Tuner — track cursor position
+  // Guard: skip detection while tuner is actively dragging/editing
+  // to prevent the feedback loop (drag → edit → cursor moves → tuner resets)
   const cursorListener = vscode.window.onDidChangeTextEditorSelection((e) => {
+    if (PreviewPanel.isTunerActive()) return;
     if (e.textEditor.document.languageId !== "game") return;
     const pos = e.selections[0]?.active;
     if (!pos) return;

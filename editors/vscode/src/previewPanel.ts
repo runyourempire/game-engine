@@ -7,10 +7,16 @@ import { TunableToken } from "./parameterProvider";
 
 export class PreviewPanel {
   public static currentPanel: PreviewPanel | undefined;
+  private static _tunerDragging = false;
+  private static _editInFlight = false;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
   private _compileTimeout: NodeJS.Timeout | undefined;
+
+  public static isTunerActive(): boolean {
+    return PreviewPanel._tunerDragging || PreviewPanel._editInFlight;
+  }
 
   public static createOrShow(extensionUri: vscode.Uri): void {
     const column = vscode.ViewColumn.Beside;
@@ -52,10 +58,14 @@ export class PreviewPanel {
     this._panel.webview.html = this._getHtml();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-    // Handle messages from WebView (tuner value changes)
+    // Handle messages from WebView (tuner value changes + drag state)
     this._panel.webview.onDidReceiveMessage(
       (msg) => {
-        if (msg.type === "tunerChange") {
+        if (msg.type === "tunerDragStart") {
+          PreviewPanel._tunerDragging = true;
+        } else if (msg.type === "tunerDragEnd") {
+          PreviewPanel._tunerDragging = false;
+        } else if (msg.type === "tunerChange") {
           this._applyTunerEdit(msg);
         }
       },
@@ -88,12 +98,14 @@ export class PreviewPanel {
 
     cp.exec(
       `"${serverPath}" build "${inputPath}" -o "${outputDir}"`,
+      { timeout: 10000 },
       (err, _stdout, stderr) => {
         if (err) {
-          this._panel.webview.postMessage({
-            type: "error",
-            message: stderr || err.message,
-          });
+          let msg = stderr || err.message;
+          if (msg.includes("ENOENT") || msg.includes("not found") || msg.includes("not recognized")) {
+            msg = "GAME compiler not found. Set game.serverPath in VS Code settings.";
+          }
+          this._panel.webview.postMessage({ type: "error", message: msg });
           return;
         }
         const files = fs
@@ -286,10 +298,59 @@ export class PreviewPanel {
   const tunerHex = document.getElementById('tuner-hex');
   const tunerPaletteGrid = document.getElementById('tuner-palette-grid');
   let activeTuner = null;
+  let isDragging = false;
+  let lastSendTime = 0;
+  let pendingSend = null;
+
+  // Throttled send — max ~30fps to avoid flooding async editor.edit()
+  function throttledSend(msg) {
+    const now = Date.now();
+    const elapsed = now - lastSendTime;
+    if (elapsed >= 33) {
+      vscodeApi.postMessage(msg);
+      lastSendTime = now;
+      if (pendingSend) { clearTimeout(pendingSend); pendingSend = null; }
+    } else {
+      // Queue the latest value — only the last one matters
+      if (pendingSend) clearTimeout(pendingSend);
+      pendingSend = setTimeout(() => {
+        vscodeApi.postMessage(msg);
+        lastSendTime = Date.now();
+        pendingSend = null;
+      }, 33 - elapsed);
+    }
+  }
 
   tunerClose.addEventListener('click', () => {
     tunerOverlay.classList.remove('visible');
     activeTuner = null;
+    isDragging = false;
+    vscodeApi.postMessage({ type: 'tunerDragEnd' });
+  });
+
+  // --- SLIDER: drag tracking ---
+  tunerSlider.addEventListener('pointerdown', () => {
+    isDragging = true;
+    vscodeApi.postMessage({ type: 'tunerDragStart' });
+  });
+  // Use document-level pointerup so we catch release even if cursor leaves slider
+  document.addEventListener('pointerup', () => {
+    if (isDragging) {
+      isDragging = false;
+      vscodeApi.postMessage({ type: 'tunerDragEnd' });
+      // Send final value immediately (flush any pending throttle)
+      if (pendingSend) { clearTimeout(pendingSend); pendingSend = null; }
+      if (activeTuner) {
+        const v = parseFloat(tunerSlider.value);
+        const step = activeTuner.range?.step || 0.1;
+        const decimals = step < 1 ? (step < 0.01 ? 3 : 2) : 0;
+        const formatted = v.toFixed(decimals);
+        vscodeApi.postMessage({
+          type: 'tunerChange', value: formatted,
+          line: activeTuner.line, col: activeTuner.col, endCol: activeTuner.endCol
+        });
+      }
+    }
   });
 
   tunerSlider.addEventListener('input', () => {
@@ -299,12 +360,26 @@ export class PreviewPanel {
     const decimals = step < 1 ? (step < 0.01 ? 3 : 2) : 0;
     const formatted = v.toFixed(decimals);
     tunerVal.textContent = formatted;
-    vscodeApi.postMessage({
+    throttledSend({
       type: 'tunerChange', value: formatted,
       line: activeTuner.line, col: activeTuner.col, endCol: activeTuner.endCol
     });
+    // Optimistically update endCol for next send
+    activeTuner.endCol = activeTuner.col + formatted.length;
   });
 
+  // --- COLOR PICKER ---
+  let colorActive = false;
+  tunerColorInput.addEventListener('focus', () => {
+    colorActive = true;
+    isDragging = true;
+    vscodeApi.postMessage({ type: 'tunerDragStart' });
+  });
+  tunerColorInput.addEventListener('blur', () => {
+    colorActive = false;
+    isDragging = false;
+    vscodeApi.postMessage({ type: 'tunerDragEnd' });
+  });
   tunerColorInput.addEventListener('input', () => {
     if (!activeTuner) return;
     const hex = tunerColorInput.value;
@@ -315,10 +390,11 @@ export class PreviewPanel {
     const replacement = activeTuner.context === 'tint'
       ? 'tint(' + r + ', ' + g + ', ' + b + ')'
       : hex;
-    vscodeApi.postMessage({
+    throttledSend({
       type: 'tunerChange', value: replacement,
       line: activeTuner.line, col: activeTuner.col, endCol: activeTuner.endCol
     });
+    activeTuner.endCol = activeTuner.col + replacement.length;
   });
 
   function showTunerUI(t) {
@@ -348,10 +424,19 @@ export class PreviewPanel {
         btn.onclick = () => {
           tunerPaletteGrid.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
+          // Mark as dragging briefly to prevent cursor-based reset
+          isDragging = true;
+          vscodeApi.postMessage({ type: 'tunerDragStart' });
           vscodeApi.postMessage({
             type: 'tunerChange', value: p,
-            line: t.line, col: t.col, endCol: t.endCol
+            line: activeTuner.line, col: activeTuner.col, endCol: activeTuner.endCol
           });
+          activeTuner.endCol = activeTuner.col + p.length;
+          activeTuner.value = p;
+          setTimeout(() => {
+            isDragging = false;
+            vscodeApi.postMessage({ type: 'tunerDragEnd' });
+          }, 100);
         };
         tunerPaletteGrid.appendChild(btn);
       });
@@ -363,12 +448,23 @@ export class PreviewPanel {
     const msg = event.data;
 
     if (msg.type === 'showTuner') {
+      // CRITICAL: ignore showTuner while dragging — prevents slider reset
+      if (isDragging) return;
       showTunerUI(msg);
       return;
     }
     if (msg.type === 'hideTuner') {
+      // Don't hide during drag — the cursor moved because of our edit
+      if (isDragging) return;
       tunerOverlay.classList.remove('visible');
       activeTuner = null;
+      return;
+    }
+    if (msg.type === 'tunerEndColUpdate') {
+      // Extension confirmed the edit — update our tracked endCol
+      if (activeTuner) {
+        activeTuner.endCol = msg.endCol;
+      }
       return;
     }
 
@@ -429,8 +525,26 @@ export class PreviewPanel {
   }): void {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== "game") return;
+    if (PreviewPanel._editInFlight) return;
+
+    PreviewPanel._editInFlight = true;
     const range = new vscode.Range(msg.line, msg.col, msg.line, msg.endCol);
-    editor.edit((b) => b.replace(range, msg.value));
+    editor.edit((b) => b.replace(range, msg.value)).then(
+      (ok) => {
+        PreviewPanel._editInFlight = false;
+        if (ok) {
+          // Send updated endCol back so WebView tracks the new range
+          const newEndCol = msg.col + msg.value.length;
+          this._panel.webview.postMessage({
+            type: "tunerEndColUpdate",
+            endCol: newEndCol,
+          });
+        }
+      },
+      () => {
+        PreviewPanel._editInFlight = false;
+      }
+    );
   }
 
   public dispose(): void {

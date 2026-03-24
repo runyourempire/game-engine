@@ -129,9 +129,17 @@ export class AiPanel {
     return new Promise((resolve) => {
       cp.exec(
         `"${serverPath}" build "${inputPath}" -o "${outputDir}"`,
+        { timeout: 10000 },
         (err, _stdout, stderr) => {
           if (err) {
-            resolve(stderr || err.message);
+            const msg = stderr || err.message;
+            if (msg.includes("ENOENT") || msg.includes("not found") || msg.includes("not recognized")) {
+              resolve(
+                "GAME compiler not found. Install it or set game.serverPath in settings."
+              );
+            } else {
+              resolve(msg);
+            }
           } else {
             resolve(null);
           }
