@@ -284,7 +284,25 @@ fn handle_completion(state: &State, params: CompletionParams) -> Option<Completi
         });
     }
 
-    // 2. User-defined function completions from the current file
+    // 2. Palette name completions when inside palette(...)
+    if is_inside_palette_call(source, pos) {
+        for (name, description) in palette_completions() {
+            items.push(CompletionItem {
+                label: name.to_string(),
+                kind: Some(CompletionItemKind::ENUM_MEMBER),
+                detail: Some(description.to_string()),
+                documentation: Some(lsp_types::Documentation::MarkupContent(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("**palette({name})**\n\n{description}"),
+                })),
+                insert_text: Some(name.to_string()),
+                insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
+                ..Default::default()
+            });
+        }
+    }
+
+    // 3. User-defined function completions from the current file
     for (name, params) in find_user_functions(source) {
         let param_list = params.join(", ");
         let snippet = if params.is_empty() {
@@ -405,6 +423,77 @@ fn detect_pipeline_state(source: &str, pos: Position) -> ShaderState {
     }
 
     state
+}
+
+/// Check whether the cursor is inside the parentheses of a `palette(...)` call.
+///
+/// Scans backwards from the cursor to find the nearest unmatched `(`, then
+/// checks if the identifier immediately preceding it is `palette`.
+fn is_inside_palette_call(source: &str, pos: Position) -> bool {
+    let lines: Vec<&str> = source.lines().collect();
+    let line_idx = pos.line as usize;
+    if line_idx >= lines.len() {
+        return false;
+    }
+
+    let line = lines[line_idx];
+    let col = (pos.character as usize).min(line.len());
+    let before = &line[..col];
+
+    // Walk backwards counting parens to find the nearest unmatched '('
+    let mut depth: i32 = 0;
+    for (i, ch) in before.char_indices().rev() {
+        match ch {
+            ')' => depth += 1,
+            '(' => {
+                if depth == 0 {
+                    // Found unmatched open-paren — check if preceded by "palette"
+                    let prefix = before[..i].trim_end();
+                    return prefix.ends_with("palette");
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+/// All 30 named palettes with short descriptions.
+fn palette_completions() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("fire", "warm reds/oranges"),
+        ("ocean", "cool blues"),
+        ("neon", "vibrant rainbow"),
+        ("aurora", "green/purple northern lights"),
+        ("sunset", "warm orange/pink horizon"),
+        ("ice", "cool blue/white"),
+        ("ember", "deep red/orange coals"),
+        ("lava", "volcanic orange/red"),
+        ("magma", "bright orange to deep red"),
+        ("inferno", "yellow-white to deep red"),
+        ("plasma", "purple/pink energy"),
+        ("electric", "bright cyan/blue"),
+        ("cyber", "neon green/cyan"),
+        ("matrix", "green-on-black terminal"),
+        ("forest", "deep greens/warm browns"),
+        ("moss", "muted greens/earth"),
+        ("earth", "brown/tan/olive"),
+        ("desert", "warm sand/terracotta"),
+        ("blood", "dark to bright red"),
+        ("rose", "pink/rose/magenta"),
+        ("candy", "bright pink/purple/blue"),
+        ("royal", "deep purple/gold"),
+        ("deep_sea", "dark blue/cyan"),
+        ("coral", "warm coral/orange/pink"),
+        ("arctic", "white/light blue cold"),
+        ("twilight", "purple/orange horizon"),
+        ("vapor", "vaporwave purple/pink/teal"),
+        ("gold", "warm gold/amber"),
+        ("silver", "cool gray/white"),
+        ("monochrome", "grayscale"),
+    ]
 }
 
 // ── Hover ───────────────────────────────────────────────────
@@ -766,5 +855,83 @@ mod tests {
         let diags = compute_diagnostics("this is not valid game code {{{{");
         assert!(!diags.is_empty());
         assert_eq!(diags[0].severity, Some(DiagnosticSeverity::ERROR));
+    }
+
+    #[test]
+    fn inside_palette_call_basic() {
+        let source = "circle(0.3) | palette(";
+        assert!(is_inside_palette_call(
+            source,
+            Position {
+                line: 0,
+                character: 22
+            }
+        ));
+    }
+
+    #[test]
+    fn inside_palette_call_partial_name() {
+        let source = "circle(0.3) | palette(fi";
+        assert!(is_inside_palette_call(
+            source,
+            Position {
+                line: 0,
+                character: 24
+            }
+        ));
+    }
+
+    #[test]
+    fn not_inside_palette_call_other_fn() {
+        let source = "circle(0.3) | glow(";
+        assert!(!is_inside_palette_call(
+            source,
+            Position {
+                line: 0,
+                character: 19
+            }
+        ));
+    }
+
+    #[test]
+    fn not_inside_palette_call_outside_parens() {
+        let source = "circle(0.3) | palette";
+        assert!(!is_inside_palette_call(
+            source,
+            Position {
+                line: 0,
+                character: 21
+            }
+        ));
+    }
+
+    #[test]
+    fn inside_palette_call_nested_parens() {
+        // Cursor after a closed inner paren should not match
+        let source = "circle(0.3) | palette(fire) | glow(";
+        assert!(!is_inside_palette_call(
+            source,
+            Position {
+                line: 0,
+                character: 35
+            }
+        ));
+    }
+
+    #[test]
+    fn palette_completions_has_30_entries() {
+        assert_eq!(palette_completions().len(), 30);
+    }
+
+    #[test]
+    fn palette_completions_contains_fire() {
+        let palettes = palette_completions();
+        assert!(palettes.iter().any(|(name, _)| *name == "fire"));
+    }
+
+    #[test]
+    fn palette_completions_contains_monochrome() {
+        let palettes = palette_completions();
+        assert!(palettes.iter().any(|(name, _)| *name == "monochrome"));
     }
 }

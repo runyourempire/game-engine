@@ -533,6 +533,11 @@ export class PreviewPanel {
     if (!editor || editor.document.languageId !== "game") return;
     if (PreviewPanel._editInFlight) return;
 
+    // Validate line/col bounds against current document
+    if (msg.line >= editor.document.lineCount) return;
+    const lineText = editor.document.lineAt(msg.line).text;
+    if (msg.col > lineText.length || msg.endCol > lineText.length) return;
+
     PreviewPanel._editInFlight = true;
     const range = new vscode.Range(msg.line, msg.col, msg.line, msg.endCol);
     editor.edit((b) => b.replace(range, msg.value)).then(

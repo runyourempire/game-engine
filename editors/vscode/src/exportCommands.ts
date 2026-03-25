@@ -114,7 +114,7 @@ export function registerExportCommands(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('game.exportSaveHtml', async () => {
       const result = await compileCurrentFile();
       if (!result) return;
-      const html = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>${result.name}</title>\n<style>html,body{margin:0;height:100%;background:#0a0a0a}${result.tag}{display:block;width:100%;height:100%}</style>\n</head>\n<body>\n<${result.tag}></${result.tag}>\n<script>\n${result.js}\n</script>\n</body>\n</html>`;
+      const html = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>${result.name}</title>\n<style>html,body{margin:0;height:100%;background:#0a0a0a}${result.tag}{display:block;width:100%;height:100%}</style>\n</head>\n<body>\n<script>\n${result.js}\n</script>\n<${result.tag}></${result.tag}>\n</body>\n</html>`;
       const uri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(result.name + '.html'),
         filters: { 'HTML': ['html'] },
