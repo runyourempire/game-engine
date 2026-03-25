@@ -263,13 +263,13 @@ export class PreviewPanel {
 </style>
 </head>
 <body>
-<div id="container">
-  <div id="component-host">
-    <iframe id="preview-frame" sandbox="allow-scripts"></iframe>
+<div id="container" role="main" aria-label="GAME Preview">
+  <div id="component-host" role="img" aria-label="Shader preview">
+    <iframe id="preview-frame" sandbox="allow-scripts" title="GAME component preview"></iframe>
   </div>
-  <div id="status">ready</div>
-  <div id="error-overlay"></div>
-  <div id="tuner-overlay">
+  <div id="status" role="status" aria-live="polite">ready</div>
+  <div id="error-overlay" role="alert" aria-live="assertive"></div>
+  <div id="tuner-overlay" role="toolbar" aria-label="Parameter tuner">
     <div class="tuner-header">
       <span><span class="context" id="tuner-context"></span></span>
       <span class="tuner-close" id="tuner-close">&times;</span>
@@ -277,7 +277,7 @@ export class PreviewPanel {
     <div id="tuner-number" style="display:none">
       <div class="slider-row">
         <span class="bound min" id="tuner-min"></span>
-        <input type="range" id="tuner-slider" step="0.01">
+        <input type="range" id="tuner-slider" step="0.01" aria-label="Value slider">
         <span class="bound max" id="tuner-max"></span>
         <span class="val" id="tuner-val"></span>
       </div>

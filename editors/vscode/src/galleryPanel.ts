@@ -358,17 +358,17 @@ export class GalleryPanel {
 </style>
 </head>
 <body>
-<div class="header">
+<div class="header" role="banner">
   <h1>GAME Component Gallery <span>\u2014 ${gallery.components.length} components</span></h1>
-  <div class="search-bar">
-    <input type="text" id="search" placeholder="Search components..." autocomplete="off" spellcheck="false">
+  <div class="search-bar" role="search">
+    <input type="text" id="search" placeholder="Search components..." autocomplete="off" spellcheck="false" aria-label="Search components">
     <span class="count" id="count">${gallery.components.length} shown</span>
   </div>
   <div class="tabs" id="tabs">
     ${categoryTabs}
   </div>
 </div>
-<div class="grid" id="grid">
+<div class="grid" id="grid" role="list" aria-label="Component list">
   ${componentCards}
   <div class="empty" id="empty" style="display:none">No components match your search.</div>
 </div>

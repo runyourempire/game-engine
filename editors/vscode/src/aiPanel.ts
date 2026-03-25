@@ -220,13 +220,13 @@ export class AiPanel {
 </style>
 </head>
 <body>
-<div id="chat">
-  <div id="messages">
+<div id="chat" role="main" aria-label="AI Generation">
+  <div id="messages" role="log" aria-live="polite" aria-label="Generation history">
     <div class="msg assistant">Describe a visual and I'll generate GAME code for it.</div>
   </div>
-  <div id="input-area">
-    <textarea id="prompt-input" placeholder="e.g. pulsing gold notification badge with particle trail" rows="1"></textarea>
-    <button id="gen-btn">Generate</button>
+  <div id="input-area" role="form" aria-label="Prompt input">
+    <textarea id="prompt-input" placeholder="e.g. pulsing gold notification badge with particle trail" rows="1" aria-label="Describe a visual"></textarea>
+    <button id="gen-btn" aria-label="Generate component">Generate</button>
   </div>
 </div>
 <script>

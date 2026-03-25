@@ -11,8 +11,11 @@ env:
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,9 +36,11 @@ jobs:
         run: cargo test
 
       - name: Check formatting
+        if: matrix.os == 'ubuntu-latest'
         run: cargo fmt -- --check
 
       - name: Run clippy
+        if: matrix.os == 'ubuntu-latest'
         run: cargo clippy -- -W clippy::all
 
   wasm:
@@ -65,6 +70,15 @@ jobs:
       - name: Build WASM
         run: wasm-pack build --target web --features wasm
 
+      - name: Verify WASM size
+        run: |
+          size=$(wc -c < pkg/game_compiler_bg.wasm)
+          echo "WASM size: ${size} bytes"
+          if [ "$size" -lt 100000 ]; then
+            echo "ERROR: WASM too small — likely placeholder"
+            exit 1
+          fi
+
   vscode:
     name: VS Code Extension
     runs-on: ubuntu-latest
@@ -83,6 +97,14 @@ jobs:
       - name: Type check
         working-directory: editors/vscode
         run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: editors/vscode
+        run: npx tsc -p ./
+
+      - name: Package VSIX
+        working-directory: editors/vscode
+        run: npx vsce package --no-git-tag-version
 
   examples:
     name: Compile Examples
@@ -110,3 +132,47 @@ jobs:
             echo "Compiling $f..."
             cargo run -- build "$f" -o dist
           done
+
+      - name: Compile gallery components
+        run: |
+          mkdir -p dist-gallery
+          for f in editors/vscode/gallery/components/**/*.game; do
+            echo "Compiling $f..."
+            cargo run -- build "$f" -o dist-gallery
+          done
+
+      - name: Verify all templates compile
+        run: |
+          mkdir -p dist-templates
+          for t in minimal audio particles procedural composition reactive sdf scene; do
+            cargo run -- new -t $t -o "dist-templates/${t}.game"
+            cargo run -- build "dist-templates/${t}.game" -o dist-templates
+          done
+
+      - name: Verify target flag
+        run: |
+          cargo run -- build examples/001-hello.game -t webgpu -o dist-target
+          cargo run -- build examples/001-hello.game -t webgl2 -o dist-target
+          cargo run -- build examples/001-hello.game -t both -o dist-target
+
+  lsp:
+    name: LSP Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-lsp-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-lsp-
+
+      - name: Build LSP
+        run: cargo build --features lsp
