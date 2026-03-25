@@ -4,3 +4,5 @@
 editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/*.vsix
+editors/vscode/test/screenshots/
+editors/vscode/.wdio-vscode-service/

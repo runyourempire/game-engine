@@ -1,0 +1,4 @@
+cinematic "broken" {
+  layer x {
+    unknown_function() | glow(1.0)
+  }

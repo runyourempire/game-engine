@@ -1,0 +1,18 @@
+cinematic "golden-ring" {
+  layer bg blend: occlude {
+    box(2.0, 2.0) | shade(0.02, 0.01, 0.01)
+  }
+
+  layer ring memory: 0.92 {
+    polar()
+    | warp(scale: 2.0, octaves: 4, strength: 0.15)
+    | rotate(0.3)
+    | ring(0.3, 0.01)
+    | glow(3.0)
+    | tint(0.83, 0.69, 0.22)
+  }
+
+  layer center {
+    circle(0.05) | glow(5.0) | tint(1.0, 0.95, 0.7)
+  }
+}
