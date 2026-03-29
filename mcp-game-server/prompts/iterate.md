@@ -80,7 +80,7 @@ arc {
 Use a `react` block:
 ```game
 react {
-  mouse.click -> particles.burst(at: mouse.world, count: 200)
+  mouse.click -> arc.restart
   key("space") -> arc.pause_toggle
 }
 ```
@@ -95,29 +95,30 @@ resonate {
 }
 ```
 
-### Adding iridescence
-Append `| iridescent(strength)` after a shading stage:
+### Adding chromatic aberration
+Append `| chromatic(offset)` after color stages:
 ```game
-fn: voronoi(3.0) | glow(2.0) | tint(frost) | iridescent(0.3)
+fn: voronoi(5.0) | glow(2.0) | tint(frost) | chromatic(0.005)
 ```
 
-### Adding particles
-Use the `particles()` function in a shading context:
+### Adding domain warping
+Apply noise-based distortion before SDF evaluation:
 ```game
-fn: curl_noise(p, frequency: 2.0, amplitude: 1.0) | particles(count: 5000, size: 1.5, color: gold, trail: 0.3)
+fn: domain_warp(0.1, 3.0) | circle(0.3) | glow(2.0) | tint(gold)
 ```
 
 ---
 
-## Quick Reference: Available Primitives
+## Quick Reference: All 37 Builtins (by type-state transition)
 
-**SDF:** circle, sphere, ring, box, torus, line, polygon, star
-**Domain:** translate, rotate, scale, repeat, mirror, twist
-**Modifiers:** mask_arc, displace, round, onion, threshold
-**Noise:** fbm, simplex, voronoi, curl_noise, concentric_waves
-**Glow:** glow
-**Color:** shade, emissive, colormap, spectrum, tint, gradient, particles
-**Post:** bloom, chromatic, vignette, grain, fog, glitch, scanlines, tonemap, invert, saturate_color, iridescent
+**Position->Sdf:** circle, ring, star, box, polygon, fbm, simplex, voronoi, concentric_waves
+**Sdf->Color:** glow, shade, emissive
+**Color->Color:** tint, bloom, grain, blend, vignette, tonemap, scanlines, chromatic, saturate_color, glitch
+**Position->Position:** translate, rotate, scale, twist, mirror, repeat, domain_warp, curl_noise, displace
+**Sdf->Sdf:** mask_arc, threshold, onion, round
+**Position->Color:** gradient, spectrum
+
+**Pipeline order:** Position->Position | Position->Sdf | Sdf->Sdf | Sdf->Color | Color->Color
 **Colors:** black, white, red, green, blue, cyan, orange, gold, ember, frost, ivory, midnight, obsidian, deep_blue
 **Easing:** linear, smooth, expo_in, expo_out, cubic_in_out, elastic, bounce
 **Signals:** audio.bass, audio.mid, audio.treble, audio.energy, audio.beat, mouse.x, mouse.y, mouse.click, time, data.*

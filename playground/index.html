@@ -17,15 +17,20 @@
 :root {
   --bg-primary: #0A0A0A;
   --bg-panel: #111111;
+  --bg-tertiary: #1F1F1F;
   --border: #2A2A2A;
   --text-primary: #FFFFFF;
   --text-secondary: #A0A0A0;
+  --text-muted: #8A8A8A;
   --accent-gold: #D4AF37;
   --accent-cyan: #00CED1;
   --error-red: #EF4444;
   --success-green: #22C55E;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --editor-font-size: 13px;
+  --editor-line-height: 1.6;
+  --gutter-width: 44px;
 }
 
 html, body {
@@ -42,9 +47,9 @@ html, body {
 #topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   height: 48px;
-  padding: 0 16px;
+  padding: 0 12px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -69,12 +74,12 @@ html, body {
 
 select, button {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 12px;
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 12px;
+  padding: 5px 10px;
   cursor: pointer;
   outline: none;
   transition: border-color 0.15s, background 0.15s;
@@ -100,14 +105,21 @@ button.accent:hover {
   border-color: #e0c050;
 }
 
+button.small {
+  font-size: 11px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+}
+
 #topbar .spacer {
   flex: 1;
 }
 
 #wasm-status {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;
+  font-family: var(--font-mono);
 }
 
 #wasm-status.loaded {
@@ -116,6 +128,12 @@ button.accent:hover {
 
 #wasm-status.error {
   color: var(--error-red);
+}
+
+.btn-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }
 
 /* ── Main Layout ─────────────────────────────────────────── */
@@ -137,18 +155,36 @@ button.accent:hover {
 }
 
 #editor-panel {
-  width: 40%;
+  width: 50%;
+  min-width: 300px;
+}
+
+#output-panel {
+  width: 50%;
   min-width: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+#output-top {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 #wgsl-panel {
-  width: 30%;
-  min-width: 150px;
+  width: 50%;
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
 }
 
 #preview-panel {
-  width: 30%;
-  min-width: 150px;
+  width: 50%;
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-header {
@@ -180,7 +216,7 @@ button.accent:hover {
   font-family: var(--font-mono);
 }
 
-/* ── Editor ──────────────────────────────────────────────── */
+/* ── Code Editor with Syntax Highlighting ─────────────────── */
 
 #editor-wrap {
   flex: 1;
@@ -189,45 +225,113 @@ button.accent:hover {
   background: var(--bg-primary);
 }
 
-#editor {
-  width: 100%;
-  height: 100%;
-  padding: 12px 16px;
-  background: transparent;
-  color: var(--text-primary);
+#editor-container {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Line number gutter */
+#line-numbers {
+  width: var(--gutter-width);
+  min-width: var(--gutter-width);
+  padding: 12px 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.6;
-  border: none;
-  outline: none;
-  resize: none;
-  tab-size: 2;
-  white-space: pre;
+  font-size: var(--editor-font-size);
+  line-height: var(--editor-line-height);
+  color: #444;
+  text-align: right;
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+#line-numbers .ln {
+  padding-right: 8px;
+  display: block;
+}
+
+#line-numbers .ln.active {
+  color: var(--accent-gold);
+}
+
+/* Code area: textarea + highlight overlay */
+#code-area {
+  flex: 1;
+  position: relative;
   overflow: auto;
 }
 
-#editor::placeholder {
-  color: var(--text-secondary);
-  opacity: 0.5;
-}
-
-#editor::-webkit-scrollbar {
+#code-area::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-#editor::-webkit-scrollbar-track {
+#code-area::-webkit-scrollbar-track {
   background: transparent;
 }
 
-#editor::-webkit-scrollbar-thumb {
+#code-area::-webkit-scrollbar-thumb {
   background: #333;
   border-radius: 4px;
 }
 
-#editor::-webkit-scrollbar-thumb:hover {
+#code-area::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
+
+#highlight-layer, #editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  min-height: 100%;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: var(--editor-font-size);
+  line-height: var(--editor-line-height);
+  white-space: pre;
+  tab-size: 2;
+  word-wrap: normal;
+  overflow-wrap: normal;
+}
+
+#highlight-layer {
+  pointer-events: none;
+  z-index: 1;
+  color: transparent;
+}
+
+#editor {
+  z-index: 2;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--accent-gold);
+  border: none;
+  outline: none;
+  resize: none;
+  -webkit-text-fill-color: transparent;
+}
+
+#editor::placeholder {
+  -webkit-text-fill-color: #444;
+}
+
+/* Syntax highlighting token colors */
+.tok-keyword { color: #D4AF37; }
+.tok-builtin { color: #00CED1; }
+.tok-signal { color: #22C55E; }
+.tok-number { color: #E09956; }
+.tok-string { color: #6EC96E; }
+.tok-color-name { color: #E879A8; }
+.tok-operator { color: #CCCCCC; }
+.tok-comment { color: #555555; font-style: italic; }
+.tok-punctuation { color: #777777; }
+.tok-property { color: #A0A0D0; }
+.tok-block-name { color: #B8D4E3; }
 
 /* ── Error Bar ───────────────────────────────────────────── */
 
@@ -406,20 +510,72 @@ button.accent:hover {
   background: #555;
 }
 
+/* ── Keyboard Shortcut Hint ──────────────────────────────── */
+
+.kbd-hint {
+  font-size: 10px;
+  color: #555;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* ── Optgroup styling ────────────────────────────────────── */
+
+#preset-select optgroup {
+  font-weight: 600;
+  color: var(--accent-gold);
+}
+
+#preset-select option {
+  font-weight: 400;
+  color: var(--text-primary);
+  padding: 2px 4px;
+}
+
+/* ── Toast ───────────────────────────────────────────────── */
+
+#toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-gold);
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 100;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* ── Responsive ──────────────────────────────────────────── */
 
 @media (max-width: 900px) {
   #main {
     flex-direction: column;
   }
-  .panel {
+  .panel, #editor-panel, #output-panel {
     width: 100% !important;
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
-  #editor-panel { height: 40%; }
-  #wgsl-panel { height: 30%; }
-  #preview-panel { height: 30%; }
+  #editor-panel { height: 50%; }
+  #output-panel { height: 50%; }
+  #output-top { flex-direction: column; }
+  #wgsl-panel, #preview-panel {
+    width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
 }
 </style>
 </head>
@@ -429,26 +585,81 @@ button.accent:hover {
 <div id="topbar">
   <h1>GAME Playground</h1>
   <div class="separator"></div>
-  <select id="examples-select">
-    <option value="" disabled selected>Examples...</option>
-    <option value="hello">Hello</option>
-    <option value="mouse-follow">Mouse Follow</option>
-    <option value="loading-ring">Loading Ring</option>
-    <option value="dashboard-gauge">Dashboard Gauge</option>
-    <option value="multi-layer">Multi-Layer</option>
-    <option value="interactive">Interactive</option>
-    <option value="resonance">Resonance</option>
+
+  <select id="preset-select">
+    <option value="" disabled selected>Presets (44)</option>
+    <optgroup label="Ambient">
+      <option value="breathing-dot">Breathing Dot</option>
+      <option value="aurora">Aurora</option>
+      <option value="campfire">Campfire</option>
+      <option value="crystal-growth">Crystal Growth</option>
+      <option value="energy-sphere">Energy Sphere</option>
+      <option value="heartbeat-line">Heartbeat Line</option>
+      <option value="matrix-code">Matrix Code</option>
+      <option value="nebula">Nebula</option>
+      <option value="ocean-waves">Ocean Waves</option>
+      <option value="rain-drops">Rain Drops</option>
+      <option value="starfield">Starfield</option>
+      <option value="spinner">Spinner</option>
+      <option value="void-heartbeat">Void Heartbeat</option>
+    </optgroup>
+    <optgroup label="Data-Driven">
+      <option value="loading-ring">Loading Ring</option>
+      <option value="loading-stages">Loading Stages</option>
+      <option value="progress-bar">Progress Bar</option>
+      <option value="boot-ring">Boot Ring</option>
+      <option value="timer-ring">Timer Ring</option>
+      <option value="countdown-clock">Countdown Clock</option>
+      <option value="battery-level">Battery Level</option>
+      <option value="health-bar">Health Bar</option>
+      <option value="status-pulse">Status Pulse</option>
+      <option value="connection-strength">Connection Strength</option>
+      <option value="notification-badge">Notification Badge</option>
+      <option value="speed-gauge">Speed Gauge</option>
+      <option value="rating-display">Rating Display</option>
+      <option value="engagement-bars">Engagement Bars</option>
+    </optgroup>
+    <optgroup label="Dashboard">
+      <option value="dashboard-gauge">Dashboard Gauge</option>
+      <option value="metric-ring">Metric Ring</option>
+      <option value="xp-ring">XP Ring</option>
+      <option value="achievement-progress">Achievement Progress</option>
+      <option value="achievement-ring">Achievement Ring</option>
+      <option value="game-state-dashboard">Game State Dashboard</option>
+      <option value="streak-flame">Streak Flame</option>
+    </optgroup>
+    <optgroup label="Animation / Arc">
+      <option value="arc-demo">Arc Demo</option>
+      <option value="celebration">Celebration</option>
+      <option value="level-up-burst">Level-Up Burst</option>
+      <option value="layered-scene">Layered Scene</option>
+    </optgroup>
+    <optgroup label="Audio / Signals">
+      <option value="audio-layers">Audio Layers</option>
+      <option value="signal-dashboard">Signal Dashboard</option>
+      <option value="route-matrix">Route Matrix</option>
+      <option value="svg-badge">SVG Badge</option>
+      <option value="synesthetic">Synesthetic</option>
+      <option value="temporal-monitor">Temporal Monitor</option>
+    </optgroup>
   </select>
+
+  <button id="reset-btn" class="small" title="Reset to default (clears saved content)">Reset</button>
+
   <div class="spacer"></div>
+
+  <span class="kbd-hint">Ctrl+Enter: compile</span>
+  <div class="separator"></div>
   <span id="wasm-status">Loading WASM...</span>
   <div class="separator"></div>
-  <button id="share-btn" title="Copy shareable URL to clipboard">Share</button>
-  <select id="export-select">
-    <option value="" disabled selected>Export...</option>
-    <option value="html">HTML</option>
-    <option value="component">Component JS</option>
-    <option value="wgsl">WGSL</option>
-  </select>
+
+  <div class="btn-group">
+    <button id="share-btn" class="small" title="Copy shareable URL">Share</button>
+    <button id="copy-wgsl-btn2" class="small" title="Copy WGSL to clipboard">Copy WGSL</button>
+    <button id="copy-html-btn" class="small" title="Copy standalone HTML to clipboard">Copy HTML</button>
+    <button id="copy-component-btn" class="small" title="Copy Web Component JS to clipboard">Copy Component</button>
+    <button id="download-html-btn" class="small" title="Download as .html file">Download HTML</button>
+  </div>
 </div>
 
 <!-- ── Main Panels ─────────────────────────────────────── -->
@@ -458,35 +669,50 @@ button.accent:hover {
   <div class="panel" id="editor-panel">
     <div class="panel-header">
       <span>Source (.game)</span>
+      <span class="kbd-hint">Tab: indent | Shift+Tab: dedent</span>
     </div>
     <div id="editor-wrap">
-      <textarea id="editor" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Write your .game shader here..."></textarea>
+      <div id="editor-container">
+        <div id="line-numbers" aria-hidden="true"></div>
+        <div id="code-area">
+          <pre id="highlight-layer" aria-hidden="true"></pre>
+          <textarea id="editor" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Write your .game shader here..."></textarea>
+        </div>
+      </div>
     </div>
     <div id="warning-bar"></div>
     <div id="error-bar"></div>
   </div>
 
-  <!-- WGSL Panel -->
-  <div class="panel" id="wgsl-panel">
-    <div class="panel-header">
-      <span>WGSL Output</span>
-      <span style="display:flex;gap:6px;align-items:center">
-        <button class="copy-btn" id="copy-wgsl-btn" title="Copy WGSL to clipboard">Copy</button>
-        <span class="badge" id="wgsl-size"></span>
-      </span>
-    </div>
-    <div id="wgsl-output"><span class="wgsl-placeholder">Compiled WGSL will appear here...</span></div>
-  </div>
+  <!-- Output Panel (WGSL + Preview stacked/side-by-side) -->
+  <div id="output-panel">
+    <div id="output-top">
 
-  <!-- Preview Panel -->
-  <div class="panel" id="preview-panel">
-    <div class="panel-header">
-      <span>Live Preview</span>
+      <!-- WGSL Panel -->
+      <div id="wgsl-panel">
+        <div class="panel-header">
+          <span>WGSL Output</span>
+          <span style="display:flex;gap:6px;align-items:center">
+            <button class="copy-btn" id="copy-wgsl-btn" title="Copy WGSL to clipboard">Copy</button>
+            <span class="badge" id="wgsl-size"></span>
+          </span>
+        </div>
+        <div id="wgsl-output"><span class="wgsl-placeholder">Compiled WGSL will appear here...</span></div>
+      </div>
+
+      <!-- Preview Panel -->
+      <div id="preview-panel">
+        <div class="panel-header">
+          <span>Live Preview</span>
+        </div>
+        <div id="preview-wrap">
+          <iframe id="preview-iframe" sandbox="allow-scripts"></iframe>
+          <div id="preview-message">Compile a .game file to see the preview</div>
+        </div>
+      </div>
+
     </div>
-    <div id="preview-wrap">
-      <iframe id="preview-iframe" sandbox="allow-scripts"></iframe>
-      <div id="preview-message">Compile a .game file to see the preview</div>
-    </div>
+
     <div id="status-bar">
       <div class="status-item">
         <div class="status-dot idle" id="compile-dot"></div>
@@ -514,29 +740,317 @@ button.accent:hover {
 
 </div>
 
-<script type="module">
-// ── Examples ──────────────────────────────────────────────
+<!-- ── Toast ──────────────────────────────────────────── -->
+<div id="toast"></div>
 
-const EXAMPLES = {
-  'hello': `cinematic "Hello" {
-  layer {
-    fn: circle(0.3 + sin(time) * 0.05) | glow(2.0)
+<script type="module">
+// ════════════════════════════════════════════════════════════
+// PRESETS — all 44 .game files embedded
+// ════════════════════════════════════════════════════════════
+
+const PRESETS = {
+'achievement-progress': `# Achievement Progress \u2014 arc ring filling to threshold, gold glow on complete
+# Usage: <game-achievement-progress progress="0.7"></game-achievement-progress>
+# API:   el.progress = 0.0..1.0
+
+cinematic "Achievement Progress" {
+  layer track {
+    fn: ring(0.35, 0.01) | glow(0.8) | tint(charcoal)
+  }
+  layer fill {
+    fn: ring(0.35, 0.025) | mask_arc(fill_angle) | glow(glow_val) | tint(gold)
+    fill_angle: 0.0 ~ data.progress * 6.283
+    glow_val: 2.0 ~ data.progress * 4.0
   }
 }`,
-  'mouse-follow': `cinematic "Follow" {
-  layer {
-    fn: translate(mx, my) | circle(0.15) | glow(4.0) | bloom(0.3, 2.0) | vignette(0.25)
-    mx: 0.0 ~ mouse.x * 2.0 - 1.0
-    my: 0.0 ~ mouse.y * 2.0 - 1.0
+
+'achievement-ring': `# Achievement Ring - circular progress with unlock glow.
+# data.progress (0-1) fills the arc. data.unlocked (0 or 1) triggers glow.
+
+cinematic "Achievement Ring" {
+  layer track {
+    fn: ring(0.3, 0.015) | glow(0.8) | tint(charcoal)
   }
-}`,
-  'loading-ring': `cinematic "Loading Ring" {
-  layer {
-    fn: ring(0.3, 0.04) | mask_arc(angle) | glow(2.0) | tint(gold)
+
+  layer fill {
+    fn: ring(0.3, 0.025) | mask_arc(angle) | glow(g) | tint(gold)
     angle: 0.0 ~ data.progress * 6.283
+    g: 1.5 ~ data.unlocked * 1.5
+  }
+
+  layer unlock_glow {
+    fn: circle(r) | glow(ug) | tint(gold)
+    r: 0.0 ~ data.unlocked * 0.15
+    ug: 0.0 ~ data.unlocked * 3.0 + sin(time * 2.0) * data.unlocked * 0.5
+    blend_mode: additive
+    opacity: 0.4
   }
 }`,
-  'dashboard-gauge': `cinematic "Dashboard Gauge" {
+
+'arc-demo': `# Arc Demo \u2014 temporal evolution with easing
+# Showcases the arc timeline system
+cinematic "Arc Demo" {
+  layer orb {
+    fn: circle(radius) | glow(glow_intensity) | tint(cyan)
+    radius: 0.1
+    glow_intensity: 0.5
+  }
+
+  arc {
+    0:00 "void" {
+      radius: 0.05
+      glow_intensity: 0.2
+    }
+    0:02 "appear" {
+      radius -> 0.25 ease(expo_out) over 3s
+      glow_intensity -> 2.0 ease(smooth) over 2s
+    }
+    0:06 "breathe" {
+      radius -> 0.35 ease(cubic_in_out) over 4s
+      glow_intensity -> 4.0 ease(expo_out) over 3s
+    }
+    0:12 "fade" {
+      radius -> 0.1 ease(expo_in) over 3s
+      glow_intensity -> 0.3 ease(smooth) over 4s
+    }
+  }
+}`,
+
+'audio-layers': `# Audio Layers \u2014 multi-layer audio visualizer
+# Three concentric rings respond to bass/mid/treble independently
+cinematic "Audio Layers" {
+  layer bass {
+    fn: ring(0.15, 0.03) | glow(bass_glow) | tint(ember)
+    bass_glow: 1.0 ~ audio.bass * 6.0
+  }
+
+  layer mid {
+    fn: ring(0.30, 0.02) | glow(mid_glow) | tint(cyan)
+    mid_glow: 1.0 ~ audio.mid * 5.0
+  }
+
+  layer treble {
+    fn: ring(0.45, 0.015) | glow(treble_glow) | tint(frost)
+    treble_glow: 1.0 ~ audio.treble * 4.0
+  }
+
+  arc {
+    0:00 "warm_up" {
+      bass_glow: 0.3
+      mid_glow: 0.3
+      treble_glow: 0.3
+    }
+    0:02 "active" {
+      bass_glow -> 1.0 ease(smooth) over 2s
+      mid_glow -> 1.0 ease(smooth) over 2s
+      treble_glow -> 1.0 ease(smooth) over 2s
+    }
+  }
+}`,
+
+'aurora': `# Aurora \u2014 northern lights with flowing color bands
+cinematic "Aurora" {
+  layer band {
+    fn: domain_warp(0.3, 1.5) | fbm(p * 3.0 + time * 0.08, octaves: 4, persistence: 0.6) | glow(2.0) | tint(cyan) | bloom(0.2, 2.0)
+  }
+
+  layer band2 {
+    fn: domain_warp(0.2, 1.0) | fbm(p * 2.5 + time * 0.05, octaves: 3, persistence: 0.5) | glow(1.5) | tint(green)
+    blend_mode: additive
+    opacity: 0.4
+  }
+
+  layer shimmer {
+    fn: fbm(p * 6.0 + time * 0.15, octaves: 2, persistence: 0.3) | threshold(0.65) | glow(2.5) | tint(ivory)
+    blend_mode: additive
+    opacity: 0.2
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.5, 0.7)
+  }
+}`,
+
+'battery-level': `# Battery Level \u2014 battery indicator with color-coded fill
+# API: el.level = 0.0..1.0
+cinematic "Battery Level" {
+  layer outline {
+    fn: box(0.5, 0.25) | onion(0.015) | glow(0.8) | tint(frost)
+  }
+
+  layer fill_green {
+    fn: box(0.45, 0.2) | mask_arc(fill_angle) | glow(gg) | tint(green)
+    fill_angle: 0.0 ~ data.level * 6.283
+    gg: 1.5 ~ data.level * 2.0
+  }
+
+  layer low_warn {
+    fn: circle(0.12) | glow(wg) | tint(ember)
+    wg: 0.0 ~ (1.0 - data.level) * 2.0
+    blend_mode: additive
+    opacity: 0.3
+  }
+
+  layer terminal {
+    fn: box(0.04, 0.12) | glow(0.6) | tint(frost)
+  }
+}`,
+
+'boot-ring': `# Boot Ring \u2014 gold ring filling with progress, breathing glow
+# API: el.progress = 0.0..1.0
+cinematic "Boot Ring" {
+  layer track {
+    fn: ring(0.3, 0.015) | glow(1.0) | tint(charcoal)
+  }
+  layer fill {
+    fn: ring(0.3, 0.025) | mask_arc(fill_angle) | glow(glow_str) | tint(gold)
+    fill_angle: 0.0 ~ data.progress * 6.283
+    glow_str: 2.0 ~ 2.0 + sin(time * 2.0) * 0.5
+  }
+}`,
+
+'breathing-dot': `# Breathing Dot \u2014 ambient presence indicator
+cinematic "Breathing Dot" {
+  layer {
+    fn: circle(0.15 + sin(time * 2.0) * 0.03) | glow(2.5) | tint(cyan)
+  }
+}`,
+
+'campfire': `# Campfire \u2014 flickering flame effect with warm glow
+cinematic "Campfire" {
+  layer flame {
+    fn: fbm(p * 4.0 + sin(time * 3.0) * 0.3, octaves: 4, persistence: 0.6) | threshold(0.35) | glow(2.5) | tint(ember) | bloom(0.3, 1.5)
+  }
+
+  layer core {
+    fn: fbm(p * 5.0 + sin(time * 4.0) * 0.4, octaves: 3, persistence: 0.5) | threshold(0.5) | glow(3.0) | tint(gold)
+    blend_mode: additive
+    opacity: 0.6
+  }
+
+  layer hotspot {
+    fn: circle(0.06) | glow(2.0 + sin(time * 5.0) * 0.5) | tint(ivory)
+    blend_mode: additive
+    opacity: 0.4
+  }
+
+  layer ambient {
+    fn: circle(0.25) | glow(1.0 + sin(time * 1.5) * 0.3) | tint(ember)
+    blend_mode: additive
+    opacity: 0.2
+  }
+}`,
+
+'celebration': `# Celebration \u2014 achievement unlock burst effect
+# API: el.intensity = 0.0..1.0
+cinematic "Celebration" {
+  define burst_ring(r, t) {
+    ring(r, t) | glow(glow_str, 3.0) | bloom(0.3, 2.0) | tint(gold)
+  }
+
+  layer ring_outer {
+    fn: burst_ring(ring_r, 0.02)
+    ring_r: 0.1 ~ 0.1 + data.intensity * 0.4
+    glow_str: 4.0 ~ data.intensity * 6.0
+  }
+
+  layer ring_inner {
+    fn: ring(inner_r, 0.015) | glow(inner_glow, 3.0) | bloom(0.3, 2.0) | tint(gold)
+    inner_r: 0.05 ~ 0.05 + data.intensity * 0.2
+    inner_glow: 3.0 ~ data.intensity * 5.0
+  }
+
+  layer center_flash {
+    fn: circle(0.08) | glow(flash_str, 2.5) | bloom(0.4, 3.0) | tint(white)
+    flash_str: 2.0 ~ data.intensity * 8.0
+  }
+}`,
+
+'connection-strength': `# Connection Strength \u2014 signal strength indicator
+# API: el.strength = 0.0..1.0
+cinematic "Connection Strength" {
+  layer bar1 {
+    fn: box(0.06, 0.1) | glow(g1) | tint(cyan)
+    g1: 0.4 ~ data.strength * 2.0
+  }
+
+  layer bar2 {
+    fn: box(0.06, 0.16) | glow(g2) | tint(cyan)
+    g2: 0.2 ~ data.strength * 1.8
+  }
+
+  layer bar3 {
+    fn: box(0.06, 0.22) | glow(g3) | tint(cyan)
+    g3: 0.1 ~ data.strength * 1.5
+  }
+
+  layer bar4 {
+    fn: box(0.06, 0.28) | glow(g4) | tint(cyan)
+    g4: 0.0 ~ data.strength * 1.2
+  }
+
+  layer pulse {
+    fn: circle(0.05) | glow(pg) | tint(white)
+    pg: 0.0 ~ data.strength * 2.5
+    blend_mode: additive
+    opacity: 0.3
+  }
+}`,
+
+'countdown-clock': `# Countdown Clock \u2014 circular countdown with intensifying bloom
+# API: el.elapsed = 0.0..1.0
+cinematic "Countdown Clock" {
+  layer track {
+    fn: ring(0.35, 0.012) | glow(0.5) | tint(charcoal)
+  }
+
+  layer elapsed_arc {
+    fn: ring(0.35, 0.03) | mask_arc(arc_angle) | glow(g) | bloom(bt, bs) | tint(cyan)
+    arc_angle: 0.0 ~ data.elapsed * 6.283
+    g: 1.5 ~ data.elapsed * 3.0
+    bt: 0.3 ~ data.elapsed * 0.3
+    bs: 1.0 ~ data.elapsed * 3.0
+  }
+
+  layer completion {
+    fn: circle(cr) | glow(cg) | bloom(0.4, 2.5) | tint(white)
+    cr: 0.0 ~ data.elapsed * 0.1
+    cg: 0.0 ~ data.elapsed * 4.0
+    blend_mode: additive
+    opacity: 0.5
+  }
+
+  layer center {
+    fn: circle(0.025) | glow(1.2) | tint(frost)
+  }
+}`,
+
+'crystal-growth': `# Crystal Growth \u2014 growing crystalline structure with icy shimmer
+cinematic "Crystal Growth" {
+  layer lattice {
+    fn: voronoi(6.0 + sin(time * 0.5) * 1.0) | onion(0.02) | glow(2.0) | tint(frost) | chromatic(0.004)
+  }
+
+  layer core_glow {
+    fn: voronoi(4.0 + sin(time * 0.3) * 0.5) | glow(1.5) | tint(cyan)
+    blend_mode: additive
+    opacity: 0.3
+  }
+
+  layer sparkle {
+    fn: voronoi(10.0) | threshold(0.8) | glow(3.0) | bloom(0.3, 1.5) | tint(white)
+    blend_mode: additive
+    opacity: 0.25
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.4, 0.8)
+  }
+}`,
+
+'dashboard-gauge': `# Dashboard Gauge \u2014 data-driven arc gauge with defines + layers
+# API: el.value = 0.0..1.0
+cinematic "Dashboard Gauge" {
   define track(r, t) {
     ring(r, t) | glow(0.8) | tint(frost)
   }
@@ -560,104 +1074,989 @@ const EXAMPLES = {
     center_glow: 1.5 ~ data.value * 3.0
   }
 }`,
-  'multi-layer': `cinematic "Layered Scene" {
+
+'energy-sphere': `# Energy Sphere \u2014 pulsing energy orb with plasma surface
+cinematic "Energy Sphere" {
+  layer core {
+    fn: circle(0.2 + sin(time * 2.0) * 0.03) | glow(3.0) | tint(cyan) | bloom(0.3, 2.5) | chromatic(0.003)
+  }
+
+  layer plasma {
+    fn: fbm(p * 5.0 + time * 0.15, octaves: 3, persistence: 0.6) | glow(2.0) | tint(cyan)
+    blend_mode: additive
+    opacity: 0.5
+  }
+
+  layer arcs {
+    fn: fbm(p * 8.0 + time * 0.2, octaves: 2, persistence: 0.4) | threshold(0.65) | glow(3.5) | tint(white)
+    blend_mode: additive
+    opacity: 0.3
+  }
+
+  layer aura {
+    fn: circle(0.35 + sin(time * 1.5) * 0.02) | glow(1.5) | tint(cyan)
+    blend_mode: additive
+    opacity: 0.2
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.4, 0.8)
+  }
+}`,
+
+'engagement-bars': `# Engagement Bars \u2014 7-day heatmap bars with per-bar glow
+# API: el.d0..d6 = 0.0..1.0
+cinematic "Engagement Bars" {
+  layer {
+    fn: fbm(p * 3.0, octaves: 2) | glow(glow_val) | tint(green)
+    glow_val: 1.0 ~ data.d0 * 3.0
+  }
+}`,
+
+'game-state-dashboard': `# Game State Dashboard \u2014 overview of gamified engagement metrics
+cinematic "Game State" {
+  layer progress_ring {
+    fn: ring(0.35, 0.02) | mask_arc(prog_angle) | glow(prog_g) | tint(gold)
+    prog_angle: 0.0 ~ data.total_progress * 6.283
+    prog_g: 1.5 ~ data.total_progress * 1.5
+  }
+
+  layer track {
+    fn: ring(0.35, 0.01) | glow(0.5) | tint(charcoal)
+  }
+
+  layer streak_core {
+    fn: circle(streak_r) | glow(streak_g) | tint(gold)
+    streak_r: 0.06 ~ data.streak * 0.012
+    streak_g: 2.0 ~ data.streak * 0.4
+  }
+
+  layer streak_body {
+    fn: fbm(p * flame_freq, octaves: 3, persistence: 0.5) | threshold(0.4) | glow(1.5) | tint(ember)
+    flame_freq: 3.5 ~ data.streak * 0.5 + sin(time * 2.5) * 0.6
+    blend_mode: additive
+    opacity: 0.4
+  }
+
+  layer disc_pulse {
+    fn: ring(disc_r, 0.008) | glow(disc_g) | tint(ivory)
+    disc_r: 0.2 ~ data.discoveries * 0.15 + sin(time * 3.0) * 0.02
+    disc_g: 0.0 ~ data.discoveries * 2.0
+    blend_mode: additive
+  }
+}`,
+
+'health-bar': `# Health Bar \u2014 RPG-style health indicator with color shift
+# API: el.health = 0.0..1.0
+cinematic "Health Bar" {
+  layer track {
+    fn: box(0.7, 0.08) | onion(0.01) | glow(0.5) | tint(charcoal)
+  }
+
+  layer fill_green {
+    fn: box(0.65, 0.06) | mask_arc(fill_angle) | glow(gg) | tint(green)
+    fill_angle: 0.0 ~ data.health * 6.283
+    gg: 1.0 ~ data.health * 2.0
+  }
+
+  layer damage {
+    fn: box(0.65, 0.06) | glow(dg) | tint(ember)
+    dg: 0.0 ~ (1.0 - data.health) * 3.0
+    blend_mode: additive
+    opacity: 0.4
+  }
+
+  layer critical {
+    fn: circle(0.08) | glow(cg) | tint(red)
+    cg: 0.0 ~ (1.0 - data.health) * 2.5 + sin(time * 4.0) * (1.0 - data.health) * 0.5
+    blend_mode: additive
+    opacity: 0.3
+  }
+}`,
+
+'heartbeat-line': `# Heartbeat Line \u2014 ECG-style heartbeat monitor
+cinematic "Heartbeat Line" {
+  layer trace {
+    fn: concentric_waves(0.2, 0.015, 12.0) | glow(2.5) | tint(green) | scanlines(80.0, 0.15)
+  }
+
+  layer peak {
+    fn: circle(0.03 + sin(time * 4.0) * 0.01) | glow(3.0) | tint(green)
+    blend_mode: additive
+    opacity: 0.6
+  }
+
+  layer grid {
+    fn: fbm(p * 20.0, octaves: 1, persistence: 0.2) | threshold(0.75) | glow(0.4) | tint(green)
+    blend_mode: additive
+    opacity: 0.08
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.5, 0.7)
+  }
+}`,
+
+'layered-scene': `# Layered Scene \u2014 multi-layer compositing with arc timeline
+cinematic "Layered Scene" {
   layer bg {
     fn: gradient(deep_blue, midnight, "radial")
   }
 
   layer ring {
-    fn: ring(0.35, 0.03) | glow(2.0) | tint(cyan)
+    fn: ring(0.35, 0.03) | glow(glow_i) | tint(cyan)
+    glow_i: 2.0
   }
 
   layer orb {
-    fn: circle(0.08) | glow(4.0) | tint(gold)
+    fn: circle(0.08) | glow(orb_glow) | tint(gold)
+    orb_glow: 4.0
+  }
+
+  arc {
+    0:00 "dim" {
+      glow_i: 0.5
+      orb_glow: 1.0
+    }
+    0:02 "ignite" {
+      glow_i -> 3.0 ease(expo_out) over 2s
+      orb_glow -> 6.0 ease(expo_out) over 3s
+    }
+    0:08 "breathe" {
+      glow_i -> 1.5 ease(cubic_in_out) over 4s
+      orb_glow -> 3.0 ease(smooth) over 3s
+    }
   }
 }`,
-  'interactive': `cinematic "Touch" {
-  layer fluid {
-    fn: curl_noise(p, frequency: freq, amplitude: amp)
-      | glow(3.0)
-      | tint(plasma)
-    freq: 3.0 ~ mouse.x * 4.0
-    amp: 0.5 ~ mouse.y
+
+'level-up-burst': `# Level-Up Burst \u2014 celebration sequence with arc timeline
+cinematic "Level Up" {
+  layer star_flash {
+    fn: star(6, outer, 0.08) | glow(g) | tint(gold)
+    outer: 0.05
+    g: 1.0
   }
 
-  layer ripples {
-    fn: concentric_waves(p, decay: 2.0, speed: 3.0)
-      | glow(2.0)
-      | tint(cyan)
-      | blend(mode: additive, opacity: 0.6)
+  layer ring1 {
+    fn: ring(r1, 0.02) | glow(g1) | tint(gold)
+    r1: 0.05
+    g1: 1.0
   }
 
-  lens {
-    mode: flat
-    fields: [fluid, ripples]
-    post: [bloom(0.8), chromatic(0.002)]
+  layer ring2 {
+    fn: ring(r2, 0.015) | glow(g2) | tint(ivory)
+    r2: 0.03
+    g2: 0.5
+  }
+
+  arc {
+    0:00 {
+      outer: 0.05
+      g: 1.0
+      r1: 0.05
+      g1: 0.5
+      r2: 0.03
+      g2: 0.0
+    }
+    0:00 {
+      outer -> 0.25 ease(expo_out) over 0.5s
+      g -> 4.0 ease(expo_out) over 0.3s
+      r1 -> 0.35 ease(expo_out) over 0.6s
+      g1 -> 3.0 ease(expo_out) over 0.4s
+      r2 -> 0.25 ease(expo_out) over 0.8s
+      g2 -> 2.0 ease(expo_out) over 0.5s
+    }
+    0:01 {
+      outer -> 0.1 ease(cubic_in_out) over 1.0s
+      g -> 1.5 ease(cubic_in_out) over 1.0s
+      r1 -> 0.45 ease(cubic_in_out) over 1.0s
+      g1 -> 0.8 ease(cubic_in_out) over 1.0s
+      r2 -> 0.4 ease(cubic_in_out) over 1.0s
+      g2 -> 0.5 ease(cubic_in_out) over 1.0s
+    }
   }
 }`,
-  'resonance': `cinematic "Duality" {
-  layer fire {
-    fn: fbm(p * freq, octaves: 5)
-      | threshold(0.4)
-      | glow(4.0)
-      | tint(ember)
-    freq: 3.0
-    intensity: 0.5 ~ audio.bass
+
+'loading-ring': `# Loading Ring \u2014 GPU-accelerated loading indicator
+# API: el.progress = 0.0..1.0
+cinematic "Loading Ring" {
+  layer {
+    fn: ring(0.3, 0.04) | mask_arc(angle) | glow(2.0) | tint(gold)
+    angle: 0.0 ~ data.progress * 6.283
+  }
+}`,
+
+'loading-stages': `# Loading Stages \u2014 multi-phase loading animation with arcs
+cinematic "Loading Stages" {
+  define glow_ring(r, t) {
+    ring(r, t) | glow(ring_glow) | tint(cyan)
   }
 
-  layer ice {
-    fn: voronoi(p * density)
-      | glow(2.0)
-      | tint(frost)
-      | iridescent(0.3)
-    density: 3.0
-    clarity: 0.8 ~ audio.treble
+  layer bg_ring {
+    fn: ring(0.3, 0.02) | glow(0.5) | tint(frost)
   }
 
-  layer smoke {
-    fn: curl_noise(p * 2.0, frequency: 1.5, amplitude: 1.0)
-      | glow(1.5)
-      | tint(ash)
-      | blend(mode: additive, opacity: 0.5)
+  layer active_ring {
+    fn: glow_ring(ring_r, 0.03)
+    ring_r: 0.1
+    ring_glow: 1.0
   }
 
-  resonate {
-    freq ~ clarity * 2.0
-    density ~ intensity * -1.5
-    damping: 0.96
+  layer center {
+    fn: circle(0.05) | glow(dot_glow) | tint(gold)
+    dot_glow: 2.0
   }
 
-  lens {
-    mode: flat
-    fields: [fire, ice]
-    overlay: [smoke]
-    post: [bloom(1.5), grain(0.015)]
+  arc {
+    0:00 "idle" {
+      ring_r: 0.05
+      ring_glow: 0.5
+      dot_glow: 1.0
+    }
+    0:01 "pulse" {
+      dot_glow -> 4.0 ease(expo_out) over 1s
+      ring_glow -> 1.5 ease(smooth) over 1s
+    }
+    0:03 "expand" {
+      ring_r -> 0.3 ease(expo_out) over 2s
+      ring_glow -> 3.0 ease(cubic_in_out) over 2s
+      dot_glow -> 2.0 ease(smooth) over 1s
+    }
+    0:07 "complete" {
+      ring_glow -> 5.0 ease(expo_out) over 1s
+      dot_glow -> 6.0 ease(expo_out) over 1s
+    }
+    0:10 "fade" {
+      ring_r -> 0.5 ease(smooth) over 3s
+      ring_glow -> 0.3 ease(expo_in) over 3s
+      dot_glow -> 0.5 ease(expo_in) over 3s
+    }
+  }
+}`,
+
+'matrix-code': `# Matrix Code \u2014 digital rain effect
+cinematic "Matrix Code" {
+  layer code {
+    fn: fbm(p * 15.0 + time * 0.5, octaves: 2, persistence: 0.4) | threshold(0.6) | glow(2.0) | tint(green) | grain(0.08)
+  }
+
+  layer leads {
+    fn: fbm(p * 12.0 + time * 0.6, octaves: 1, persistence: 0.3) | threshold(0.75) | glow(3.5) | tint(white)
+    blend_mode: additive
+    opacity: 0.4
+  }
+
+  layer haze {
+    fn: fbm(p * 3.0 + time * 0.02, octaves: 2, persistence: 0.5) | glow(0.5) | tint(green)
+    blend_mode: additive
+    opacity: 0.1
+  }
+
+  layer crt {
+    fn: circle(0.5) | glow(1.0) | scanlines(120.0, 0.1) | vignette(0.4, 0.8)
+  }
+}`,
+
+'metric-ring': `# Metric Ring \u2014 arc gauge for displaying a 0-1 value
+# API: el.value = 0.0..1.0
+cinematic "Metric Ring" {
+  layer {
+    fn: ring(0.35, 0.06) | mask_arc(fill) | glow(3.0) | tint(cyan)
+    fill: 0.0 ~ data.value * 6.283
+  }
+}`,
+
+'nebula': `# Nebula \u2014 deep space nebula with swirling gas clouds
+cinematic "Nebula" {
+  layer gas {
+    fn: domain_warp(0.25, 1.2) | fbm(p * 2.5 + time * 0.03, octaves: 5, persistence: 0.55) | glow(2.0) | tint(plasma) | bloom(0.2, 2.0)
+  }
+
+  layer stars {
+    fn: voronoi(8.0) | threshold(0.7) | glow(3.0) | tint(ivory)
+    blend_mode: additive
+    opacity: 0.3
+  }
+
+  layer arm {
+    fn: domain_warp(0.15, 0.8) | fbm(p * 3.0 + time * 0.04, octaves: 3, persistence: 0.5) | glow(1.5) | tint(violet) | chromatic(0.003)
+    blend_mode: additive
+    opacity: 0.35
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.5, 0.7)
+  }
+}`,
+
+'notification-badge': `# Notification Badge \u2014 pulsing red dot
+# API: el.count = 0..N
+cinematic "Notification Badge" {
+  layer badge {
+    fn: circle(r) | glow(g) | bloom(0.3, 2.0) | tint(red)
+    r: 0.05 ~ data.count * 0.02
+    g: 0.0 ~ data.count * 1.5 + sin(time * 3.0) * data.count * 0.3
+  }
+
+  layer pulse_ring {
+    fn: ring(pr, 0.008) | glow(pg) | tint(red)
+    pr: 0.1 ~ data.count * 0.03 + sin(time * 2.0) * 0.02
+    pg: 0.0 ~ data.count * 1.0
+    blend_mode: additive
+    opacity: 0.5
+  }
+
+  layer core {
+    fn: circle(0.04) | glow(cg) | tint(white)
+    cg: 0.0 ~ data.count * 2.0
+    blend_mode: additive
+    opacity: 0.4
+  }
+}`,
+
+'ocean-waves': `# Ocean Waves \u2014 deep ocean surface with layered wave motion
+cinematic "Ocean Waves" {
+  layer deep {
+    fn: domain_warp(0.2, 0.8) | fbm(p * 2.0 + time * 0.04, octaves: 4, persistence: 0.55) | glow(1.5) | tint(deep_blue)
+  }
+
+  layer surface {
+    fn: fbm(p * 5.0 + time * 0.1, octaves: 3, persistence: 0.5) | glow(1.2) | tint(cyan)
+    blend_mode: additive
+    opacity: 0.3
+  }
+
+  layer foam {
+    fn: fbm(p * 8.0 + time * 0.08, octaves: 2, persistence: 0.4) | threshold(0.6) | glow(2.0) | tint(frost)
+    blend_mode: additive
+    opacity: 0.2
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.4, 0.8)
+  }
+}`,
+
+'progress-bar': `# Progress Bar \u2014 horizontal fill indicator
+# API: el.progress = 0.0..1.0
+cinematic "Progress Bar" {
+  layer track {
+    fn: box(0.7, 0.08) | glow(0.6) | tint(charcoal)
+  }
+
+  layer fill {
+    fn: box(0.7, 0.06) | mask_arc(fill_angle) | glow(g) | tint(gold)
+    fill_angle: 0.0 ~ data.progress * 6.283
+    g: 1.5 ~ data.progress * 2.5
+  }
+
+  layer edge_glow {
+    fn: circle(0.03) | glow(eg) | tint(ivory)
+    eg: 0.0 ~ data.progress * 3.0
+    blend_mode: additive
+    opacity: 0.5
+  }
+}`,
+
+'rain-drops': `# Rain Drops \u2014 rain on glass with concentric ripple effects
+cinematic "Rain Drops" {
+  layer ripple1 {
+    fn: concentric_waves(0.15, 0.03, 8.0) | glow(1.8) | tint(frost)
+  }
+
+  layer ripple2 {
+    fn: concentric_waves(0.12, 0.025, 6.0) | glow(1.5) | tint(cyan)
+    blend_mode: additive
+    opacity: 0.4
+  }
+
+  layer surface {
+    fn: fbm(p * 8.0 + time * 0.03, octaves: 2, persistence: 0.3) | glow(0.5) | tint(frost)
+    blend_mode: additive
+    opacity: 0.15
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.5, 0.7)
+  }
+}`,
+
+'rating-display': `# Rating Display \u2014 star rating visualization
+# API: el.rating = 0.0..1.0
+cinematic "Rating Display" {
+  layer star_shape {
+    fn: star(5, 0.25, 0.12) | glow(g) | tint(gold)
+    g: 0.5 ~ data.rating * 4.0
+  }
+
+  layer inner_bloom {
+    fn: star(5, 0.18, 0.09) | glow(bg) | bloom(0.3, 2.0) | tint(gold)
+    bg: 0.0 ~ data.rating * 3.0
+    blend_mode: additive
+    opacity: 0.6
+  }
+
+  layer halo {
+    fn: ring(0.32, 0.008) | glow(hg) | tint(ivory)
+    hg: 0.0 ~ data.rating * 1.5
+    blend_mode: additive
+    opacity: 0.3
+  }
+}`,
+
+'route-matrix': `# Route Matrix \u2014 audio signal routed to multiple params
+cinematic "Route Matrix" {
+  signals {
+    pulse: audio.bass | smooth(0.2) | scale(0, 1)
+  }
+
+  route {
+    pulse -> core.glow_val
+    pulse * 0.5 -> outer.ring_glow
+    pulse * 0.3 -> halo.halo_g
+  }
+
+  layer core {
+    fn: circle(0.15) | glow(glow_val) | tint(ember)
+    glow_val: 1.0
+  }
+
+  layer outer {
+    fn: ring(0.30, 0.02) | glow(ring_glow) | tint(gold)
+    ring_glow: 0.5
+  }
+
+  layer halo {
+    fn: ring(0.42, 0.01) | glow(halo_g) | tint(cyan)
+    halo_g: 0.3
+  }
+}`,
+
+'signal-dashboard': `# Signal Dashboard \u2014 named, smoothed signals driving separate layers
+cinematic "Signal Dashboard" {
+  signals {
+    heartbeat: audio.bass | smooth(0.2) | scale(0, 1)
+    shimmer: audio.treble | smooth(0.05) | pow(2.0)
+    activity: audio.energy | clamp(0, 1) | normalize
+  }
+
+  layer pulse {
+    fn: circle(0.15) | glow(g) | tint(ember)
+    g: 1.0 ~ heartbeat * 5.0
+  }
+
+  layer ring {
+    fn: ring(0.30, 0.02) | glow(rg) | tint(gold)
+    rg: 1.0 ~ shimmer * 3.0
+  }
+
+  layer outer {
+    fn: ring(0.42, 0.015) | glow(og) | tint(cyan)
+    og: 0.5 ~ activity * 2.0
+  }
+}`,
+
+'speed-gauge': `# Speed Gauge \u2014 speedometer-style arc gauge
+# API: el.speed = 0.0..1.0
+cinematic "Speed Gauge" {
+  layer ticks {
+    fn: ring(0.38, 0.01) | glow(0.6) | tint(charcoal)
+  }
+
+  layer speed_arc {
+    fn: ring(0.35, 0.03) | mask_arc(arc_angle) | glow(g) | tint(cyan)
+    arc_angle: 0.0 ~ data.speed * 6.283
+    g: 1.5 ~ data.speed * 3.0
+  }
+
+  layer redline {
+    fn: ring(0.35, 0.025) | glow(rg) | tint(ember)
+    rg: 0.0 ~ data.speed * 2.0
+    blend_mode: additive
+    opacity: 0.3
+  }
+
+  layer hub {
+    fn: circle(0.05) | glow(hg) | tint(white)
+    hg: 1.5 ~ data.speed * 2.0
+  }
+}`,
+
+'spinner': `# Spinner \u2014 rotating partial ring for indeterminate loading
+cinematic "Spinner" {
+  layer {
+    fn: rotate(time * 3.0) | ring(0.25, 0.03) | mask_arc(4.0) | glow(2.5) | tint(gold)
+  }
+}`,
+
+'starfield': `# Starfield \u2014 deep space star field with drifting points
+cinematic "Starfield" {
+  layer stars {
+    fn: fbm(p * 12.0, octaves: 2, persistence: 0.4) | threshold(0.72) | glow(2.5) | tint(white)
+  }
+
+  layer bright_stars {
+    fn: fbm(p * 8.0 + time * 0.02, octaves: 1, persistence: 0.3) | threshold(0.78) | glow(3.5) | tint(ivory)
+    blend_mode: additive
+    opacity: 0.7
+  }
+
+  layer haze {
+    fn: fbm(p * 2.0 + time * 0.01, octaves: 3, persistence: 0.5) | glow(0.8) | tint(deep_blue)
+    blend_mode: additive
+    opacity: 0.15
+  }
+
+  layer frame {
+    fn: circle(0.5) | glow(1.0) | vignette(0.4, 0.8)
+  }
+}`,
+
+'status-pulse': `# Status Pulse \u2014 health/status indicator
+# API: el.health = 0.0..1.0
+cinematic "Status Pulse" {
+  layer {
+    fn: circle(0.2) | glow(intensity) | tint(green)
+    intensity: 1.0 ~ data.health * 4.0
+  }
+}`,
+
+'streak-flame': `# Streak Flame \u2014 animated fire indicator driven by streak count
+cinematic "Streak Flame" {
+  layer core {
+    fn: circle(r) | glow(g) | tint(gold)
+    r: 0.08 ~ data.streak * 0.015
+    g: 3.0 ~ data.streak * 0.3
+  }
+
+  layer flame {
+    fn: fbm(p * freq, octaves: 4, persistence: 0.6) | threshold(0.35) | glow(2.5) | tint(ember)
+    freq: 4.0 ~ data.streak * 0.5 + sin(time * 3.0) * 0.8
+  }
+
+  layer shimmer {
+    fn: ring(0.25, 0.01) | glow(1.2) | tint(gold)
+    blend_mode: additive
+    opacity: 0.3
+  }
+}`,
+
+'svg-badge': `cinematic "SVG Badge" {
+  signals {
+    pulse: audio.bass | smooth(0.3) | scale(0, 1)
+  }
+
+  layer core {
+    fn: circle(0.25) | glow(2.0) | tint(ember)
+  }
+
+  layer ring {
+    fn: ring(0.35, 0.02) | glow(g) | tint(gold)
+    g: 1.5 ~ pulse * 3.0
+  }
+
+  layer outer {
+    fn: ring(0.42, 0.01) | glow(1.0) | tint(cyan)
+  }
+}`,
+
+'synesthetic': `cinematic "Synesthetic" {
+  signals {
+    pulse: audio.bass | smooth(0.2)
+    shimmer: audio.treble | smooth(0.1)
+  }
+
+  layer visual {
+    fn: circle(0.3) | glow(g) | tint(ember)
+    g: 1.0 ~ pulse * 4.0
+  }
+
+  layer halo {
+    fn: ring(0.4, 0.02) | glow(sg) | tint(gold)
+    sg: 0.5 ~ shimmer * 3.0
+  }
+
+  hear {
+    osc(sine, 220) | gain(pulse * 0.3) -> left
+    osc(saw, 440) | gain(shimmer * 0.1) | filter(lowpass, 800) -> right
+    noise(white) | gain(0.02) | filter(bandpass, 1000, q: 5) -> both
+  }
+
+  feel {
+    pulse > 0.7 -> vibrate(intensity: 1.0, duration: 100)
+    shimmer > 0.5 -> vibrate(intensity: 0.3, duration: 50, motor: right)
+  }
+}`,
+
+'temporal-monitor': `cinematic "Temporal Monitor" {
+  signals {
+    cpu: audio.bass | smooth(0.3)
+    trend: cpu | slope(window: 30)
+    spike: cpu | deviation(window: 60)
+    forecast: cpu | predict(frames: 10)
+    settled: cpu | stable(threshold: 0.05, frames: 30)
+  }
+
+  layer gauge {
+    fn: ring(0.35, 0.03) | mask_arc(fill) | glow(g) | tint(gold)
+    fill: 0.0 ~ cpu * 6.283
+    g: 1.5 ~ trend * 3.0
+  }
+
+  layer spike_ring {
+    fn: ring(0.42, 0.01) | glow(sg) | tint(ember)
+    sg: 0.5 ~ spike * 2.0
+  }
+
+  layer stable_core {
+    fn: circle(0.15) | glow(cg) | tint(cyan)
+    cg: 1.0 ~ settled * 3.0
+  }
+}`,
+
+'timer-ring': `# Timer Ring \u2014 countdown ring with depleting arc
+# API: el.remaining = 0.0..1.0
+cinematic "Timer Ring" {
+  layer track {
+    fn: ring(0.32, 0.015) | glow(0.6) | tint(charcoal)
+  }
+
+  layer remaining_arc {
+    fn: ring(0.32, 0.03) | mask_arc(arc_angle) | glow(g) | tint(gold)
+    arc_angle: 0.0 ~ data.remaining * 6.283
+    g: 2.0 ~ data.remaining * 2.0
+  }
+
+  layer urgency {
+    fn: circle(0.15) | glow(ug) | tint(ember)
+    ug: 0.0 ~ (1.0 - data.remaining) * 2.5
+    blend_mode: additive
+    opacity: 0.4
+  }
+
+  layer center {
+    fn: circle(0.03) | glow(1.5) | tint(white)
+  }
+}`,
+
+'void-heartbeat': `# Void Heartbeat \u2014 ambient intelligence state indicator for 4DA
+cinematic "Void Heartbeat" {
+  layer core {
+    fn: fbm(p * noise_freq, octaves: 3, persistence: 0.5) | displace(morph_str) | circle(radius) | glow(core_glow) | tint(gold)
+    radius: 0.35 ~ sin(time * 1.0) * 0.06 + data.pulse * 0.04
+    noise_freq: 3.0 ~ data.morph * 2.0
+    morph_str: 0.04 ~ data.morph * 0.06
+    core_glow: 2.5 ~ data.heat * 1.5
+  }
+
+  layer heat_aura {
+    fn: circle(0.2) | glow(heat_g) | tint(ember)
+    heat_g: 0.3 ~ data.heat * 1.8
+    blend_mode: additive
+    opacity: 0.6
+  }
+
+  layer error_pulse {
+    fn: circle(err_r) | glow(err_g) | tint(red)
+    err_r: 0.15 ~ data.error * 0.1 + sin(time * 4.0) * data.error * 0.03
+    err_g: 0.0 ~ data.error * 2.1
+    blend_mode: additive
+  }
+
+  layer burst_flash {
+    fn: circle(burst_r) | glow(burst_g) | tint(ivory)
+    burst_r: 0.1 ~ data.burst * 0.3
+    burst_g: 0.0 ~ data.burst * 3.2
+    blend_mode: additive
+  }
+
+  layer critical_ring {
+    fn: ring(crit_r, 0.01) | glow(crit_g) | tint(gold)
+    crit_r: 0.25 ~ sin(time * 6.0) * 0.05 * data.critical
+    crit_g: 0.0 ~ data.critical * 1.25
+    blend_mode: additive
+  }
+
+  layer stale_veil {
+    fn: circle(0.5) | glow(1.0) | tint(obsidian) | vignette(stale_v)
+    stale_v: 0.0 ~ data.staleness * 0.3
+    blend_mode: multiply
+    opacity: 0.15
+  }
+}`,
+
+'xp-ring': `# XP Ring \u2014 experience progress ring with central level indicator
+# API: el.xp = 0.0..1.0, el.level = 0.0..1.0
+cinematic "XP Ring" {
+  layer track {
+    fn: ring(0.33, 0.015) | glow(0.5) | tint(charcoal)
+  }
+
+  layer xp_arc {
+    fn: ring(0.33, 0.025) | mask_arc(xp_angle) | glow(xg) | tint(cyan)
+    xp_angle: 0.0 ~ data.xp * 6.283
+    xg: 2.0 ~ data.xp * 2.5
+  }
+
+  layer star_center {
+    fn: star(5, sr, si) | glow(sg) | tint(gold)
+    sr: 0.06 ~ data.level * 0.08
+    si: 0.03 ~ data.level * 0.04
+    sg: 1.5 ~ data.level * 3.0
+  }
+
+  layer level_bloom {
+    fn: circle(0.08) | glow(lg) | bloom(0.3, 1.5) | tint(gold)
+    lg: 0.0 ~ data.level * 2.0
+    blend_mode: additive
+    opacity: 0.4
   }
 }`
 };
 
-// ── DOM Refs ──────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// SYNTAX HIGHLIGHTING — token definitions for .game language
+// ════════════════════════════════════════════════════════════
+
+const KEYWORDS = new Set([
+  'cinematic', 'layer', 'fn', 'define', 'import', 'expose', 'as',
+  'arc', 'resonate', 'react', 'listen', 'voice', 'score',
+  'gravity', 'lens', 'breed', 'project', 'memory', 'cast',
+  'ease', 'over', 'from', 'blend_mode', 'opacity',
+  'additive', 'multiply', 'screen', 'overlay',
+  'signals', 'route', 'hear', 'feel', 'props', 'dom', 'on', 'role',
+  'mode', 'fields', 'post', 'damping'
+]);
+
+const BUILTINS = new Set([
+  'circle', 'ring', 'star', 'box', 'polygon', 'line', 'cross',
+  'fbm', 'simplex', 'voronoi', 'perlin',
+  'glow', 'shade', 'tint', 'bloom', 'chromatic', 'grain', 'scanlines',
+  'vignette', 'iridescent', 'gradient', 'threshold', 'onion',
+  'mask_arc', 'domain_warp', 'displace', 'distort',
+  'translate', 'rotate', 'scale', 'mirror', 'repeat', 'polar',
+  'curl_noise', 'concentric_waves', 'warp',
+  'blend', 'mix', 'clamp', 'normalize', 'smooth', 'pow',
+  'sin', 'cos', 'abs', 'min', 'max', 'floor', 'ceil', 'fract',
+  'osc', 'gain', 'filter', 'noise', 'vibrate',
+  'slope', 'deviation', 'predict', 'stable',
+]);
+
+const COLOR_NAMES = new Set([
+  'gold', 'ember', 'cyan', 'frost', 'ivory', 'plasma', 'violet',
+  'deep_blue', 'midnight', 'charcoal', 'obsidian', 'ash', 'red',
+  'green', 'blue', 'white', 'black', 'orange', 'pink', 'purple',
+  'magenta', 'yellow', 'silver', 'teal', 'indigo', 'coral',
+  'crimson', 'lime', 'turquoise', 'lavender', 'peach', 'ruby',
+  'sapphire', 'emerald', 'amber', 'copper', 'bronze', 'steel',
+]);
+
+const SIGNALS = new Set([
+  'audio.bass', 'audio.mid', 'audio.treble', 'audio.energy', 'audio.beat',
+  'mouse.x', 'mouse.y', 'time',
+  'data.progress', 'data.value', 'data.health', 'data.level',
+  'data.speed', 'data.rating', 'data.count', 'data.streak',
+  'data.intensity', 'data.remaining', 'data.elapsed',
+  'data.strength', 'data.unlocked', 'data.xp',
+  'data.total_progress', 'data.discoveries',
+  'data.pulse', 'data.heat', 'data.burst', 'data.error',
+  'data.staleness', 'data.morph', 'data.critical',
+  'data.d0', 'data.d1', 'data.d2', 'data.d3', 'data.d4', 'data.d5', 'data.d6',
+]);
+
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function highlightLine(line) {
+  // Comment lines
+  if (line.trimStart().startsWith('#')) {
+    return `<span class="tok-comment">${escapeHtml(line)}</span>`;
+  }
+
+  let result = '';
+  let i = 0;
+
+  while (i < line.length) {
+    // Inline comment
+    if (line[i] === '#') {
+      result += `<span class="tok-comment">${escapeHtml(line.slice(i))}</span>`;
+      break;
+    }
+
+    // String
+    if (line[i] === '"') {
+      let j = i + 1;
+      while (j < line.length && line[j] !== '"') {
+        if (line[j] === '\\') j++;
+        j++;
+      }
+      j = Math.min(j + 1, line.length);
+      result += `<span class="tok-string">${escapeHtml(line.slice(i, j))}</span>`;
+      i = j;
+      continue;
+    }
+
+    // Number (with optional leading minus, decimal, suffix like 's')
+    if (/[0-9]/.test(line[i]) || (line[i] === '-' && i + 1 < line.length && /[0-9.]/.test(line[i + 1]))) {
+      let j = i;
+      if (line[j] === '-') j++;
+      while (j < line.length && /[0-9.]/.test(line[j])) j++;
+      // Time notation like 0:00
+      if (j < line.length && line[j] === ':' && j + 1 < line.length && /[0-9]/.test(line[j + 1])) {
+        j++;
+        while (j < line.length && /[0-9]/.test(line[j])) j++;
+      }
+      // Suffix like 's' for duration
+      if (j < line.length && line[j] === 's') j++;
+      result += `<span class="tok-number">${escapeHtml(line.slice(i, j))}</span>`;
+      i = j;
+      continue;
+    }
+
+    // Identifiers / keywords
+    if (/[a-zA-Z_]/.test(line[i])) {
+      let j = i;
+      while (j < line.length && /[a-zA-Z0-9_]/.test(line[j])) j++;
+
+      // Check for dotted signal (audio.bass, mouse.x, data.xxx, time)
+      let word = line.slice(i, j);
+      let fullWord = word;
+      let endJ = j;
+
+      if (j < line.length && line[j] === '.' && /[a-zA-Z_]/.test(line[j + 1] || '')) {
+        let k = j + 1;
+        while (k < line.length && /[a-zA-Z0-9_]/.test(line[k])) k++;
+        fullWord = line.slice(i, k);
+        if (SIGNALS.has(fullWord)) {
+          result += `<span class="tok-signal">${escapeHtml(fullWord)}</span>`;
+          i = k;
+          continue;
+        }
+      }
+
+      if (word === 'time') {
+        result += `<span class="tok-signal">${escapeHtml(word)}</span>`;
+      } else if (word === 'p' || word === 'mx' || word === 'my') {
+        result += `<span class="tok-signal">${escapeHtml(word)}</span>`;
+      } else if (KEYWORDS.has(word)) {
+        result += `<span class="tok-keyword">${escapeHtml(word)}</span>`;
+      } else if (BUILTINS.has(word)) {
+        result += `<span class="tok-builtin">${escapeHtml(word)}</span>`;
+      } else if (COLOR_NAMES.has(word)) {
+        result += `<span class="tok-color-name">${escapeHtml(word)}</span>`;
+      } else {
+        // Check if this is a property name (followed by ':')
+        let afterWord = line.slice(j).trimStart();
+        if (afterWord.startsWith(':') && !afterWord.startsWith('::')) {
+          result += `<span class="tok-property">${escapeHtml(word)}</span>`;
+        } else {
+          result += escapeHtml(word);
+        }
+      }
+      i = j;
+      continue;
+    }
+
+    // Operators
+    if ('|~+*-/^'.includes(line[i])) {
+      let op = line[i];
+      // Check for ->
+      if (line[i] === '-' && line[i + 1] === '>') {
+        result += `<span class="tok-operator">-&gt;</span>`;
+        i += 2;
+        continue;
+      }
+      // Check for =>
+      if (line[i] === '=' && line[i + 1] === '>') {
+        result += `<span class="tok-operator">=&gt;</span>`;
+        i += 2;
+        continue;
+      }
+      result += `<span class="tok-operator">${escapeHtml(op)}</span>`;
+      i++;
+      continue;
+    }
+
+    // Arrow check for = followed by >
+    if (line[i] === '=' && line[i + 1] === '>') {
+      result += `<span class="tok-operator">=&gt;</span>`;
+      i += 2;
+      continue;
+    }
+
+    // Punctuation
+    if ('{}()[],:'.includes(line[i])) {
+      result += `<span class="tok-punctuation">${escapeHtml(line[i])}</span>`;
+      i++;
+      continue;
+    }
+
+    // Default: just emit the character
+    result += escapeHtml(line[i]);
+    i++;
+  }
+
+  return result;
+}
+
+function highlightSource(source) {
+  const lines = source.split('\n');
+  return lines.map(highlightLine).join('\n');
+}
+
+// ════════════════════════════════════════════════════════════
+// DOM REFS
+// ════════════════════════════════════════════════════════════
 
 const editor = document.getElementById('editor');
+const highlightLayer = document.getElementById('highlight-layer');
+const lineNumbers = document.getElementById('line-numbers');
+const codeArea = document.getElementById('code-area');
 const errorBar = document.getElementById('error-bar');
 const wgslOutput = document.getElementById('wgsl-output');
 const wgslSize = document.getElementById('wgsl-size');
 const previewIframe = document.getElementById('preview-iframe');
 const previewMessage = document.getElementById('preview-message');
-const examplesSelect = document.getElementById('examples-select');
-const exportSelect = document.getElementById('export-select');
+const presetSelect = document.getElementById('preset-select');
+const resetBtn = document.getElementById('reset-btn');
 const shareBtn = document.getElementById('share-btn');
 const wasmStatus = document.getElementById('wasm-status');
 const warningBar = document.getElementById('warning-bar');
 const copyWgslBtn = document.getElementById('copy-wgsl-btn');
+const copyWgslBtn2 = document.getElementById('copy-wgsl-btn2');
+const copyHtmlBtn = document.getElementById('copy-html-btn');
+const copyComponentBtn = document.getElementById('copy-component-btn');
+const downloadHtmlBtn = document.getElementById('download-html-btn');
 const compileDot = document.getElementById('compile-dot');
 const statusCompile = document.getElementById('status-compile');
 const statusLayers = document.getElementById('status-layers');
 const statusParams = document.getElementById('status-params');
 const statusAudio = document.getElementById('status-audio');
 const statusMouse = document.getElementById('status-mouse');
+const toast = document.getElementById('toast');
 
-// ── WASM Loading ──────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// TOAST NOTIFICATION
+// ════════════════════════════════════════════════════════════
+
+let toastTimer = null;
+
+function showToast(message, duration = 1500) {
+  toast.textContent = message;
+  toast.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, duration);
+}
+
+// ════════════════════════════════════════════════════════════
+// WASM LOADING
+// ════════════════════════════════════════════════════════════
 
 let wasmReady = false;
 let compile_to_wgsl, compile_to_html, compile_to_component, validate;
@@ -673,7 +2072,6 @@ async function loadWasm() {
     wasmReady = true;
     wasmStatus.textContent = 'WASM ready';
     wasmStatus.className = 'loaded';
-    // Trigger initial compilation if there's source
     if (editor.value.trim()) {
       scheduleCompile();
     }
@@ -685,7 +2083,86 @@ async function loadWasm() {
   }
 }
 
-// ── URL Hash Sharing ──────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// LINE NUMBERS
+// ════════════════════════════════════════════════════════════
+
+function updateLineNumbers() {
+  const lines = editor.value.split('\n');
+  const count = lines.length;
+  let html = '';
+  for (let i = 1; i <= count; i++) {
+    html += `<span class="ln">${i}</span>`;
+  }
+  lineNumbers.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════════════
+// SYNTAX HIGHLIGHTING UPDATE
+// ════════════════════════════════════════════════════════════
+
+function updateHighlight() {
+  const source = editor.value;
+  // Need trailing newline so the pre height matches textarea
+  highlightLayer.innerHTML = highlightSource(source) + '\n';
+}
+
+// ════════════════════════════════════════════════════════════
+// SCROLL SYNCHRONIZATION
+// ════════════════════════════════════════════════════════════
+
+function syncScroll() {
+  highlightLayer.scrollTop = codeArea.scrollTop;
+  highlightLayer.scrollLeft = codeArea.scrollLeft;
+  lineNumbers.scrollTop = codeArea.scrollTop;
+}
+
+codeArea.addEventListener('scroll', syncScroll);
+
+// ════════════════════════════════════════════════════════════
+// LOCALSTORAGE PERSISTENCE
+// ════════════════════════════════════════════════════════════
+
+const STORAGE_KEY = 'game-playground-source';
+let saveTimer = null;
+
+function saveToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY, editor.value);
+  } catch (e) {
+    // Quota exceeded or unavailable — silent fail
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved !== null && saved.trim().length > 0) {
+      editor.value = saved;
+      return true;
+    }
+  } catch (e) {
+    // unavailable
+  }
+  return false;
+}
+
+function clearStorage() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    // unavailable
+  }
+}
+
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveToStorage, 500);
+}
+
+// ════════════════════════════════════════════════════════════
+// URL HASH SHARING
+// ════════════════════════════════════════════════════════════
 
 function encodeSource(source) {
   try {
@@ -727,27 +2204,41 @@ shareBtn.addEventListener('click', () => {
   const url = `${window.location.origin}${window.location.pathname}#source=${encoded}`;
   window.location.hash = `source=${encoded}`;
   navigator.clipboard.writeText(url).then(() => {
-    const orig = shareBtn.textContent;
-    shareBtn.textContent = 'Copied!';
-    setTimeout(() => { shareBtn.textContent = orig; }, 1500);
+    showToast('Shareable URL copied to clipboard');
   }).catch(() => {
-    // Fallback: select the URL bar
     prompt('Copy this URL:', url);
   });
 });
 
-// ── Examples ──────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// PRESETS
+// ════════════════════════════════════════════════════════════
 
-examplesSelect.addEventListener('change', () => {
-  const key = examplesSelect.value;
-  if (EXAMPLES[key]) {
-    editor.value = EXAMPLES[key];
-    examplesSelect.selectedIndex = 0;
+presetSelect.addEventListener('change', () => {
+  const key = presetSelect.value;
+  if (PRESETS[key]) {
+    editor.value = PRESETS[key];
+    presetSelect.selectedIndex = 0;
+    onEditorChange();
     scheduleCompile();
   }
 });
 
-// ── Export ─────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// RESET BUTTON
+// ════════════════════════════════════════════════════════════
+
+resetBtn.addEventListener('click', () => {
+  clearStorage();
+  editor.value = PRESETS['breathing-dot'];
+  onEditorChange();
+  scheduleCompile();
+  showToast('Reset to default');
+});
+
+// ════════════════════════════════════════════════════════════
+// EXPORT — Copy & Download
+// ════════════════════════════════════════════════════════════
 
 function downloadFile(filename, content, mimeType) {
   const blob = new Blob([content], { type: mimeType });
@@ -761,38 +2252,73 @@ function downloadFile(filename, content, mimeType) {
   URL.revokeObjectURL(url);
 }
 
-exportSelect.addEventListener('change', () => {
-  const format = exportSelect.value;
-  exportSelect.selectedIndex = 0;
-  if (!wasmReady) return;
+function copyToClipboard(text, label) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast(`${label} copied to clipboard`);
+  }).catch(() => {
+    showToast('Failed to copy');
+  });
+}
 
+// Copy WGSL (both buttons)
+function handleCopyWgsl() {
+  if (!wasmReady) return;
   const source = editor.value;
   if (!source.trim()) return;
-
   try {
-    switch (format) {
-      case 'html': {
-        const html = compile_to_html(source);
-        downloadFile('shader.html', html, 'text/html');
-        break;
-      }
-      case 'component': {
-        const js = compile_to_component(source, 'game-shader');
-        downloadFile('shader-component.js', js, 'application/javascript');
-        break;
-      }
-      case 'wgsl': {
-        const wgsl = compile_to_wgsl(source);
-        downloadFile('shader.wgsl', wgsl, 'text/plain');
-        break;
-      }
-    }
+    const wgsl = compile_to_wgsl(source);
+    copyToClipboard(wgsl, 'WGSL');
   } catch (err) {
-    showError(`Export error: ${err.message || err}`);
+    showToast(`WGSL error: ${err.message || err}`);
+  }
+}
+
+copyWgslBtn.addEventListener('click', handleCopyWgsl);
+copyWgslBtn2.addEventListener('click', handleCopyWgsl);
+
+// Copy HTML
+copyHtmlBtn.addEventListener('click', () => {
+  if (!wasmReady) return;
+  const source = editor.value;
+  if (!source.trim()) return;
+  try {
+    const html = compile_to_html(source);
+    copyToClipboard(html, 'HTML');
+  } catch (err) {
+    showToast(`HTML error: ${err.message || err}`);
   }
 });
 
-// ── Compilation ───────────────────────────────────────────
+// Copy Component
+copyComponentBtn.addEventListener('click', () => {
+  if (!wasmReady) return;
+  const source = editor.value;
+  if (!source.trim()) return;
+  try {
+    const js = compile_to_component(source, 'game-shader');
+    copyToClipboard(js, 'Component');
+  } catch (err) {
+    showToast(`Component error: ${err.message || err}`);
+  }
+});
+
+// Download HTML
+downloadHtmlBtn.addEventListener('click', () => {
+  if (!wasmReady) return;
+  const source = editor.value;
+  if (!source.trim()) return;
+  try {
+    const html = compile_to_html(source);
+    downloadFile('shader.html', html, 'text/html');
+    showToast('Downloaded shader.html');
+  } catch (err) {
+    showToast(`Download error: ${err.message || err}`);
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// COMPILATION
+// ════════════════════════════════════════════════════════════
 
 let compileTimer = null;
 
@@ -815,23 +2341,13 @@ function hideError() {
 
 function showWarnings(warnings) {
   if (warnings && warnings.length > 0) {
-    warningBar.textContent = warnings.map(w => `⚠ ${w}`).join('\n');
+    warningBar.textContent = warnings.map(w => `\u26A0 ${w}`).join('\n');
     warningBar.classList.add('visible');
   } else {
     warningBar.textContent = '';
     warningBar.classList.remove('visible');
   }
 }
-
-copyWgslBtn.addEventListener('click', () => {
-  const text = wgslOutput.textContent;
-  if (!text || text.includes('will appear here')) return;
-  navigator.clipboard.writeText(text).then(() => {
-    const orig = copyWgslBtn.textContent;
-    copyWgslBtn.textContent = 'Copied!';
-    setTimeout(() => { copyWgslBtn.textContent = orig; }, 1200);
-  });
-});
 
 function doCompile() {
   if (!wasmReady) return;
@@ -849,11 +2365,10 @@ function doCompile() {
     return;
   }
 
-  // Validate first for status info
+  // Validate
   try {
     const info = validate(source);
     updateStatus(info);
-
     showWarnings(info.warnings || []);
 
     if (!info.valid) {
@@ -863,7 +2378,6 @@ function doCompile() {
       return;
     }
   } catch (err) {
-    // Validation itself threw — still try to compile
     showWarnings([]);
   }
 
@@ -878,7 +2392,7 @@ function doCompile() {
   } catch (err) {
     const msg = err.message || String(err);
     showError(msg);
-    wgslOutput.innerHTML = '<span class="wgsl-placeholder">Compilation error — see error bar</span>';
+    wgslOutput.innerHTML = '<span class="wgsl-placeholder">Compilation error \u2014 see error bar</span>';
     wgslSize.textContent = '';
     compileDot.className = 'status-dot error';
     statusCompile.textContent = 'error';
@@ -893,7 +2407,6 @@ function doCompile() {
     compileDot.className = 'status-dot';
     statusCompile.textContent = 'ok';
   } catch (err) {
-    // WGSL succeeded but HTML failed — show in preview message
     previewMessage.textContent = `Preview error: ${err.message || err}`;
     previewMessage.classList.remove('hidden');
     previewIframe.srcdoc = '';
@@ -943,11 +2456,22 @@ function resetStatus() {
   statusMouse.className = 'status-value';
 }
 
-// ── Editor Events ─────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// EDITOR EVENTS
+// ════════════════════════════════════════════════════════════
 
-editor.addEventListener('input', scheduleCompile);
+function onEditorChange() {
+  updateHighlight();
+  updateLineNumbers();
+  scheduleSave();
+}
 
-// Tab key support in textarea
+editor.addEventListener('input', () => {
+  onEditorChange();
+  scheduleCompile();
+});
+
+// Tab key: insert 2 spaces / dedent
 editor.addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
     e.preventDefault();
@@ -955,7 +2479,6 @@ editor.addEventListener('keydown', (e) => {
     const end = editor.selectionEnd;
 
     if (e.shiftKey) {
-      // Dedent: remove leading 2 spaces from current line
       const before = editor.value.substring(0, start);
       const lineStart = before.lastIndexOf('\n') + 1;
       const linePrefix = editor.value.substring(lineStart, start);
@@ -964,15 +2487,24 @@ editor.addEventListener('keydown', (e) => {
         editor.selectionStart = editor.selectionEnd = Math.max(start - 2, lineStart);
       }
     } else {
-      // Indent: insert 2 spaces
       editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
       editor.selectionStart = editor.selectionEnd = start + 2;
     }
+    onEditorChange();
     scheduleCompile();
+  }
+
+  // Ctrl+Enter / Cmd+Enter: force recompile
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    if (compileTimer) clearTimeout(compileTimer);
+    doCompile();
   }
 });
 
-// ── WebGPU Check ──────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// WebGPU Check
+// ════════════════════════════════════════════════════════════
 
 function checkWebGPU() {
   if (!navigator.gpu) {
@@ -981,14 +2513,22 @@ function checkWebGPU() {
   }
 }
 
-// ── Init ──────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
 
 checkWebGPU();
 
-// Load from URL hash, or load the Hello example
+// Priority: URL hash > localStorage > default preset
 if (!loadFromHash()) {
-  editor.value = EXAMPLES['hello'];
+  if (!loadFromStorage()) {
+    editor.value = PRESETS['breathing-dot'];
+  }
 }
+
+// Initial highlight + line numbers
+updateHighlight();
+updateLineNumbers();
 
 // Load WASM and compile
 loadWasm().then(() => {

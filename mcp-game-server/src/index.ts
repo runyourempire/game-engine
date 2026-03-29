@@ -9,7 +9,10 @@
  * Tools:
  *   - compile: Compile .game source to WGSL, HTML, or Web Component output
  *   - validate: Check .game source for syntax/semantic errors
- *   - list_primitives: List all available GAME language primitives
+ *   - lint: Validate + surface structured warnings with suggestions
+ *   - list_primitives: List all 37 GAME language builtins with type states
+ *   - list_stdlib: List all stdlib modules and their exported functions
+ *   - list_presets: List all available preset names grouped by category
  *
  * Resources:
  *   - game://language-reference: The .game language specification
@@ -128,143 +131,520 @@ function runCompiler(args: string[]): Promise<{ stdout: string; stderr: string; 
 // Primitives Data (embedded — avoids file I/O at runtime for this tool)
 // =============================================================================
 
+/**
+ * All 37 builtins from the GAME compiler (builtins.rs), organized by type state transition.
+ *
+ * Type state pipeline: Position -> Sdf -> Color
+ * - Position -> Position: domain transforms (before SDF evaluation)
+ * - Position -> Sdf: SDF generators (shapes + noise)
+ * - Sdf -> Sdf: SDF modifiers (post-shape adjustments)
+ * - Sdf -> Color: bridge functions (glow, shade, emissive)
+ * - Position -> Color: full-screen generators (gradient, spectrum)
+ * - Color -> Color: post-processing and color adjustments
+ */
 const PRIMITIVES_DATA = {
-  sdf_primitives: {
-    description: "Signed distance field primitives. Produce sdf_result. Use in fn: pipe chains.",
+  _meta: {
+    total_builtins: 37,
+    type_states: ["Position", "Sdf", "Color"],
+    pipeline_explanation:
+      "GAME uses a type-state pipeline: Position -> Sdf -> Color. " +
+      "Each builtin consumes one state and produces another. " +
+      "The pipe operator | chains them left-to-right. " +
+      "Domain ops (Position->Position) go first, then SDF generators (Position->Sdf), " +
+      "then SDF modifiers (Sdf->Sdf), then bridges (Sdf->Color), then color processors (Color->Color). " +
+      "The compiler enforces valid transitions at compile time.",
+  },
+  sdf_generators: {
+    description: "Position -> Sdf: Generate signed distance fields from position. Place after domain ops in pipe chain.",
     entries: [
-      { name: "circle", syntax: "circle(r)", params: "r: radius (default 0.5)" },
-      { name: "sphere", syntax: "sphere(r)", params: "r: radius (default 0.5, uses 3D SDF projected to 2D)" },
-      { name: "ring", syntax: "ring(radius, thickness)", params: "radius: ring center distance (default 0.3), thickness: wall width (default 0.04)" },
-      { name: "box", syntax: "box(w, h)", params: "w: width (default 0.5), h: height (default 0.5)" },
-      { name: "torus", syntax: "torus(R, r)", params: "R: major radius (default 0.3), r: minor radius (default 0.05)" },
-      { name: "line", syntax: "line(x1, y1, x2, y2, thickness)", params: "Segment endpoints + thickness (default 0.02)" },
-      { name: "polygon", syntax: "polygon(sides, radius)", params: "sides: number of sides (default 6), radius: size (default 0.3)" },
-      { name: "star", syntax: "star(points, outer, inner)", params: "points: number (default 5), outer: radius (default 0.4), inner: radius (default 0.2)" },
+      { name: "circle", syntax: "circle(radius)", params: [{ name: "radius", default: 0.2 }], input: "Position", output: "Sdf" },
+      { name: "ring", syntax: "ring(radius, width)", params: [{ name: "radius", default: 0.3 }, { name: "width", default: 0.02 }], input: "Position", output: "Sdf" },
+      { name: "star", syntax: "star(points, radius, inner)", params: [{ name: "points", default: 5 }, { name: "radius", default: 0.3 }, { name: "inner", default: 0.15 }], input: "Position", output: "Sdf" },
+      { name: "box", syntax: "box(w, h)", params: [{ name: "w", default: 0.2 }, { name: "h", default: 0.2 }], input: "Position", output: "Sdf" },
+      { name: "polygon", syntax: "polygon(sides, radius)", params: [{ name: "sides", default: 6 }, { name: "radius", default: 0.3 }], input: "Position", output: "Sdf" },
+      { name: "fbm", syntax: "fbm(scale, octaves, persistence, lacunarity)", params: [{ name: "scale", default: 1.0 }, { name: "octaves", default: 4 }, { name: "persistence", default: 0.5 }, { name: "lacunarity", default: 2.0 }], input: "Position", output: "Sdf" },
+      { name: "simplex", syntax: "simplex(scale)", params: [{ name: "scale", default: 1.0 }], input: "Position", output: "Sdf" },
+      { name: "voronoi", syntax: "voronoi(scale)", params: [{ name: "scale", default: 5.0 }], input: "Position", output: "Sdf" },
+      { name: "concentric_waves", syntax: "concentric_waves(amplitude, width, frequency)", params: [{ name: "amplitude", default: 1.0 }, { name: "width", default: 0.5 }, { name: "frequency", default: 3.0 }], input: "Position", output: "Sdf" },
     ],
   },
-  domain_operations: {
-    description: "Transform position before SDF evaluation. Place before shapes in pipe chain.",
+  sdf_to_color: {
+    description: "Sdf -> Color: Bridge SDF distance to color output. Place after SDF generators/modifiers.",
     entries: [
-      { name: "translate", syntax: "translate(x, y)", params: "x/y: offset (default 0.0)" },
-      { name: "rotate", syntax: "rotate(angle)", params: "angle: radians (default 0.0). Use time expressions for animation." },
-      { name: "scale", syntax: "scale(s)", params: "s: uniform scale factor (default 1.0). SDF result auto-corrected." },
-      { name: "repeat", syntax: "repeat(spacing)", params: "spacing: grid cell size (default 1.0). Infinite tiling." },
-      { name: "mirror", syntax: "mirror(axis)", params: "axis: 'x', 'y', or 'xy' (default 'xy'). Reflect across axis." },
-      { name: "twist", syntax: "twist(amount)", params: "amount: twist strength (default 1.0). Twists along Y axis." },
+      { name: "glow", syntax: "glow(intensity)", params: [{ name: "intensity", default: 1.5 }], input: "Sdf", output: "Color" },
+      { name: "shade", syntax: "shade(r, g, b)", params: [{ name: "r", default: 1.0 }, { name: "g", default: 1.0 }, { name: "b", default: 1.0 }], input: "Sdf", output: "Color" },
+      { name: "emissive", syntax: "emissive(intensity)", params: [{ name: "intensity", default: 1.0 }], input: "Sdf", output: "Color" },
+    ],
+  },
+  color_processors: {
+    description: "Color -> Color: Modify color output. Post-processing and color adjustments.",
+    entries: [
+      { name: "tint", syntax: "tint(r, g, b)", params: [{ name: "r", default: 1.0 }, { name: "g", default: 1.0 }, { name: "b", default: 1.0 }], input: "Color", output: "Color", note: "Accepts named colors: tint(gold), tint(cyan), etc." },
+      { name: "bloom", syntax: "bloom(threshold, strength)", params: [{ name: "threshold", default: 0.3 }, { name: "strength", default: 2.0 }], input: "Color", output: "Color" },
+      { name: "grain", syntax: "grain(amount)", params: [{ name: "amount", default: 0.1 }], input: "Color", output: "Color" },
+      { name: "blend", syntax: "blend(factor)", params: [{ name: "factor", default: 0.5 }], input: "Color", output: "Color" },
+      { name: "vignette", syntax: "vignette(strength, radius)", params: [{ name: "strength", default: 0.5 }, { name: "radius", default: 0.8 }], input: "Color", output: "Color" },
+      { name: "tonemap", syntax: "tonemap(exposure)", params: [{ name: "exposure", default: 1.0 }], input: "Color", output: "Color" },
+      { name: "scanlines", syntax: "scanlines(frequency, intensity)", params: [{ name: "frequency", default: 200 }, { name: "intensity", default: 0.3 }], input: "Color", output: "Color" },
+      { name: "chromatic", syntax: "chromatic(offset)", params: [{ name: "offset", default: 0.005 }], input: "Color", output: "Color" },
+      { name: "saturate_color", syntax: "saturate_color(amount)", params: [{ name: "amount", default: 1.0 }], input: "Color", output: "Color" },
+      { name: "glitch", syntax: "glitch(intensity)", params: [{ name: "intensity", default: 0.5 }], input: "Color", output: "Color" },
+    ],
+  },
+  position_transforms: {
+    description: "Position -> Position: Transform coordinates before SDF evaluation. Place at the start of pipe chains.",
+    entries: [
+      { name: "translate", syntax: "translate(x, y)", params: [{ name: "x", default: 0.0 }, { name: "y", default: 0.0 }], input: "Position", output: "Position" },
+      { name: "rotate", syntax: "rotate(angle)", params: [{ name: "angle", default: 0.0 }], input: "Position", output: "Position", note: "Use time expressions for animation: rotate(time * 0.5)" },
+      { name: "scale", syntax: "scale(s)", params: [{ name: "s", default: 1.0 }], input: "Position", output: "Position" },
+      { name: "twist", syntax: "twist(amount)", params: [{ name: "amount", default: 0.0 }], input: "Position", output: "Position" },
+      { name: "mirror", syntax: "mirror(axis)", params: [{ name: "axis", default: 0.0 }], input: "Position", output: "Position", note: "0=X axis, 1=Y axis" },
+      { name: "repeat", syntax: "repeat(count)", params: [{ name: "count", default: 4.0 }], input: "Position", output: "Position" },
+      { name: "domain_warp", syntax: "domain_warp(amount, freq)", params: [{ name: "amount", default: 0.1 }, { name: "freq", default: 3.0 }], input: "Position", output: "Position" },
+      { name: "curl_noise", syntax: "curl_noise(frequency, amplitude)", params: [{ name: "frequency", default: 1.0 }, { name: "amplitude", default: 0.1 }], input: "Position", output: "Position" },
+      { name: "displace", syntax: "displace(strength)", params: [{ name: "strength", default: 0.1 }], input: "Position", output: "Position", note: "Noise-based displacement before SDF evaluation" },
     ],
   },
   sdf_modifiers: {
-    description: "Modify an existing SDF. Place after a shape in the pipe chain.",
+    description: "Sdf -> Sdf: Modify SDF result after shape generation. Place after SDF generators.",
     entries: [
-      { name: "mask_arc", syntax: "mask_arc(angle)", params: "angle: arc extent in radians (0..6.283). Clips SDF to arc sector." },
-      { name: "displace", syntax: "displace(strength)", params: "strength: noise displacement amount (default 0.1). Uses simplex noise." },
-      { name: "round", syntax: "round(r)", params: "r: rounding radius (default 0.05). Rounds sharp edges." },
-      { name: "onion", syntax: "onion(thickness)", params: "thickness: shell wall width (default 0.02). Creates concentric shells." },
-      { name: "threshold", syntax: "threshold(value)", params: "Binary step threshold on SDF result. value: cutoff (default 0.5). Produces hard edges." },
+      { name: "mask_arc", syntax: "mask_arc(angle)", params: [{ name: "angle", default: null }], input: "Sdf", output: "Sdf", note: "Clips SDF to arc sector (0..tau). Required param, no default." },
+      { name: "threshold", syntax: "threshold(cutoff)", params: [{ name: "cutoff", default: 0.5 }], input: "Sdf", output: "Sdf" },
+      { name: "onion", syntax: "onion(thickness)", params: [{ name: "thickness", default: 0.02 }], input: "Sdf", output: "Sdf", note: "Creates concentric shells from any SDF" },
+      { name: "round", syntax: "round(radius)", params: [{ name: "radius", default: 0.02 }], input: "Sdf", output: "Sdf", note: "Rounds sharp corners/edges" },
     ],
   },
-  noise_functions: {
-    description: "Procedural noise as SDF source. Produces sdf_result.",
+  position_to_color: {
+    description: "Position -> Color: Full-screen color generators. Bypass SDF stage entirely.",
     entries: [
-      { name: "fbm", syntax: "fbm(pos, octaves:N, persistence:P, lacunarity:L)", params: "Fractal Brownian Motion. pos: coordinate (default p), octaves: 1-8 (default 6), persistence (default 0.5), lacunarity (default 2.0)" },
-      { name: "simplex", syntax: "simplex(frequency)", params: "frequency: spatial frequency (default 1.0). Smooth organic noise." },
-      { name: "voronoi", syntax: "voronoi(frequency)", params: "frequency: cell density (default 1.0). Cellular/crystal pattern." },
-      { name: "curl_noise", syntax: "curl_noise(pos, frequency, amplitude)", params: "Curl of 2D simplex noise. Creates flowing, divergence-free patterns. pos: coordinate (default p), frequency (default 1.0), amplitude (default 1.0)" },
-      { name: "concentric_waves", syntax: "concentric_waves(origins, decay, speed)", params: "Expanding concentric wave pattern from center. origins: number of wave centers (default 1), decay: falloff (default 1.0), speed: expansion rate (default 1.0)" },
-    ],
-  },
-  glow: {
-    description: "Convert SDF distance to glow intensity. Bridges SDF state to Glow state.",
-    entries: [
-      { name: "glow", syntax: "glow(intensity)", params: "intensity: glow strength (default 2.0). Exponential distance falloff." },
-    ],
-  },
-  shading_and_color: {
-    description: "Color stages. Can follow SDF, glow, or other color stages.",
-    entries: [
-      { name: "shade", syntax: "shade(albedo: color, emissive: color)", params: "Named params. albedo: base color vec3f (default 0.8), emissive: glow color vec3f (default 0.0)" },
-      { name: "emissive", syntax: "emissive()", params: "Quick self-illuminating gold glow." },
-      { name: "colormap", syntax: "colormap()", params: "Maps SDF distance to color gradient (dark blue to gold)." },
-      { name: "spectrum", syntax: "spectrum(bass, mid, treble)", params: "Audio-reactive concentric rings. Each param maps to frequency band intensity." },
-      { name: "tint", syntax: "tint(color)", params: "Multiplies current glow/color by a color. Accepts named colors or vec3f." },
-      { name: "gradient", syntax: "gradient(color_a, color_b, direction)", params: "Spatial gradient. direction: 'x', 'y', or 'radial' (default 'y')." },
-      { name: "particles", syntax: "particles(count, size, color, trail)", params: "Hash-based pseudo-particle field. count: number of particles (default 1000), size: particle radius (default 1.5), color: named color or vec3f (default white), trail: motion blur length (default 0.0)" },
-    ],
-  },
-  post_processing: {
-    description: "Screen-space effects. Apply after color stages in the pipe chain.",
-    entries: [
-      { name: "bloom", syntax: "bloom(threshold, intensity)", params: "threshold: luminance cutoff (default 0.6), intensity: bloom strength (default 1.5)" },
-      { name: "chromatic", syntax: "chromatic(strength)", params: "strength: RGB separation amount (default 0.5)" },
-      { name: "vignette", syntax: "vignette(strength)", params: "strength: edge darkening (default 0.3)" },
-      { name: "grain", syntax: "grain(amount)", params: "amount: noise intensity (default 0.02)" },
-      { name: "fog", syntax: "fog(density, color)", params: "density: fog thickness (default 1.0), color: fog color vec3f (default black)" },
-      { name: "glitch", syntax: "glitch(intensity)", params: "intensity: artifact strength (default 0.5). Digital distortion effect." },
-      { name: "scanlines", syntax: "scanlines(count, intensity)", params: "count: line frequency (default 100), intensity: darkening (default 0.3)" },
-      { name: "tonemap", syntax: "tonemap(exposure)", params: "exposure: brightness (default 1.0). Reinhard-style HDR compression." },
-      { name: "invert", syntax: "invert()", params: "Inverts all colors (1.0 - rgb)." },
-      { name: "saturate_color", syntax: "saturate_color(amount)", params: "amount: saturation multiplier (default 1.5). >1 increases, <1 decreases." },
-      { name: "iridescent", syntax: "iridescent(strength)", params: "Thin-film interference / rainbow color shift effect. strength: effect intensity (default 0.3). Best after shading stages." },
+      { name: "gradient", syntax: "gradient(color_a, color_b, mode)", params: [{ name: "color_a", default: null }, { name: "color_b", default: null }, { name: "mode", default: null }], input: "Position", output: "Color", note: "mode: 'x', 'y', or 'radial'. Colors can be named: gradient(deep_blue, black, \"radial\")" },
+      { name: "spectrum", syntax: "spectrum(bass, mid, treble)", params: [{ name: "bass", default: 0.0 }, { name: "mid", default: 0.0 }, { name: "treble", default: 0.0 }], input: "Position", output: "Color", note: "Audio-reactive concentric rings per frequency band" },
     ],
   },
   signals: {
-    description: "Real-time signals for parameter modulation via the ~ operator. Use: param: base ~ signal * scale",
+    description: "Real-time signals for parameter modulation via the ~ operator. Syntax: param: base ~ signal * scale",
     entries: [
-      { name: "audio.bass", syntax: "~ audio.bass", params: "Low frequency FFT band (0..1)" },
-      { name: "audio.mid", syntax: "~ audio.mid", params: "Mid frequency FFT band (0..1)" },
-      { name: "audio.treble", syntax: "~ audio.treble", params: "High frequency FFT band (0..1)" },
-      { name: "audio.energy", syntax: "~ audio.energy", params: "Overall audio energy (0..1)" },
-      { name: "audio.beat", syntax: "~ audio.beat", params: "Beat detection impulse (0 or 1)" },
-      { name: "mouse.x", syntax: "~ mouse.x", params: "Normalized cursor X (0..1)" },
-      { name: "mouse.y", syntax: "~ mouse.y", params: "Normalized cursor Y (0..1)" },
-      { name: "data.*", syntax: "~ data.fieldname", params: "Data signal bound to Web Component property. E.g., data.value, data.progress" },
+      { name: "audio.bass", syntax: "~ audio.bass", description: "Low frequency FFT band (0..1)" },
+      { name: "audio.mid", syntax: "~ audio.mid", description: "Mid frequency FFT band (0..1)" },
+      { name: "audio.treble", syntax: "~ audio.treble", description: "High frequency FFT band (0..1)" },
+      { name: "audio.energy", syntax: "~ audio.energy", description: "Overall audio energy (0..1)" },
+      { name: "audio.beat", syntax: "~ audio.beat", description: "Beat detection impulse (0 or 1)" },
+      { name: "mouse.x", syntax: "~ mouse.x", description: "Normalized cursor X (0..1)" },
+      { name: "mouse.y", syntax: "~ mouse.y", description: "Normalized cursor Y (0..1)" },
+      { name: "data.*", syntax: "~ data.fieldname", description: "Web Component property binding. E.g., data.value, data.progress" },
+      { name: "time", syntax: "time", description: "Elapsed seconds (wraps at 120s). Use in expressions: time * 0.5, sin(time)" },
     ],
   },
   named_colors: {
-    description: "Built-in color names for use with tint(), shade(), gradient().",
+    description: "Built-in color names for use with tint(), shade(), gradient(). Pass as bare identifiers.",
     entries: [
-      { name: "black", syntax: "tint(black)", params: "vec3f(0.0, 0.0, 0.0)" },
-      { name: "white", syntax: "tint(white)", params: "vec3f(1.0, 1.0, 1.0)" },
-      { name: "red", syntax: "tint(red)", params: "vec3f(1.0, 0.0, 0.0)" },
-      { name: "green", syntax: "tint(green)", params: "vec3f(0.0, 1.0, 0.0)" },
-      { name: "blue", syntax: "tint(blue)", params: "vec3f(0.0, 0.0, 1.0)" },
-      { name: "cyan", syntax: "tint(cyan)", params: "vec3f(0.0, 1.0, 1.0)" },
-      { name: "orange", syntax: "tint(orange)", params: "vec3f(1.0, 0.5, 0.0)" },
-      { name: "gold", syntax: "tint(gold)", params: "vec3f(0.831, 0.686, 0.216)" },
-      { name: "ember", syntax: "tint(ember)", params: "vec3f(0.8, 0.2, 0.05)" },
-      { name: "frost", syntax: "tint(frost)", params: "vec3f(0.85, 0.92, 1.0)" },
-      { name: "ivory", syntax: "tint(ivory)", params: "vec3f(1.0, 0.97, 0.92)" },
-      { name: "midnight", syntax: "tint(midnight)", params: "vec3f(0.0, 0.0, 0.1)" },
-      { name: "obsidian", syntax: "tint(obsidian)", params: "vec3f(0.04, 0.04, 0.06)" },
-      { name: "deep_blue", syntax: "tint(deep_blue)", params: "vec3f(0.0, 0.02, 0.15)" },
+      { name: "black", rgb: [0.0, 0.0, 0.0] },
+      { name: "white", rgb: [1.0, 1.0, 1.0] },
+      { name: "red", rgb: [1.0, 0.0, 0.0] },
+      { name: "green", rgb: [0.0, 1.0, 0.0] },
+      { name: "blue", rgb: [0.0, 0.0, 1.0] },
+      { name: "cyan", rgb: [0.0, 1.0, 1.0] },
+      { name: "orange", rgb: [1.0, 0.5, 0.0] },
+      { name: "gold", rgb: [0.831, 0.686, 0.216] },
+      { name: "ember", rgb: [0.8, 0.2, 0.05] },
+      { name: "frost", rgb: [0.85, 0.92, 1.0] },
+      { name: "ivory", rgb: [1.0, 0.97, 0.92] },
+      { name: "midnight", rgb: [0.0, 0.0, 0.1] },
+      { name: "obsidian", rgb: [0.04, 0.04, 0.06] },
+      { name: "deep_blue", rgb: [0.0, 0.02, 0.15] },
     ],
   },
   language_features: {
     description: "Core language constructs beyond pipe chains.",
     entries: [
-      { name: "define", syntax: "define name(params) { stages }", params: "Reusable macro. Expands inline at compile time. E.g., define glow_ring(r, t) { ring(r, t) | glow(2.0) }" },
-      { name: "layer", syntax: "layer name { fn: chain }", params: "Named visual layer. Multiple layers composite additively. Params use ~ for modulation." },
-      { name: "arc", syntax: "arc { time label { transitions } }", params: "Timeline system. Moments at timestamps with param transitions. Supports ALL keyword: `ALL.intensity -> 0.0 ease(smooth) over 2s` targets all params named intensity across layers. E.g., 0:03 \"expand\" { radius -> 0.5 ease(expo_out) over 2s }" },
-      { name: "lens", syntax: "lens { mode: raymarch ... }", params: "Camera/render mode. Default: flat (2D). Options: raymarch (with orbit camera)." },
-      { name: "math constants", syntax: "pi, tau, e, phi", params: "pi=3.14159, tau=6.28318, e=2.71828, phi=1.61803 (golden ratio)" },
-      { name: "import", syntax: "import \"path\" expose name1, name2", params: "Import defines from external .game files. Also supports `expose ALL` to import everything." },
-      { name: "react", syntax: "react { signal -> action }", params: "Map user inputs to actions. Signals: mouse.click, key(\"x\"), mouse.x/y, audio.field > threshold. Actions: arc.pause_toggle, arc.restart, param.set(value), param.toggle(a, b), param.bias(amount). E.g., `key(\"r\") -> arc.restart`, `audio.bass > 0.5 -> opacity.toggle(0.0, 1.0)`" },
-      { name: "resonate", syntax: "resonate { a.param ~ b.param * factor, damping: 0.95 }", params: "Cross-layer parameter feedback. Bidirectional coupling between layers. Damping prevents runaway feedback." },
+      { name: "define", syntax: "define name(params) { stages }", description: "Reusable macro. Expands inline at compile time. E.g., define glow_ring(r, t) { ring(r, t) | glow(2.0) }" },
+      { name: "layer", syntax: "layer name { fn: chain }", description: "Named visual layer. Multiple layers composite additively. Params use ~ for modulation." },
+      { name: "arc", syntax: "arc { time label { transitions } }", description: "Timeline system. Moments at timestamps with param transitions. Supports ALL keyword. E.g., 0:03 \"expand\" { radius -> 0.5 ease(expo_out) over 2s }" },
+      { name: "lens", syntax: "lens { mode: flat | raymarch }", description: "Camera/render mode. Default: flat (2D). Options: raymarch (3D with orbit camera)." },
+      { name: "import", syntax: "import \"path\" expose name1, name2", description: "Import defines from external .game files. Supports `expose ALL`." },
+      { name: "react", syntax: "react { signal -> action }", description: "Map user inputs to actions. Signals: mouse.click, key(\"x\"), audio.field > threshold. Actions: arc.pause_toggle, arc.restart, param.set(value), param.toggle(a, b), param.bias(amount)." },
+      { name: "resonate", syntax: "resonate { a.param ~ b.param * factor, damping: 0.95 }", description: "Cross-layer parameter feedback. Bidirectional coupling. Damping prevents runaway." },
+      { name: "math constants", syntax: "pi, tau, e, phi", description: "pi=3.14159, tau=6.28318, e=2.71828, phi=1.61803 (golden ratio)" },
     ],
   },
   easing_functions: {
-    description: "Easing functions for arc timeline transitions. Use: ease(name)",
+    description: "Easing functions for arc timeline transitions. Syntax: ease(name)",
     entries: [
-      { name: "linear", syntax: "ease(linear)", params: "Constant speed (default)" },
-      { name: "smooth", syntax: "ease(smooth)", params: "Smooth ease in/out (smoothstep)" },
-      { name: "expo_in", syntax: "ease(expo_in)", params: "Slow start, fast end" },
-      { name: "expo_out", syntax: "ease(expo_out)", params: "Fast start, slow end" },
-      { name: "cubic_in_out", syntax: "ease(cubic_in_out)", params: "Cubic ease in/out" },
-      { name: "elastic", syntax: "ease(elastic)", params: "Springy overshoot" },
-      { name: "bounce", syntax: "ease(bounce)", params: "Ball-drop bounce at end" },
+      { name: "linear", description: "Constant speed (default)" },
+      { name: "smooth", description: "Smooth ease in/out (smoothstep)" },
+      { name: "expo_in", description: "Slow start, fast end" },
+      { name: "expo_out", description: "Fast start, slow end" },
+      { name: "cubic_in_out", description: "Cubic ease in/out" },
+      { name: "elastic", description: "Springy overshoot" },
+      { name: "bounce", description: "Ball-drop bounce at end" },
     ],
   },
 };
+
+// =============================================================================
+// Stdlib Data (planned standard library modules)
+// =============================================================================
+
+/**
+ * Standard library modules available via `import "stdlib/module" expose func1, func2`.
+ * Each module provides reusable define macros for common patterns.
+ */
+const STDLIB_DATA = {
+  primitives: {
+    description: "Extended shape primitives built from core builtins",
+    functions: [
+      { name: "rounded_box", signature: "rounded_box(w, h, r)", description: "Box with rounded corners" },
+      { name: "hollow_ring", signature: "hollow_ring(radius, width)", description: "Ring with transparent center" },
+      { name: "cross_shape", signature: "cross_shape(size, thickness)", description: "Plus/cross shape from two boxes" },
+      { name: "gear", signature: "gear(teeth, radius, depth)", description: "Gear shape with teeth around a ring" },
+      { name: "soft_dot", signature: "soft_dot(radius)", description: "Circle with very soft glow falloff" },
+      { name: "diamond", signature: "diamond(size)", description: "Rotated box (45 degrees)" },
+    ],
+  },
+  noise: {
+    description: "Noise-based pattern generators",
+    functions: [
+      { name: "marble", signature: "marble(scale, distortion)", description: "Marble-like veined texture via warped fbm" },
+      { name: "turbulence", signature: "turbulence(scale, octaves)", description: "Absolute-value fbm for turbulent patterns" },
+      { name: "cloud", signature: "cloud(scale, softness)", description: "Soft cloud-like noise field" },
+      { name: "cellular", signature: "cellular(scale)", description: "Voronoi-based cellular pattern" },
+      { name: "flow", signature: "flow(scale, speed)", description: "Animated flowing noise" },
+    ],
+  },
+  post: {
+    description: "Preset post-processing chains",
+    functions: [
+      { name: "cinematic_grade", signature: "cinematic_grade()", description: "Tonemap + vignette + subtle grain" },
+      { name: "retro_crt", signature: "retro_crt()", description: "Scanlines + chromatic + vignette" },
+      { name: "dream_glow", signature: "dream_glow()", description: "Heavy bloom + soft grain" },
+      { name: "noir", signature: "noir()", description: "Desaturated + high contrast + grain" },
+      { name: "glitch_fx", signature: "glitch_fx()", description: "Glitch + chromatic + scanlines" },
+    ],
+  },
+  backgrounds: {
+    description: "Full-screen background generators",
+    functions: [
+      { name: "starfield", signature: "starfield(density, speed)", description: "Animated star field background" },
+      { name: "nebula", signature: "nebula(color_a, color_b)", description: "Nebula-like gradient with fbm overlay" },
+      { name: "gradient_bg", signature: "gradient_bg(color_a, color_b)", description: "Simple vertical gradient background" },
+      { name: "radial_bg", signature: "radial_bg(center_color, edge_color)", description: "Radial gradient from center" },
+      { name: "noise_bg", signature: "noise_bg(scale, color)", description: "Subtle noise-textured background" },
+    ],
+  },
+  transitions: {
+    description: "Animated transition effects for arc timelines",
+    functions: [
+      { name: "fade_circle", signature: "fade_circle(progress)", description: "Circular wipe from center" },
+      { name: "dissolve_ring", signature: "dissolve_ring(progress)", description: "Ring dissolution transition" },
+      { name: "bloom_wipe", signature: "bloom_wipe(progress)", description: "Bloom-based reveal" },
+      { name: "shatter", signature: "shatter(progress)", description: "Voronoi-based shatter effect" },
+      { name: "ripple", signature: "ripple(progress)", description: "Concentric wave reveal" },
+    ],
+  },
+  ui: {
+    description: "UI-oriented components (loading, progress, badges)",
+    functions: [
+      { name: "loading_spinner", signature: "loading_spinner(speed, color)", description: "Rotating arc loading indicator" },
+      { name: "progress_ring", signature: "progress_ring(progress, color)", description: "Ring that fills based on progress (0-1)" },
+      { name: "pulse_dot", signature: "pulse_dot(color)", description: "Breathing dot indicator" },
+      { name: "metric_ring", signature: "metric_ring(value, max, color)", description: "Data-driven metric ring" },
+      { name: "badge", signature: "badge(shape, color)", description: "Achievement/status badge" },
+    ],
+  },
+  patterns: {
+    description: "Repeating geometric patterns",
+    functions: [
+      { name: "checkerboard", signature: "checkerboard(scale)", description: "Classic checkerboard" },
+      { name: "stripes", signature: "stripes(angle, width)", description: "Angled stripe pattern" },
+      { name: "dots", signature: "dots(scale, radius)", description: "Dot grid pattern" },
+      { name: "hexgrid", signature: "hexgrid(scale)", description: "Hexagonal grid" },
+      { name: "concentric_rings", signature: "concentric_rings(count, width)", description: "Evenly spaced concentric rings" },
+      { name: "spiral", signature: "spiral(arms, tightness)", description: "Spiral pattern" },
+      { name: "wave_pattern", signature: "wave_pattern(frequency, amplitude)", description: "Sine wave pattern" },
+      { name: "grid_lines", signature: "grid_lines(spacing, thickness)", description: "Grid line overlay" },
+    ],
+  },
+  motion: {
+    description: "Animation primitives for parameter modulation",
+    functions: [
+      { name: "orbit_motion", signature: "orbit_motion(radius, speed)", description: "Circular orbit path" },
+      { name: "pendulum", signature: "pendulum(amplitude, speed)", description: "Pendulum swing" },
+      { name: "bounce_motion", signature: "bounce_motion(height, speed)", description: "Bouncing motion" },
+      { name: "pulse", signature: "pulse(speed, depth)", description: "Rhythmic pulse" },
+      { name: "drift", signature: "drift(speed_x, speed_y)", description: "Slow directional drift" },
+      { name: "spin", signature: "spin(speed)", description: "Continuous rotation" },
+      { name: "breathe", signature: "breathe(speed, depth)", description: "Gentle breathing animation" },
+      { name: "flicker", signature: "flicker(speed, randomness)", description: "Candle-like flicker" },
+    ],
+  },
+  color: {
+    description: "Color palette and gradient presets",
+    functions: [
+      { name: "warm_glow", signature: "warm_glow(intensity)", description: "Warm amber/gold glow" },
+      { name: "cool_glow", signature: "cool_glow(intensity)", description: "Cool blue/cyan glow" },
+      { name: "fire", signature: "fire(intensity)", description: "Fire color palette (red -> orange -> yellow)" },
+      { name: "ice", signature: "ice(intensity)", description: "Ice color palette (white -> blue -> deep blue)" },
+      { name: "ocean", signature: "ocean(depth)", description: "Ocean color palette (cyan -> deep blue)" },
+      { name: "neon", signature: "neon(hue)", description: "Neon color by hue angle" },
+      { name: "sunset_gradient", signature: "sunset_gradient()", description: "Sunset color gradient" },
+      { name: "northern_lights", signature: "northern_lights()", description: "Aurora-like color shift" },
+      { name: "lava", signature: "lava(intensity)", description: "Lava color palette (dark red -> orange -> yellow)" },
+      { name: "crystal", signature: "crystal(facets)", description: "Crystalline color refraction" },
+    ],
+  },
+  audio: {
+    description: "Audio-reactive visual patterns",
+    functions: [
+      { name: "beat_ring", signature: "beat_ring(radius, color)", description: "Ring that pulses on beat" },
+      { name: "spectrum_bars", signature: "spectrum_bars(count, color)", description: "Vertical frequency bars" },
+      { name: "bass_pulse", signature: "bass_pulse(shape, color)", description: "Shape that pulses with bass" },
+      { name: "treble_scatter", signature: "treble_scatter(count, color)", description: "Particles scattered by treble" },
+      { name: "energy_field", signature: "energy_field(color)", description: "Noise field modulated by energy" },
+      { name: "rhythm_ring", signature: "rhythm_ring(radius, color)", description: "Ring with rhythm-synced segments" },
+      { name: "frequency_glow", signature: "frequency_glow(band, color)", description: "Glow intensity tied to frequency band" },
+      { name: "audio_terrain", signature: "audio_terrain(color)", description: "Terrain-like visualization of audio" },
+    ],
+  },
+  effects: {
+    description: "Complex visual effects composed from multiple builtins",
+    functions: [
+      { name: "electric", signature: "electric(intensity, color)", description: "Electric arc/lightning effect" },
+      { name: "plasma_field", signature: "plasma_field(scale, speed)", description: "Animated plasma field" },
+      { name: "smoke", signature: "smoke(density, speed)", description: "Rising smoke effect" },
+      { name: "hologram", signature: "hologram(color)", description: "Holographic scan lines + flicker" },
+      { name: "interference", signature: "interference(frequency)", description: "Wave interference pattern" },
+      { name: "caustics", signature: "caustics(scale, speed)", description: "Water caustics light pattern" },
+      { name: "static_noise", signature: "static_noise(intensity)", description: "TV static noise" },
+      { name: "retro_screen", signature: "retro_screen(color)", description: "CRT monitor effect" },
+      { name: "dream_haze", signature: "dream_haze(intensity)", description: "Dreamy soft-focus haze" },
+      { name: "void_pulse", signature: "void_pulse(color)", description: "Dark pulsing void effect" },
+    ],
+  },
+};
+
+// =============================================================================
+// Presets Data
+// =============================================================================
+
+/**
+ * Preset configurations: complete .game snippets for common use cases.
+ * Grouped by category. Each preset is a named starting point.
+ */
+const PRESETS_DATA = {
+  ambient: {
+    description: "Ambient background visuals for idle/decorative use",
+    presets: ["breathing-orb", "slow-nebula", "starfield-drift", "gradient-pulse", "noise-shimmer"],
+  },
+  ui: {
+    description: "UI components for dashboards and app interfaces",
+    presets: ["progress-ring", "loading-spinner", "status-orb", "metric-gauge", "notification-pulse", "health-bar"],
+  },
+  audio: {
+    description: "Audio-reactive visualizations",
+    presets: ["spectrum-ring", "bass-pulse", "beat-circles", "frequency-bars", "energy-field", "audio-landscape"],
+  },
+  cinematic: {
+    description: "Full-screen cinematic effects with timelines",
+    presets: ["galaxy-spin", "neon-grid", "fire-ice-duality", "kaleidoscope", "particle-storm", "ocean-depth"],
+  },
+  transition: {
+    description: "Transition effects for scene changes",
+    presets: ["circle-wipe", "dissolve", "bloom-reveal", "shatter-out", "ripple-fade"],
+  },
+  generative: {
+    description: "Procedural generative art patterns",
+    presets: ["voronoi-crystal", "fbm-landscape", "spiral-tunnel", "fractal-tree", "interference-pattern"],
+  },
+  data: {
+    description: "Data-driven visualizations bound to external values",
+    presets: ["data-ring", "completion-burst", "level-indicator", "score-display", "achievement-badge"],
+  },
+};
+
+// =============================================================================
+// Lint Helpers — static analysis and error suggestions
+// =============================================================================
+
+/** All 37 builtin names from the compiler */
+const ALL_BUILTIN_NAMES = new Set([
+  "circle", "ring", "star", "box", "polygon", "fbm", "simplex", "voronoi", "concentric_waves",
+  "glow", "shade", "emissive",
+  "tint", "bloom", "grain", "blend", "vignette", "tonemap", "scanlines", "chromatic", "saturate_color", "glitch",
+  "translate", "rotate", "scale", "twist", "mirror", "repeat", "domain_warp", "curl_noise", "displace",
+  "mask_arc", "threshold", "onion", "round",
+  "gradient", "spectrum",
+]);
+
+/** Common misspellings / removed builtins that people try to use */
+const BUILTIN_SUGGESTIONS: Record<string, string> = {
+  "sphere": "circle (GAME is 2D — use circle for round shapes)",
+  "torus": "ring (use ring(radius, width) for torus-like shapes)",
+  "line": "box (use a thin box for line shapes, or two translate + circle for endpoints)",
+  "fog": "vignette (fog was removed — use vignette for depth darkening)",
+  "invert": "saturate_color(0.0) for desaturation, or use shade with inverted colors",
+  "iridescent": "chromatic (iridescent was removed — use chromatic for color shifting)",
+  "colormap": "gradient (use gradient(color_a, color_b, mode) for color mapping)",
+  "particles": "Use fbm or voronoi with repeat for particle-like effects",
+  "colour": "color (use American English spelling)",
+  "glow_ring": "This is typically a define — use: ring(r, w) | glow(intensity)",
+};
+
+interface LintSuggestion {
+  line: number | null;
+  level: "info" | "warning";
+  message: string;
+}
+
+/**
+ * Static analysis of .game source for common mistakes.
+ * Runs without the compiler — purely pattern-based.
+ */
+function lintSource(source: string): LintSuggestion[] {
+  const suggestions: LintSuggestion[] = [];
+  const lines = source.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNum = i + 1;
+    const trimmed = line.trim();
+
+    // Skip comments
+    if (trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
+
+    // Check for pipe chains with wrong ordering
+    const pipeMatch = trimmed.match(/^fn:\s*(.+)/);
+    if (pipeMatch) {
+      const chain = pipeMatch[1];
+      const stages = chain.split("|").map((s) => s.trim());
+      let lastState = "Position";
+      for (const stage of stages) {
+        const funcName = stage.match(/^(\w+)/)?.[1];
+        if (!funcName) continue;
+
+        // Check for unknown builtins
+        if (!ALL_BUILTIN_NAMES.has(funcName) && funcName !== "p") {
+          const suggestion = BUILTIN_SUGGESTIONS[funcName];
+          if (suggestion) {
+            suggestions.push({
+              line: lineNum,
+              level: "warning",
+              message: `'${funcName}' is not a builtin. Did you mean: ${suggestion}`,
+            });
+          }
+        }
+
+        // Check for common state mismatches
+        if (funcName === "glow" && lastState === "Color") {
+          suggestions.push({
+            line: lineNum,
+            level: "warning",
+            message: "glow() expects Sdf input but is placed after a Color stage. Move it before tint/bloom/etc.",
+          });
+        }
+        if ((funcName === "translate" || funcName === "rotate" || funcName === "scale") && lastState === "Sdf") {
+          suggestions.push({
+            line: lineNum,
+            level: "warning",
+            message: `${funcName}() is a Position->Position transform but appears after an SDF stage. Place domain ops before shapes.`,
+          });
+        }
+
+        // Track state
+        if (["circle", "ring", "star", "box", "polygon", "fbm", "simplex", "voronoi", "concentric_waves"].includes(funcName!)) {
+          lastState = "Sdf";
+        } else if (["glow", "shade", "emissive", "gradient", "spectrum"].includes(funcName!)) {
+          lastState = "Color";
+        } else if (["tint", "bloom", "grain", "blend", "vignette", "tonemap", "scanlines", "chromatic", "saturate_color", "glitch"].includes(funcName!)) {
+          lastState = "Color";
+        }
+      }
+    }
+
+    // Check for blend as pass name (reserved keyword)
+    if (trimmed.match(/^pass\s+blend\b/)) {
+      suggestions.push({
+        line: lineNum,
+        level: "warning",
+        message: "'blend' is a keyword — do not use it as a pass name. Choose a different name.",
+      });
+    }
+
+    // Check for WGSL mod gotcha in expressions
+    if (trimmed.includes(" % ") && !trimmed.startsWith("#")) {
+      suggestions.push({
+        line: lineNum,
+        level: "info",
+        message: "WGSL % is truncation-based (not floor-based like GLSL mod). Use game_mod() for floor-based modulo.",
+      });
+    }
+  }
+
+  // Check for missing cinematic block
+  if (!source.includes("cinematic")) {
+    suggestions.push({
+      line: null,
+      level: "warning",
+      message: "No 'cinematic' block found. Every .game file should have: cinematic \"Title\" { ... }",
+    });
+  }
+
+  return suggestions;
+}
+
+/**
+ * Generate helpful suggestions based on compiler error messages.
+ */
+function getErrorSuggestions(errorOutput: string): LintSuggestion[] {
+  const suggestions: LintSuggestion[] = [];
+  const lower = errorOutput.toLowerCase();
+
+  if (lower.includes("unexpected token")) {
+    suggestions.push({
+      line: null,
+      level: "info",
+      message: "Check for missing commas between parameters, unclosed braces, or incorrect pipe chain syntax.",
+    });
+  }
+
+  if (lower.includes("type mismatch") || lower.includes("state mismatch")) {
+    suggestions.push({
+      line: null,
+      level: "info",
+      message: "Type state mismatch. Pipeline order: Position->Position (domain ops) | Position->Sdf (shapes) | Sdf->Sdf (modifiers) | Sdf->Color (glow/shade) | Color->Color (post fx). Check your pipe chain order.",
+    });
+  }
+
+  if (lower.includes("unknown function") || lower.includes("unknown builtin")) {
+    const nameMatch = errorOutput.match(/unknown (?:function|builtin)\s+['"`]?(\w+)/i);
+    if (nameMatch) {
+      const name = nameMatch[1];
+      const suggestion = BUILTIN_SUGGESTIONS[name];
+      if (suggestion) {
+        suggestions.push({
+          line: null,
+          level: "info",
+          message: `'${name}' is not available. Try: ${suggestion}`,
+        });
+      } else {
+        suggestions.push({
+          line: null,
+          level: "info",
+          message: `'${name}' is not a recognized builtin. Use list_primitives to see all 37 available builtins.`,
+        });
+      }
+    }
+  }
+
+  if (lower.includes("expected") && lower.includes("cinematic")) {
+    suggestions.push({
+      line: null,
+      level: "info",
+      message: "Every .game file must start with: cinematic \"Title\" { ... }",
+    });
+  }
+
+  return suggestions;
+}
 
 // =============================================================================
 // Server Setup
@@ -273,7 +653,7 @@ const PRIMITIVES_DATA = {
 const server = new Server(
   {
     name: "game-server",
-    version: "0.2.0",
+    version: "0.3.0",
   },
   {
     capabilities: {
@@ -353,12 +733,78 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "list_primitives",
         description:
-          "Return all available GAME language primitives grouped by category: SDF primitives, boolean ops, " +
-          "domain ops, noise functions, shading, post-processing, camera modes, and signals. " +
-          "Each entry includes syntax and parameter descriptions.",
+          "Return all 37 GAME language builtins organized by type-state transition " +
+          "(Position->Sdf, Sdf->Color, Color->Color, Position->Position, Sdf->Sdf, Position->Color). " +
+          "Each entry includes exact parameter names, defaults, and input/output states. " +
+          "Also includes named colors, signals, language features, and easing functions.",
         inputSchema: {
           type: "object" as const,
-          properties: {},
+          properties: {
+            category: {
+              type: "string",
+              enum: [
+                "all",
+                "sdf_generators",
+                "sdf_to_color",
+                "color_processors",
+                "position_transforms",
+                "sdf_modifiers",
+                "position_to_color",
+                "signals",
+                "named_colors",
+                "language_features",
+                "easing_functions",
+              ],
+              description: "Filter by category (default: 'all'). Use specific categories to reduce output size.",
+            },
+          },
+        },
+      },
+      {
+        name: "list_stdlib",
+        description:
+          "Return all GAME standard library modules and their exported functions. " +
+          "Stdlib modules are imported via `import \"stdlib/module\" expose func1, func2`. " +
+          "Covers: primitives, noise, post, backgrounds, transitions, ui, patterns, motion, color, audio, effects.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            module: {
+              type: "string",
+              enum: [
+                "all",
+                "primitives",
+                "noise",
+                "post",
+                "backgrounds",
+                "transitions",
+                "ui",
+                "patterns",
+                "motion",
+                "color",
+                "audio",
+                "effects",
+              ],
+              description: "Filter by module name (default: 'all'). Returns only the specified module.",
+            },
+          },
+        },
+      },
+      {
+        name: "list_presets",
+        description:
+          "Return all available GAME preset names grouped by category " +
+          "(ambient, ui, audio, cinematic, transition, generative, data). " +
+          "Presets are complete .game file starting points for common use cases.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            category: {
+              type: "string",
+              enum: ["all", "ambient", "ui", "audio", "cinematic", "transition", "generative", "data"],
+              description: "Filter by category (default: 'all').",
+            },
+          },
         },
       },
     ],
@@ -537,10 +983,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const result = await runCompiler(["compile", tempFile]);
 
           // Parse warnings from stderr (compiler prints "warning: <msg>" lines)
-          const warnings = result.stderr
+          const warningLines = result.stderr
             .split("\n")
-            .filter((line) => line.startsWith("warning:"))
-            .map((line) => line.replace(/^warning:\s*/, "").trim());
+            .filter((line) => line.toLowerCase().startsWith("warning:"));
+
+          const warnings = warningLines.map((line) => {
+            const msg = line.replace(/^warning:\s*/i, "").trim();
+            // Try to extract line numbers from patterns like "line 5:" or "[5:12]"
+            const lineMatch = msg.match(/(?:line\s+(\d+)|\[(\d+):(\d+)\])/);
+            return {
+              message: msg,
+              line: lineMatch ? parseInt(lineMatch[1] || lineMatch[2]) : null,
+              column: lineMatch && lineMatch[3] ? parseInt(lineMatch[3]) : null,
+            };
+          });
+
+          // Run static analysis on the source for common issues
+          const suggestions = lintSource(source);
 
           if (result.exitCode === 0) {
             return {
@@ -551,7 +1010,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     {
                       valid: true,
                       warnings,
+                      suggestions,
                       warningCount: warnings.length,
+                      suggestionCount: suggestions.length,
                     },
                     null,
                     2
@@ -560,25 +1021,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               ],
             };
           } else {
-            const errorOutput = result.stderr
+            const errorLines = result.stderr
               .split("\n")
-              .filter((line) => !line.startsWith("warning:"))
-              .join("\n")
-              .trim() || result.stdout.trim() || "Unknown error";
+              .filter((line) => !line.toLowerCase().startsWith("warning:"));
+            const errorOutput = errorLines.join("\n").trim() || result.stdout.trim() || "Unknown error";
+
+            // Try to extract structured error info
+            const errorLineMatch = errorOutput.match(/(?:line\s+(\d+)|\[(\d+):(\d+)\]|:(\d+):(\d+))/);
+            const errorInfo: Record<string, unknown> = {
+              valid: false,
+              error: errorOutput,
+              errorLine: errorLineMatch ? parseInt(errorLineMatch[1] || errorLineMatch[2] || errorLineMatch[4]) : null,
+              errorColumn: errorLineMatch ? parseInt(errorLineMatch[3] || errorLineMatch[5]) || null : null,
+              warnings,
+              suggestions: [
+                ...suggestions,
+                ...getErrorSuggestions(errorOutput),
+              ],
+              warningCount: warnings.length,
+            };
+
             return {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify(
-                    {
-                      valid: false,
-                      error: errorOutput,
-                      warnings,
-                      warningCount: warnings.length,
-                    },
-                    null,
-                    2
-                  ),
+                  text: JSON.stringify(errorInfo, null, 2),
                 },
               ],
             };
@@ -592,11 +1059,82 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // list_primitives
       // -----------------------------------------------------------------------
       case "list_primitives": {
+        const category = ((args as Record<string, unknown>)?.category as string) || "all";
+
+        let data: Record<string, unknown>;
+        if (category === "all") {
+          data = PRIMITIVES_DATA;
+        } else if (category in PRIMITIVES_DATA) {
+          data = { [category]: (PRIMITIVES_DATA as Record<string, unknown>)[category] };
+        } else {
+          throw new Error(
+            `Unknown category '${category}'. Valid: all, sdf_generators, sdf_to_color, ` +
+            `color_processors, position_transforms, sdf_modifiers, position_to_color, ` +
+            `signals, named_colors, language_features, easing_functions`
+          );
+        }
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(PRIMITIVES_DATA, null, 2),
+              text: JSON.stringify(data, null, 2),
+            },
+          ],
+        };
+      }
+
+      // -----------------------------------------------------------------------
+      // list_stdlib
+      // -----------------------------------------------------------------------
+      case "list_stdlib": {
+        const module = ((args as Record<string, unknown>)?.module as string) || "all";
+
+        let data: Record<string, unknown>;
+        if (module === "all") {
+          data = STDLIB_DATA;
+        } else if (module in STDLIB_DATA) {
+          data = { [module]: (STDLIB_DATA as Record<string, unknown>)[module] };
+        } else {
+          throw new Error(
+            `Unknown stdlib module '${module}'. Valid: all, primitives, noise, post, ` +
+            `backgrounds, transitions, ui, patterns, motion, color, audio, effects`
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2),
+            },
+          ],
+        };
+      }
+
+      // -----------------------------------------------------------------------
+      // list_presets
+      // -----------------------------------------------------------------------
+      case "list_presets": {
+        const presetCategory = ((args as Record<string, unknown>)?.category as string) || "all";
+
+        let data: Record<string, unknown>;
+        if (presetCategory === "all") {
+          data = PRESETS_DATA;
+        } else if (presetCategory in PRESETS_DATA) {
+          data = { [presetCategory]: (PRESETS_DATA as Record<string, unknown>)[presetCategory] };
+        } else {
+          throw new Error(
+            `Unknown preset category '${presetCategory}'. Valid: all, ambient, ui, audio, ` +
+            `cinematic, transition, generative, data`
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2),
             },
           ],
         };
@@ -908,20 +1446,30 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
 
 **Description:** ${description}
 
-Use the language reference, primitives, and examples below to produce valid .game source code. The output should be a complete cinematic block that compiles with the GAME compiler.
+## Type State Pipeline
+
+GAME uses a type-state pipeline enforced at compile time:
+- Position -> Position: translate, rotate, scale, twist, mirror, repeat, domain_warp, curl_noise, displace
+- Position -> Sdf: circle, ring, star, box, polygon, fbm, simplex, voronoi, concentric_waves
+- Sdf -> Sdf: mask_arc, threshold, onion, round
+- Sdf -> Color: glow, shade, emissive
+- Position -> Color: gradient, spectrum (bypasses SDF)
+- Color -> Color: tint, bloom, grain, blend, vignette, tonemap, scanlines, chromatic, saturate_color, glitch
+
+Chain order: domain ops | shapes | modifiers | bridge | post-processing
 
 ## Guidelines
 
-1. Start with a \`cinematic\` block with an appropriate title
-2. Define layers with generative functions using the pipe operator \`|\`
-3. Use modulation (\`~\`) to make parameters react to signals (time, audio, mouse)
-4. Add a lens block with appropriate mode (flat for 2D, raymarch for 3D)
-5. Include post-processing effects for visual polish
-6. Use descriptive names for layers and parameters
-7. Keep it focused — a good effect is simple but expressive
-8. Use \`define\` for reusable patterns when you repeat similar pipe chains
-9. Use \`resonate\` for cross-layer feedback when multiple layers should interact
-10. Use \`react\` to map user inputs (mouse, keyboard) to actions
+1. Start with a \`cinematic "Title" { ... }\` block
+2. Define layers with \`fn:\` pipe chains following the type-state pipeline
+3. Use modulation (\`~\`) to make parameters react to signals (time, audio, mouse, data.*)
+4. Include post-processing effects for visual polish (bloom, vignette, grain)
+5. Use descriptive names for layers and parameters
+6. Keep it focused — a good effect is simple but expressive
+7. Use \`define\` for reusable patterns when you repeat similar pipe chains
+8. Use \`resonate\` for cross-layer feedback when multiple layers should interact
+9. Use \`react\` to map user inputs (mouse, keyboard) to actions
+10. Named colors: black, white, red, green, blue, cyan, orange, gold, ember, frost, ivory, midnight, obsidian, deep_blue
 
 ## Output Format
 
@@ -1230,7 +1778,7 @@ async function main() {
     process.exit(0);
   });
 
-  console.error("GAME MCP Server v0.2.0 started — 3 tools, 3 resources, 3 prompts | stdio transport");
+  console.error("GAME MCP Server v0.3.0 started — 6 tools, 3 resources, 6 prompts | stdio transport");
 }
 
 main().catch((error) => {

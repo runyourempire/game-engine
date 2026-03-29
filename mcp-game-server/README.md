@@ -1,6 +1,6 @@
 # mcp-game-server
 
-MCP (Model Context Protocol) server for the **GAME compiler** (Generative Animation Matrix Engine). Exposes the GAME compiler to AI agents — compile `.game` DSL source into WebGPU shaders, HTML pages, and Web Components directly from Claude Code, Cursor, or any MCP-compatible host.
+MCP (Model Context Protocol) server for the **GAME compiler** (Generative Animation Matrix Engine). Exposes the GAME compiler to AI agents -- compile `.game` DSL source into WebGPU shaders, HTML pages, and Web Components directly from Claude Code, Cursor, or any MCP-compatible host.
 
 ## Tools
 
@@ -8,7 +8,10 @@ MCP (Model Context Protocol) server for the **GAME compiler** (Generative Animat
 |------|-------------|
 | `compile` | Compile `.game` source to WGSL shader, self-contained HTML, or ES module Web Component |
 | `validate` | Check `.game` source for syntax/semantic errors without full compilation output |
-| `list_primitives` | List all available GAME language primitives grouped by category |
+| `lint` | Validate + surface structured warnings, error line numbers, and helpful suggestions |
+| `list_primitives` | List all 37 GAME builtins organized by type-state transition, with params and defaults |
+| `list_stdlib` | List all stdlib modules and their exported functions (11 modules) |
+| `list_presets` | List all preset names grouped by category (7 categories) |
 
 ## Resources
 
@@ -22,7 +25,12 @@ MCP (Model Context Protocol) server for the **GAME compiler** (Generative Animat
 
 | Name | Description |
 |------|-------------|
-| `generate-component` | Guide an LLM to produce valid `.game` source from a natural language description |
+| `generate-component` | Generate `.game` source from a natural language description |
+| `iterate-component` | Refine existing `.game` source based on feedback |
+| `describe-component` | Describe what a `.game` visual effect does in plain English |
+| `generate-4da-component` | Generate a `.game` component tuned for the 4DA desktop app |
+| `generate-achievement-visual` | Generate achievement/progression UI visuals |
+| `generate-game-indicator` | Generate status indicators, health bars, and XP gauges |
 
 ## Setup
 
@@ -97,20 +105,34 @@ Input: {
 }
 ```
 
-### Validate syntax
+### Lint with structured warnings
 
 ```
-Tool: validate
+Tool: lint
 Input: {
-  "source": "cinematic { layer { fn: sphere(0.5) | glow(1.0) } }"
+  "source": "cinematic \"Test\" {\n  layer {\n    fn: glow(2.0) | circle(0.3)\n  }\n}"
 }
 ```
 
-### List available primitives
+### List builtins by category
 
 ```
 Tool: list_primitives
-Input: {}
+Input: { "category": "sdf_generators" }
+```
+
+### List stdlib modules
+
+```
+Tool: list_stdlib
+Input: { "module": "patterns" }
+```
+
+### List presets
+
+```
+Tool: list_presets
+Input: { "category": "ui" }
 ```
 
 ### Generate from description (prompt)
@@ -118,7 +140,7 @@ Input: {}
 ```
 Prompt: generate-component
 Arguments: {
-  "description": "A pulsing nebula that reacts to mouse movement with iridescent colors"
+  "description": "A pulsing nebula that reacts to mouse movement"
 }
 ```
 

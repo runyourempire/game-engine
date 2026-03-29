@@ -1,8 +1,8 @@
 {
   "name": "game-language",
   "displayName": "GAME Language",
-  "description": "Syntax highlighting, live preview, and diagnostics for .game shader files",
-  "version": "0.1.0",
+  "description": "Syntax highlighting, autocomplete, hover docs, live preview, and diagnostics for .game shader files",
+  "version": "0.2.0",
   "publisher": "runyourempire",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages", "Visualization"],
