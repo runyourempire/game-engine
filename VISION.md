@@ -52,7 +52,7 @@ No two viewings are identical. Because the visuals emerge from mathematical inte
 Audio isn't layered on top — it's woven into the mathematics. Audio frequencies modulate visual parameters directly. The bass makes terrain rise. The treble scatters particles. The cinematic doesn't just play alongside music — it IS the music, rendered as light.
 
 ### 5. Interactive by Nature
-Every parameter can be bound to an input signal. Mouse position shifts gravity. Microphone input adds turbulence. Touch creates ripples. The viewer isn't watching a film — they're playing an instrument whose output is cinema.
+Every parameter can be bound to an input signal. Mouse position shifts gravity. Audio frequencies drive visual parameters. Data properties update in real-time. The viewer isn't watching a film — they're playing an instrument whose output is cinema.
 
 ## Who Is This For?
 
@@ -64,10 +64,11 @@ Every parameter can be bound to an input signal. Mouse position shifts gravity. 
 
 ## Technology
 
-- **Language:** Custom DSL (`.game` files) — compiles to GPU shader programs
-- **Rendering:** WebGPU (primary) with WebGL2 fallback. SDF raymarching, not polygon rasterization.
+- **Language:** Custom DSL (`.game` files) — compiles to WGSL + GLSL shader programs
+- **Compiler:** Rust (lexer, parser, optimizer, codegen) — also available as WASM for in-browser compilation
+- **Rendering:** WebGPU (primary) with WebGL2 fallback. SDF-based, not polygon rasterization.
 - **Audio:** Web Audio API with FFT analysis feeding shader uniforms
-- **Runtime:** Rust + wgpu, compiled to WASM for browser distribution
+- **Runtime:** Pure JavaScript + WebGPU/WebGL2 — zero runtime dependencies, no WASM in the output
 - **Distribution:** Share a URL. The cinematic runs in the browser. No install.
 
 ## The Name

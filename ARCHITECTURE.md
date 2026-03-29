@@ -10,344 +10,242 @@
                     |  (Rust, runs once)    |
                     +-----------+-----------+
                                 |
-                    +-----------+-----------+
-                    |  Compiled Artifacts   |
-                    |  - WGSL shaders       |
-                    |  - Uniform layouts    |
-                    |  - Timeline data      |
-                    |  - Audio config       |
-                    |  - Resonance graph    |
-                    +-----------+-----------+
-                                |
-                    +-----------+-----------+
-                    |    GAME Runtime       |
-                    |  (Rust/WASM + WebGPU) |
-                    +-----------+-----------+
-                          |    |    |
-                   +------+    |    +------+
-                   |           |           |
-              Audio FFT   GPU Render   Input Events
-              Analyzer    Pipeline     Handler
-                   |           |           |
-                   +-----+-----+-----------+
-                         |
-                    Uniform Buffer
-                    (params + mods + arcs + resonance)
-                         |
-                      Screen
+              +---------+-------+-------+---------+
+              |         |               |         |
+         WGSL shader  GLSL shader   JS module   HTML shell
+         (.wgsl)      (.frag)     (Web Component) (standalone)
 ```
 
-## The Compiler
+## Compilation Pipeline
 
-### Phase 1: Lexer
-
-Tokenizes `.game` source into:
-- Keywords: `cinematic`, `layer`, `lens`, `arc`, `react`, `resonate`, `define`, `import`, `fn`
-- Operators: `|`, `~`, `->`, `:`, `*`, `+`, `-`, `/`, `>`, `<`
-- Literals: numbers, strings, identifiers, timestamps, colors
-- Structural: `{`, `}`, `[`, `]`, `(`, `)`, `,`
-- Comments: `#` to end of line
-
-### Phase 2: Parser
-
-Builds an AST:
+Six phases, each operating on the output of the previous:
 
 ```
-Cinematic
-  ├── Properties (resolution, audio, ...)
-  ├── Defines (reusable functions)
-  ├── Layers
-  │     ├── name
-  │     ├── fn: PipeChain [Op, Op, Op, ...]
-  │     ├── params: [(name, base_value, modulation?), ...]
-  │     └── depth: base | heart | top
-  ├── Lenses
-  │     ├── name
-  │     ├── mode: raymarch | volume | flat | particles
-  │     ├── fields: [layer_ref, ...]
-  │     ├── camera: CameraConfig
-  │     ├── lighting: LightingConfig
-  │     └── post: [PostEffect, ...]
-  ├── Arc
-  │     └── moments: [(timestamp, name, transitions), ...]
-  ├── Resonance
-  │     └── bindings: [(target, source_expr, damping), ...]
-  └── React
-        └── reactions: [(signal, trigger?, action), ...]
+Source -> [1. Lexer] -> [2. Parser] -> [3. Resolver] -> [4. Optimizer] -> [5. Codegen] -> [6. Runtime]
 ```
 
-### Phase 3: Resolver
+### Phase 1: Lexer (`lexer.rs`)
 
-Validates and enriches the AST:
+Tokenizes `.game` source using the `logos` crate. Produces a flat token stream with spans.
 
-1. **Reference resolution** — verify all `layer.param` references in arcs, resonance, and modulations point to real declarations
-2. **Type checking** — ensure modulation sources are numeric, color operations get colors, vectors get vectors
-3. **Resonance cycle detection** — find feedback loops, verify damping is applied, compute evaluation order (topological sort with cycle-breaking)
-4. **Define inlining** — expand `define` calls into their pipe chains
-5. **Import resolution** — load and merge imported `.game` files
-6. **Depth ordering** — resolve layer composition order from `depth` annotations
+Token categories:
+- **Keywords:** `cinematic`, `layer`, `import`, `as`, `arc`, `resonate`, `memory`, `cast`, `over`, `listen`, `voice`, `score`, `breed`, `from`, `inherit`, `mutate`, `gravity`, `project`, `signals`, `route`, `hear`, `feel`, `lens`, `react`, `define`, `expose`, `ease`, `ALL`
+- **Operators:** `|`, `~`, `->`, `>>`, `<>`, `!!`, `..`, `?`, `+`, `-`, `*`, `/`, `^`, `=`, `>`, `<`
+- **Literals:** floats, integers, strings, identifiers
+- **Units:** seconds (`3.5s`), milliseconds (`200ms`), bars (`4bars`), degrees (`45deg`), Hz, bpm
+- **Structural:** `{`, `}`, `(`, `)`, `[`, `]`, `:`, `,`, `.`
+- **Comments:** `#` or `//` to end of line
 
-### Phase 4: Code Generation
+### Phase 2: Parser (`parser.rs`)
 
-The heart of the compiler. For each lens, generates:
-
-**A. WGSL Shader Code**
-
-Merges all pipe chain operations for the lens's fields into a single WGSL fragment shader:
+Hand-written recursive descent parser. Builds a typed AST:
 
 ```
-layer terrain:
-  fn: fbm(p * scale, octaves: 6) | shade(albedo: gold)
-
-  Compiles to WGSL:
-
-  fn sdf_terrain(p: vec3f) -> f32 {
-    return fbm(p * uniforms.terrain_scale, 6);
-  }
-
-  fn shade_terrain(p: vec3f, normal: vec3f) -> vec4f {
-    let albedo = vec3f(0.831, 0.686, 0.216); // gold
-    return pbr(albedo, normal, uniforms.light_dir, ...);
-  }
+Program
+  ├── Imports: [Import]
+  ├── Cinematics: [Cinematic]
+  │     ├── name: String
+  │     ├── Layers: [Layer]
+  │     │     ├── name, opts, memory, cast
+  │     │     └── body: Params [...] | Pipeline [Stage, Stage, ...]
+  │     ├── Arcs: [ArcBlock]
+  │     │     └── entries: [target, from, to, duration, easing]
+  │     ├── Resonates: [ResonateBlock]
+  │     │     └── entries: [source -> target.field * weight]
+  │     ├── Listen: ListenBlock?
+  │     │     └── signals: [name, algorithm, params]
+  │     ├── Voice: VoiceBlock?
+  │     │     └── nodes: [name, kind, params]
+  │     ├── Score: ScoreBlock?
+  │     │     └── tempo, motifs, phrases, sections, arrange
+  │     ├── Gravity: GravityBlock?
+  │     │     └── force_law, damping, bounds (reflect|wrap|none)
+  │     ├── Lenses: [Lens]
+  │     │     └── properties, post: [Stage]
+  │     ├── React: ReactBlock?
+  │     │     └── reactions: [signal -> action]
+  │     └── Defines: [DefineBlock]
+  │           └── name, params, body: [Stage]
+  ├── Breeds: [BreedBlock]
+  │     └── name, parents, inherit_rules, mutations
+  └── Projects: [ProjectBlock]
+        └── mode (flat|dome|cube|led), source, params
 ```
 
-SDF operations compose via mathematical operators:
-- `union(a, b)` → `min(sdf_a(p), sdf_b(p))`
-- `smooth_union(a, b, k)` → smooth min function
-- `intersect(a, b)` → `max(sdf_a(p), sdf_b(p))`
-- `subtract(a, b)` → `max(sdf_a(p), -sdf_b(p))`
+### AST Node Types
 
-Domain operations transform the input position:
-- `translate(x, y, z)` → `p - vec3(x, y, z)`
-- `rotate(angle, axis)` → rotation matrix applied to `p`
-- `repeat(spacing)` → `fract(p / spacing) * spacing - spacing * 0.5`
-- `twist(amount)` → rotate p.xz by `p.y * amount`
+**Top-level:** `Program`, `Import`, `Cinematic`, `BreedBlock`, `ProjectBlock`
 
-**B. Uniform Buffer Layout**
+**Cinematic children:** `Layer`, `ArcBlock`, `ArcEntry`, `ResonateBlock`, `ResonateEntry`, `ListenBlock`, `ListenSignal`, `VoiceBlock`, `VoiceNode`, `ScoreBlock`, `Motif`, `Phrase`, `Section`, `GravityBlock`, `Lens`, `ReactBlock`, `Reaction`, `DefineBlock`
 
-Every modulated parameter becomes a uniform:
+**Layer internals:** `LayerBody` (enum: `Params` | `Pipeline`), `Param`, `Stage`, `Arg`, `TemporalOp` (enum: `Delay` | `Smooth` | `Trigger` | `Range`)
 
-```wgsl
-struct Uniforms {
-  time: f32,
-  audio_bass: f32,
-  audio_mid: f32,
-  audio_treble: f32,
-  audio_energy: f32,
-  mouse_x: f32,
-  mouse_y: f32,
-  // ... per-layer params
-  terrain_scale: f32,       // base: 2.0
-  terrain_persistence: f32, // base: 0.5
-  crystals_density: f32,    // base: 4.0
-  sparks_freq: f32,         // base: 2.0
-  sparks_count: f32,        // base: 5000
-  // ... arc interpolation state
-  exposure: f32,
-  // ... resolution and aspect
-  resolution: vec2f,
-};
-```
+**Expressions:** `Expr` (enum: `Number`, `String`, `Ident`, `DottedIdent`, `Array`, `Paren`, `Neg`, `BinOp`, `Call`, `Duration`, `Ternary`)
 
-**C. Timeline Data**
+**Supporting:** `BinOp` (Add, Sub, Mul, Div, Pow, Gt, Lt), `Duration` (Seconds, Millis, Bars), `BoundsMode` (Reflect, Wrap, None), `ProjectMode` (Flat, Dome, Cube, Led), `InheritRule`, `Mutation`
 
-Arc moments compile to interpolation keyframes:
+### Phase 3: Resolver (`resolver.rs`)
 
-```
-[
-  { time: 0.0,  param: "terrain.scale", value: 0.5, ease: null },
-  { time: 20.0, param: "terrain.scale", value: 2.0, ease: "cubic_out", duration: 15.0 },
-  ...
-]
-```
+Resolves `import` declarations:
 
-**D. Audio Analysis Config**
+1. Locates files relative to source or in library directories
+2. Parses imported files
+3. Merges imported `define` blocks into the importing program
+4. Detects circular imports via visited-set tracking
+5. Resolves recursively for transitive imports
 
-Which FFT bands to extract, beat detection parameters:
+Define expansion happens separately in the codegen `analysis` module before shader generation.
 
-```
-{
-  fft_size: 2048,
-  bands: {
-    bass: { low: 20, high: 250 },
-    mid: { low: 250, high: 4000 },
-    treble: { low: 4000, high: 20000 },
-  },
-  beat_detection: true,
-  smoothing: 0.8,
-}
-```
+### Phase 4: Optimizer (`optimize.rs`)
 
-**E. Resonance Graph**
+Three AST-level passes (no intermediate representation):
 
-The cross-modulation topology:
+**Pass 1: Constant Folding**
+- Folds binary operations on numeric literals: `2.0 + 3.0` -> `5.0`
+- Folds identity operations: `x * 1` -> `x`, `x + 0` -> `x`, `x * 0` -> `0`
+- Folds known math calls with constant args: `sin(0.0)` -> `0.0`, `cos(0.0)` -> `1.0`, `min(3, 7)` -> `3`
+- Folds negation: `-7.0` literal
+- Operates bottom-up recursively
 
-```
-{
-  nodes: ["fire.freq", "ice.density", "fire.brightness", "ice.brightness"],
-  edges: [
-    { from: "ice.brightness", to: "fire.freq", weight: 2.0 },
-    { from: "fire.brightness", to: "ice.density", weight: -1.0 },
-  ],
-  damping: 0.95,
-  eval_order: ["fire.brightness", "ice.brightness", "fire.freq", "ice.density"],
-}
-```
+**Pass 2: No-op Stage Elimination**
+- Removes identity transform stages from pipelines:
+  - `translate(0, 0)` — zero displacement
+  - `scale(1)` — unit scale
+  - `rotate(0)` / `twist(0)` — zero rotation
 
-## The Runtime
+**Pass 3: Dead Uniform Detection**
+- Scans all expression trees in layers, lenses, arcs, resonates, defines, and react blocks
+- Reports uniforms declared in `Params`-body layers but never referenced anywhere
+- Does not remove them (advisory only)
 
-### Frame Loop (Audio-Clock Driven)
+### Phase 5: Code Generation (`codegen/`)
 
-```
-function frame() {
-  // 1. Time source: audio clock, NOT requestAnimationFrame
-  const t = audioContext.currentTime - startTime;
+Generates shader code and supporting JavaScript for each cinematic.
 
-  // 2. Audio analysis
-  analyser.getFloatFrequencyData(frequencyData);
-  const bass = averageBand(frequencyData, 20, 250);
-  const mid = averageBand(frequencyData, 250, 4000);
-  const treble = averageBand(frequencyData, 4000, 20000);
-  const energy = averageBand(frequencyData, 20, 20000);
-  const beat = detectBeat(energy, beatHistory);
+**Core modules:**
+- `wgsl.rs` — WGSL fragment + vertex shader generation
+- `glsl.rs` — GLSL fragment + vertex shader generation (WebGL2 fallback)
+- `stages.rs` — pipe chain stage compilation (maps builtins to shader code)
+- `expr.rs` — expression tree to shader expression compilation
 
-  // 3. Input state
-  const mouseX = inputState.mouseX;
-  const mouseY = inputState.mouseY;
-  const mouseVelocity = inputState.mouseVelocity;
+**Feature modules** (each generates JavaScript classes injected into the component):
+- `memory.rs` — frame persistence via feedback textures
+- `resonance.rs` — cross-layer modulation graph evaluation
+- `react.rs` — event-driven interaction handlers
+- `listen.rs` — custom audio signal DSP
+- `voice.rs` — synthesis graph (oscillators, filters)
+- `score.rs` — musical timeline scheduling
+- `breed.rs` — genetic recombination JS module
+- `gravity.rs` — particle physics compute shader
+- `project.rs` — vertex shader overrides for projection mapping
+- `temporal.rs` — delay/smooth/trigger/range operators
+- `cast.rs` — typed layer output handling
+- `analysis.rs` — define expansion, uniform extraction
 
-  // 4. Resonance evaluation (topological order)
-  for (const node of resonanceGraph.evalOrder) {
-    const incoming = resonanceGraph.edgesTo(node);
-    let modulation = 0;
-    for (const edge of incoming) {
-      modulation += currentValues[edge.from] * edge.weight;
-    }
-    currentValues[node] = currentValues[node] * damping + modulation;
-  }
+**Output per cinematic:**
+- WGSL fragment + vertex shaders
+- GLSL fragment + vertex shaders
+- Uniform layout (names + defaults)
+- JS module classes (listen, voice, score, breed, temporal, gravity)
+- Compute shader (gravity, if applicable)
 
-  // 5. Arc interpolation
-  for (const param of arcTimeline.params) {
-    const arcValue = interpolateArc(param, t);
-    if (arcValue !== null) baseValues[param] = arcValue;
-  }
+### Phase 6: Runtime (`runtime/`)
 
-  // 6. Modulation evaluation
-  for (const param of modulatedParams) {
-    const base = baseValues[param.name];
-    const modValue = evaluateModulation(param.modExpr, signals);
-    uniforms[param.name] = base + modValue + resonanceValues[param.name];
-  }
+Wraps shader output into usable artifacts:
 
-  // 7. Upload uniforms
-  device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+- `component.rs` — generates ES module Web Components (custom elements with Shadow DOM, WebGPU init, render loop, uniform binding, resize handling, cleanup)
+- `html.rs` — generates standalone HTML files (component + minimal shell)
+- `arc.rs` — arc interpolation JavaScript (keyframe evaluation, easing functions)
+- `helpers.rs` — shared JS snippets (WebGPU detection, error handling)
 
-  // 8. Render passes
-  const commandEncoder = device.createCommandEncoder();
-  for (const lens of lenses) {
-    const pass = commandEncoder.beginRenderPass(lens.renderPassDescriptor);
-    pass.setPipeline(lens.pipeline);
-    pass.setBindGroup(0, lens.bindGroup);
-    pass.draw(4, 1, 0, 0); // fullscreen quad
-    pass.end();
-  }
+## Type State Machine
 
-  // 9. Composite + global post-processing
-  compositePass(commandEncoder, lensOutputs, globalPostEffects);
-
-  // 10. Submit
-  device.queue.submit([commandEncoder.finish()]);
-  requestAnimationFrame(frame);
-}
-```
-
-### Shader Compilation Strategy
-
-To avoid startup stalls:
-
-1. **On load:** Parse `.game`, compile ALL shaders in parallel using `device.createShaderModuleAsync()`
-2. **Show progress:** Render a simple loading animation (itself a minimal shader) while compilation proceeds
-3. **Cache:** Store compiled shader modules in IndexedDB keyed by shader source hash. On reload, skip compilation for unchanged shaders.
-4. **Hot reload:** When a `.game` file changes (dev mode), diff the AST. Only recompile shaders for changed layers. Swap pipeline objects without interrupting playback.
-
-### Floating-Point Time Safety
-
-Time values are kept small to avoid precision loss:
-
-```wgsl
-// In the runtime, not the user's .game file
-fn safe_time(raw_time: f32, period: f32) -> f32 {
-  return fract(raw_time / period) * period;
-}
-
-// Expose multiple time scales to shaders
-uniforms.time_fast = safe_time(t, 10.0);   // wraps every 10s
-uniforms.time_slow = safe_time(t, 120.0);  // wraps every 2min
-uniforms.time_raw = t;                      // for arc interpolation only
-```
-
-Users never think about this. The compiler maps `time` references to the appropriate safe time scale based on context.
-
-## Distribution Model
-
-### Browser (Primary)
+The compiler enforces a type discipline on pipe chains via three shader states:
 
 ```
-your-cinematic/
-  index.html          # Minimal HTML shell (~200 bytes)
-  game_runtime.wasm   # Compiled Rust runtime (~500KB gzipped)
-  cinematic.game      # The scene description (~2-50KB)
-  audio.ogg           # The audio track
+Position ──[SDF generator]──> Sdf ──[bridge]──> Color ──[color processor]──> Color
+    |                           |
+    | [transform]               | [SDF modifier]
+    v                           v
+Position                      Sdf
+    |
+    | [full-screen generator]
+    v
+  Color
 ```
 
-Total: under 2MB for a complete interactive cinematic experience. Share a URL, it runs.
+**Position -> Position:** `translate`, `rotate`, `scale`, `twist`, `mirror`, `repeat`, `domain_warp`, `curl_noise`, `displace`
+**Position -> Sdf:** `circle`, `ring`, `star`, `box`, `polygon`, `fbm`, `simplex`, `voronoi`, `concentric_waves`
+**Position -> Color:** `gradient`, `spectrum`
+**Sdf -> Sdf:** `mask_arc`, `threshold`, `onion`, `round`
+**Sdf -> Color:** `glow`, `shade`, `emissive`
+**Color -> Color:** `tint`, `bloom`, `grain`, `blend`, `vignette`, `tonemap`, `scanlines`, `chromatic`, `saturate_color`, `glitch`
 
-### Native (Secondary)
+Invalid transitions (e.g., piping a Color result into an SDF generator) are caught during codegen.
 
-Same Rust runtime compiled as a native binary instead of WASM. Uses wgpu's Vulkan/Metal/DX12 backends directly. Higher performance ceiling for complex scenes.
+## Import Adapters (`adapters/`)
 
-```
-game-player cinematic.game           # Play a cinematic
-game-player cinematic.game --export  # Export to video
-game-player cinematic.game --dev     # Hot-reload mode
-```
+URI-schemed imports resolve to generated JavaScript adapter modules:
 
-### Embeddable (Tertiary)
+| Adapter | URI scheme | Generated code |
+|---------|-----------|----------------|
+| `shadertoy.rs` | `shadertoy://[id]` | Fetches and wraps a Shadertoy shader |
+| `midi.rs` | `midi://[channel]` | Web MIDI API input binding |
+| `osc.rs` | `osc://[host]:[port]/[path]` | OSC protocol via WebSocket |
+| `camera.rs` | `camera://[device]` | Webcam video texture input |
 
-The runtime as a library, embeddable in other applications:
+## Dev Server (`server/`)
 
-```rust
-use game_engine::{Cinematic, Runtime};
+Built on axum with `tower-livereload`:
 
-let cinematic = Cinematic::load("scene.game")?;
-let runtime = Runtime::new(gpu_device, audio_context);
-runtime.play(cinematic);
-```
+- `mod.rs` — server setup, file watcher (notify crate), recompilation on change
+- `page.rs` — HTML page builder (split-pane layout, tab bar, param sliders from uniform extraction)
+- `css.rs` — dark theme CSS for the dev UI
+- `export.rs` — framework export helpers (React wrapper, Vue SFC, CSS fallback generation)
+- `util.rs` — HTML/JSON escaping
 
-This is the path for eventual integration with other tools.
+Tabs: Preview (iframe), WGSL (syntax display + copy), Editor (textarea + compile/save).
+Right panel: component embed at selectable sizes + auto-generated param sliders.
 
-## Performance Budget
+## WASM Target (`wasm.rs`)
 
-### Target: 60fps at 1080p on integrated GPU
+Behind the `wasm` feature flag. Exposes compiler functions to JavaScript via `wasm-bindgen`:
 
-| System | Budget | Rationale |
-|--------|--------|-----------|
-| Audio FFT | <0.5ms/frame | 2048-point FFT is ~0.1ms on modern CPUs |
-| Resonance eval | <0.1ms/frame | Typically <20 nodes, simple arithmetic |
-| Arc interpolation | <0.1ms/frame | Binary search + lerp, trivially fast |
-| Modulation eval | <0.1ms/frame | Simple arithmetic per parameter |
-| Uniform upload | <0.2ms/frame | Single buffer write, <4KB typical |
-| Shader execution | <14ms/frame | The real budget. At 1080p, ~480 ALU ops/fragment |
-| Composition | <1ms/frame | Fullscreen blit + post-processing |
-| **Total** | **<16.6ms** | **= 60fps** |
+- `compile_to_wgsl(source)` — returns WGSL shader string
+- `compile_to_html(source)` — returns standalone HTML string
+- `compile_to_component(source)` — returns ES module JS string
 
-The shader execution is 85% of the frame budget. This is correct — the GPU should be doing the work.
+Build with: `wasm-pack build --target web --features wasm`
 
-### Adaptive Quality
+## Performance Model
 
-When framerate drops below target:
-1. **First:** Reduce render resolution (render at 0.75x, upscale)
-2. **Second:** Reduce noise octaves (6 -> 4 -> 2)
-3. **Third:** Reduce raymarching steps (64 -> 32 -> 16)
-4. **Fourth:** Disable post-processing (bloom, chromatic, grain)
-5. **Never:** Skip frames or drop audio sync
+The compiled output runs a `requestAnimationFrame` loop that:
+
+1. Evaluates signal sources (time, audio FFT bands, mouse position, data properties)
+2. Evaluates resonance graph (topological order, weighted connections, damping)
+3. Interpolates arc keyframes (easing functions)
+4. Computes modulated uniform values (base + signal modulation + resonance)
+5. Uploads uniform buffer to GPU
+6. Executes render passes (fullscreen quad with fragment shader)
+
+The shader does the real work. The JavaScript overhead per frame is minimal — uniform buffer writes and signal evaluation.
+
+## Technology Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Compiler language | **Rust** | Performance, WASM compilation, wgpu ecosystem, type safety |
+| Shader targets | **WGSL + GLSL** | WebGPU primary, WebGL2 fallback for broader support |
+| Lexer | **logos** | Fast zero-allocation tokenization |
+| Parser | **Hand-written recursive descent** | Full control over error messages, no grammar tool dependency |
+| CLI | **clap** | Standard Rust CLI framework |
+| Dev server | **axum + tower-livereload + notify** | Async Rust web framework with file watching |
+| Browser runtime | **Pure JS + WebGPU/WebGL2** | No WASM in browser output — zero runtime dependencies |
+
+## Non-Goals (Explicit)
+
+- Not a game engine (no physics simulation, no entity system, no collision)
+- Not a 3D modeling tool (no polygon meshes, no UV mapping)
+- Not a video editor (no timeline-based clip editing)
+- Not a shader IDE (no text editor, no debugger — use your own)
+- Not competing with Unreal/Unity/Godot (different paradigm entirely)

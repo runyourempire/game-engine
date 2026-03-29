@@ -1,209 +1,225 @@
-# GAME Built-in Primitives
+# GAME Language Primitives Reference
 
-The `.game` language compiles these high-level primitives into WGSL shader code. Users write readable names; the compiler emits optimized GPU math.
-
-> **Implemented primitives only.** This document reflects what the GAME compiler v0.2.0 actually compiles. Primitives listed here produce valid WGSL output.
+Complete reference for the GAME shader DSL. Every builtin, color, constant, function, and signal listed here is implemented in the compiler and produces valid WGSL/GLSL output.
 
 ---
 
-## SDF Primitives
+## Type State Pipeline
 
-Signed distance fields: negative inside, positive outside, zero at surface. These produce `sdf_result` in the shader.
+The pipe operator `|` chains stages. Each builtin consumes an input type and produces an output type. The compiler enforces valid transitions at compile time.
 
-| Primitive | Syntax | Parameters |
-|-----------|--------|------------|
-| Circle | `circle(r)` | `r`: radius (default 0.5) |
-| Sphere | `sphere(r)` | `r`: radius (default 0.5, 3D SDF projected to 2D) |
-| Ring | `ring(radius, thickness)` | `radius`: center distance (default 0.3), `thickness`: wall width (default 0.04) |
-| Box | `box(w, h)` | `w`: width (default 0.5), `h`: height (default 0.5) |
-| Torus | `torus(R, r)` | `R`: major radius (default 0.3), `r`: minor radius (default 0.05) |
-| Line | `line(x1, y1, x2, y2, thickness)` | Segment endpoints + `thickness` (default 0.02) |
-| Polygon | `polygon(sides, radius)` | `sides`: number (default 6), `radius`: size (default 0.3) |
-| Star | `star(points, outer, inner)` | `points`: number (default 5), `outer`: radius (default 0.4), `inner`: radius (default 0.2) |
+```
+Position --> [SDF Generator]  --> Sdf
+Position --> [Transform]      --> Position
+Position --> [Color Generator] --> Color
+Sdf      --> [Bridge]         --> Color
+Sdf      --> [SDF Modifier]   --> Sdf
+Color    --> [Color Processor] --> Color
+```
 
-### Example
+Position-input stages can appear anywhere in a chain (they reset the pipeline to Position state).
 
+**Example valid pipeline:**
 ```game
-cinematic {
-  layer { fn: circle(0.3) | glow(2.0) | tint(cyan) }
-}
+fn: translate(0.1, 0) | circle(0.3) | mask_arc(pi) | glow(2.0) | tint(gold) | bloom(0.3, 1.5) | vignette(0.4)
 ```
 
 ---
 
-## Domain Operations
+## Builtins (37 total)
 
-Transform position before SDF evaluation. Place *before* shapes in pipe chain.
+### SDF Generators (Position -> Sdf)
 
-| Operation | Syntax | Effect |
-|-----------|--------|--------|
-| Translate | `translate(x, y)` | Move in 2D space (default 0.0) |
-| Rotate | `rotate(angle)` | 2D rotation in radians. Use `time` expressions for animation. |
-| Scale | `scale(s)` | Uniform scale factor (default 1.0). SDF result auto-corrected. |
-| Repeat | `repeat(spacing)` | Infinite spatial tiling (default 1.0) |
-| Mirror | `mirror(axis)` | Reflect across axis: `"x"`, `"y"`, or `"xy"` (default `"xy"`) |
-| Twist | `twist(amount)` | Twist along Y axis (default 1.0) |
+These evaluate a signed distance field from the current position. Negative inside, positive outside, zero at the surface.
 
-### Example
+| Builtin | Parameters | Description |
+|---------|-----------|-------------|
+| `circle` | `radius: 0.2` | Circular SDF |
+| `ring` | `radius: 0.3, width: 0.02` | Ring / annulus SDF |
+| `star` | `points: 5.0, radius: 0.3, inner: 0.15` | Star polygon SDF |
+| `box` | `w: 0.2, h: 0.2` | Rectangle SDF |
+| `polygon` | `sides: 6.0, radius: 0.3` | Regular polygon SDF |
+| `fbm` | `scale: 1.0, octaves: 4.0, persistence: 0.5, lacunarity: 2.0` | Fractal Brownian Motion noise field |
+| `simplex` | `scale: 1.0` | Simplex noise field |
+| `voronoi` | `scale: 5.0` | Voronoi cellular noise field |
+| `concentric_waves` | `amplitude: 1.0, width: 0.5, frequency: 3.0` | Concentric wave rings |
 
-```game
-cinematic {
-  layer {
-    fn: translate(0.2, 0.0) | rotate(time * 0.5) | star(5, 0.3, 0.15) | glow(3.0)
-  }
-}
-```
+### SDF Bridges (Sdf -> Color)
 
----
+Convert a distance field into visible color output.
 
-## SDF Modifiers
+| Builtin | Parameters | Description |
+|---------|-----------|-------------|
+| `glow` | `intensity: 1.5` | Exponential distance falloff glow |
+| `shade` | `r: 1.0, g: 1.0, b: 1.0` | Flat-shaded color with anti-aliased edges |
+| `emissive` | `intensity: 1.0` | Emissive / bright color |
 
-Modify an existing SDF. Place *after* a shape in the pipe chain.
+### Color Processors (Color -> Color)
 
-| Modifier | Syntax | Effect |
-|----------|--------|--------|
-| Mask arc | `mask_arc(angle)` | Clip SDF to arc sector (0..6.283 radians) |
-| Displace | `displace(strength)` | Noise-based surface displacement (default 0.1, uses simplex noise) |
-| Round | `round(r)` | Round sharp edges by `r` (default 0.05) |
-| Onion | `onion(thickness)` | Create concentric shells (default 0.02) |
+Post-process color output. Chain as many as needed.
 
-### Example
+| Builtin | Parameters | Description |
+|---------|-----------|-------------|
+| `tint` | `r: 1.0, g: 1.0, b: 1.0` | Multiply color by RGB tint |
+| `bloom` | `threshold: 0.3, strength: 2.0` | Bloom / glow on bright areas |
+| `grain` | `amount: 0.1` | Film grain noise overlay |
+| `blend` | `factor: 0.5` | Blend with background by factor |
+| `vignette` | `strength: 0.5, radius: 0.8` | Darken edges |
+| `tonemap` | `exposure: 1.0` | HDR tonemapping (Reinhard) |
+| `scanlines` | `frequency: 200.0, intensity: 0.3` | CRT scanline effect |
+| `chromatic` | `offset: 0.005` | Chromatic aberration (RGB channel split) |
+| `saturate_color` | `amount: 1.0` | Adjust color saturation |
+| `glitch` | `intensity: 0.5` | Digital glitch distortion |
 
-```game
-cinematic {
-  layer {
-    fn: polygon(6, 0.3) | onion(0.02) | glow(3.0)
-  }
-}
-```
+### Position Transforms (Position -> Position)
 
----
+Transform the coordinate space before SDF evaluation. Place before shapes in the pipe chain.
 
-## Noise Functions
+| Builtin | Parameters | Description |
+|---------|-----------|-------------|
+| `translate` | `x: 0.0, y: 0.0` | Move in 2D space |
+| `rotate` | `angle: 0.0` | Rotate (radians) |
+| `scale` | `s: 1.0` | Uniform scale |
+| `twist` | `amount: 0.0` | Twist distortion |
+| `mirror` | `axis: 0.0` | Mirror across axis |
+| `repeat` | `count: 4.0` | Tile / repeat pattern |
+| `domain_warp` | `amount: 0.1, freq: 3.0` | Warp coordinate space with noise |
+| `curl_noise` | `frequency: 1.0, amplitude: 0.1` | Curl noise distortion |
+| `displace` | `strength: 0.1` | Displacement distortion |
 
-Procedural noise as SDF source. Produce `sdf_result`.
+### SDF Modifiers (Sdf -> Sdf)
 
-| Function | Syntax | Character |
-|----------|--------|-----------|
-| FBM | `fbm(pos, octaves:N, persistence:P, lacunarity:L)` | Fractal Brownian Motion — layered noise (default: pos=p, octaves=6, persistence=0.5, lacunarity=2.0) |
-| Simplex | `simplex(frequency)` | Smooth organic noise (default frequency=1.0) |
-| Voronoi | `voronoi(frequency)` | Cellular/crystal pattern (default frequency=1.0) |
+Modify an existing SDF. Place after a shape in the pipe chain.
 
-### Example
+| Builtin | Parameters | Description |
+|---------|-----------|-------------|
+| `mask_arc` | `angle` (required, no default) | Mask SDF to arc sector |
+| `threshold` | `cutoff: 0.5` | Hard threshold on SDF values |
+| `onion` | `thickness: 0.02` | Hollow out SDF (shell) |
+| `round` | `radius: 0.02` | Round SDF edges |
 
-```game
-cinematic {
-  layer {
-    fn: fbm(p * 3.0, octaves: 4, persistence: 0.6) | shade(albedo: gold, emissive: ember)
-  }
-}
-```
+### Color Generators (Position -> Color)
 
----
+Generate color directly from position, bypassing SDF evaluation.
 
-## Glow
-
-Bridge from SDF to visual intensity.
-
-| Function | Syntax | Effect |
-|----------|--------|--------|
-| Glow | `glow(intensity)` | Exponential distance falloff (default 2.0). Converts SDF → glow_result. |
-
----
-
-## Shading & Color
-
-Color stages. Follow SDF, glow, or other color stages.
-
-| Function | Syntax | Effect |
-|----------|--------|--------|
-| Shade | `shade(albedo: color, emissive: color)` | PBR-style shading. Named params: `albedo` (default vec3f(0.8)), `emissive` (default vec3f(0.0)). |
-| Emissive | `emissive()` | Quick self-illuminating gold glow |
-| Colormap | `colormap()` | Map SDF distance to color gradient (dark blue → gold) |
-| Spectrum | `spectrum(bass, mid, treble)` | Audio-reactive concentric rings per frequency band |
-| Tint | `tint(color)` | Multiply glow/color by a named color or vec3f |
-| Gradient | `gradient(color_a, color_b, direction)` | Spatial gradient: `"x"`, `"y"`, or `"radial"` (default `"y"`) |
-
-### Named Colors
-
-Available for `tint()`, `shade()`, `gradient()`:
-
-| Name | RGB |
-|------|-----|
-| `black` | 0.0, 0.0, 0.0 |
-| `white` | 1.0, 1.0, 1.0 |
-| `red` | 1.0, 0.0, 0.0 |
-| `green` | 0.0, 1.0, 0.0 |
-| `blue` | 0.0, 0.0, 1.0 |
-| `cyan` | 0.0, 1.0, 1.0 |
-| `orange` | 1.0, 0.5, 0.0 |
-| `gold` | 0.831, 0.686, 0.216 |
-| `ember` | 0.8, 0.2, 0.05 |
-| `frost` | 0.85, 0.92, 1.0 |
-| `ivory` | 1.0, 0.97, 0.92 |
-| `midnight` | 0.0, 0.0, 0.1 |
-| `obsidian` | 0.04, 0.04, 0.06 |
-| `deep_blue` | 0.0, 0.02, 0.15 |
+| Builtin | Parameters | Description |
+|---------|-----------|-------------|
+| `gradient` | `color_a, color_b, mode` (all required, no defaults) | Linear or radial gradient between two colors |
+| `spectrum` | `bass: 0.0, mid: 0.0, treble: 0.0` | Audio-reactive spectrum visualization |
 
 ---
 
-## Post-Processing
+## Named Colors (19)
 
-Screen-space effects. Apply after color stages in the pipe chain.
+Available anywhere a color value is accepted: `tint()`, `shade()`, `gradient()`, or as bare identifiers in expressions.
 
-| Effect | Syntax | Parameters |
-|--------|--------|------------|
-| Bloom | `bloom(threshold, intensity)` | threshold: luminance cutoff (default 0.6), intensity: glow (default 1.5) |
-| Chromatic | `chromatic(strength)` | RGB channel separation (default 0.5) |
-| Vignette | `vignette(strength)` | Edge darkening (default 0.3) |
-| Grain | `grain(amount)` | Film grain noise (default 0.02) |
-| Fog | `fog(density, color)` | Distance fog, color as vec3f (default black) |
-| Glitch | `glitch(intensity)` | Digital artifact effect (default 0.5) |
-| Scanlines | `scanlines(count, intensity)` | CRT effect, count: line frequency (default 100), intensity (default 0.3) |
-| Tonemap | `tonemap(exposure)` | Reinhard-style HDR compression (default 1.0) |
-| Invert | `invert()` | Invert all colors (1.0 - rgb) |
-| Saturate | `saturate_color(amount)` | Saturation multiplier (default 1.5). >1 increases, <1 decreases. |
+| Name | R | G | B |
+|------|---|---|---|
+| `black` | 0.000 | 0.000 | 0.000 |
+| `white` | 1.000 | 1.000 | 1.000 |
+| `red` | 1.000 | 0.000 | 0.000 |
+| `green` | 0.000 | 1.000 | 0.000 |
+| `blue` | 0.000 | 0.000 | 1.000 |
+| `cyan` | 0.000 | 1.000 | 1.000 |
+| `magenta` | 1.000 | 0.000 | 1.000 |
+| `orange` | 1.000 | 0.647 | 0.000 |
+| `gold` | 0.831 | 0.686 | 0.216 |
+| `ember` | 0.898 | 0.318 | 0.129 |
+| `ivory` | 1.000 | 1.000 | 0.941 |
+| `frost` | 0.686 | 0.878 | 0.953 |
+| `ash` | 0.467 | 0.467 | 0.467 |
+| `charcoal` | 0.212 | 0.212 | 0.212 |
+| `midnight` | 0.039 | 0.039 | 0.118 |
+| `obsidian` | 0.071 | 0.059 | 0.082 |
+| `deep_blue` | 0.000 | 0.098 | 0.392 |
+| `plasma` | 0.580 | 0.000 | 0.827 |
+| `violet` | 0.541 | 0.169 | 0.886 |
 
-### Example
+---
 
-```game
-cinematic {
-  layer {
-    fn: circle(0.3) | glow(3.0) | tint(gold) | bloom(0.5, 1.2) | vignette(0.4) | grain(0.01)
-  }
-}
-```
+## Math Constants (4)
+
+Available as bare identifiers in any expression.
+
+| Name | Value |
+|------|-------|
+| `pi` | 3.14159265358979 |
+| `tau` | 6.28318530717959 |
+| `e` | 2.71828182845905 |
+| `phi` | 1.61803398874989 |
+
+---
+
+## Expression Functions
+
+Math functions usable in parameter expressions and modulation. These compile to native WGSL builtins (GPU) and `Math.*` equivalents (JS runtime).
+
+### Single-argument
+
+`sin` `cos` `tan` `abs` `floor` `ceil` `fract` `sqrt` `exp` `log` `sign` `round` `length` `normalize`
+
+### Multi-argument
+
+| Function | Arguments | Description |
+|----------|-----------|-------------|
+| `min(a, b)` | 2 | Minimum of two values |
+| `max(a, b)` | 2 | Maximum of two values |
+| `mix(a, b, t)` | 3 | Linear interpolation: `a + (b - a) * t` |
+| `clamp(x, lo, hi)` | 3 | Clamp value to range |
+| `smoothstep(edge0, edge1, x)` | 3 | Hermite interpolation |
+| `step(edge, x)` | 2 | 0.0 if `x < edge`, else 1.0 |
+| `pow(base, exp)` | 2 | Exponentiation (also available as `^` operator) |
+| `mod(x, y)` | 2 | Modulo (compiles to `%` operator) |
+| `distance(a, b)` | 2 | Euclidean distance |
+| `dot(a, b)` | 2 | Dot product |
+| `cross(a, b)` | 2 | Cross product |
+| `reflect(i, n)` | 2 | Reflection vector |
+| `atan2(y, x)` | 2 | Two-argument arctangent |
 
 ---
 
 ## Signals
 
-Real-time modulation via the `~` operator. Params react to signals each frame.
+Runtime inputs that update every frame. Use directly in expressions or with the `~` modulation operator.
 
-| Signal | Syntax | Range |
-|--------|--------|-------|
-| `audio.bass` | `~ audio.bass` | Low frequency FFT (0..1) |
-| `audio.mid` | `~ audio.mid` | Mid frequency FFT (0..1) |
-| `audio.treble` | `~ audio.treble` | High frequency FFT (0..1) |
-| `audio.energy` | `~ audio.energy` | Overall energy (0..1) |
-| `audio.beat` | `~ audio.beat` | Beat impulse (0 or 1) |
-| `mouse.x` | `~ mouse.x` | Cursor X normalized (0..1) |
-| `mouse.y` | `~ mouse.y` | Cursor Y normalized (0..1) |
-| `data.*` | `~ data.value` | Web Component property. Any field name. |
+| Signal | Description | Range |
+|--------|-------------|-------|
+| `time` | Elapsed time in seconds | 0+ |
+| `audio.bass` | Low frequency energy | 0 - 1 |
+| `audio.mid` | Mid frequency energy | 0 - 1 |
+| `audio.treble` | High frequency energy | 0 - 1 |
+| `audio.energy` | Total audio energy | 0 - 1 |
+| `audio.beat` | Beat detection pulse | 0 - 1 |
+| `mouse.x` | Normalized mouse X position | 0 - 1 |
+| `mouse.y` | Normalized mouse Y position | 0 - 1 |
+| `data.*` | Web Component property binding (any field name) | any |
 
-### Modulation Syntax
+### Modulation syntax
 
 ```game
 param_name: base_value ~ signal * scale
 ```
 
-Example: `radius: 0.3 ~ audio.bass * 0.5` — base 0.3, adds up to 0.5 when bass peaks.
+Example: `radius: 0.3 ~ audio.bass * 0.5` sets base radius to 0.3, adds up to 0.5 when bass peaks.
 
 ---
 
 ## Language Features
 
+### Layers
+
+Multiple layers composite additively:
+
+```game
+cinematic {
+  layer bg   { fn: ring(0.4, 0.02) | glow(0.5) | tint(frost) }
+  layer main { fn: circle(0.2) | glow(3.0) | tint(gold) }
+}
+```
+
 ### Define (Reusable Macros)
+
+Defines expand inline at compile time. Parameters are substituted by position.
 
 ```game
 define glow_ring(r, t) {
@@ -212,19 +228,6 @@ define glow_ring(r, t) {
 
 layer { fn: glow_ring(0.3, 0.04) }
 ```
-
-Defines expand inline at compile time. Parameters are substituted by position.
-
-### Multi-Layer Compositing
-
-Multiple layers composite additively:
-
-```game
-layer bg   { fn: ring(0.4, 0.02) | glow(0.5) | tint(frost) }
-layer main { fn: circle(0.2) | glow(3.0) | tint(gold) }
-```
-
-**Important:** Use unique param names across layers. Duplicate names produce a compiler warning.
 
 ### Arc Timeline
 
@@ -247,22 +250,36 @@ arc {
 
 For arc transitions: `linear`, `smooth`, `expo_in`, `expo_out`, `cubic_in_out`, `elastic`, `bounce`.
 
-### Lens Modes
+### Duration Literals
 
-```game
-lens { mode: flat }        # Default: 2D SDF rendering
-lens { mode: raymarch }    # 3D raymarching with orbit camera
-```
+- `2s` = 2 seconds
+- `500ms` = 500 milliseconds (compiles to 0.5 seconds)
+- `4bars` = 4 bars at assumed 120 BPM (compiles to 8.0 seconds)
 
-### Constants
+### Operators
 
-`pi` (3.14159), `tau` (6.28318), `e` (2.71828), `phi` (1.61803 golden ratio)
+| Operator | Description |
+|----------|-------------|
+| `+` `-` `*` `/` | Arithmetic |
+| `^` | Exponentiation (compiles to `pow()`) |
+| `>` `<` | Comparison |
+| `\|` | Pipe (chain pipeline stages) |
+| `~` | Modulation (signal binding) |
+| `? :` | Ternary conditional (compiles to WGSL `select()`) |
 
 ### Special Variables
 
 | Variable | Available In | Meaning |
 |----------|-------------|---------|
 | `p` | `fn:` chains | Current sample position (vec2f) |
-| `time` | Everywhere | Elapsed time in seconds (safe-wrapped at 120s) |
-| `uv` | `flat` mode | Screen UV coordinates (0..1) |
-| `height` | After SDF eval | Normalized distance (for shade/colormap) |
+| `time` | Everywhere | Elapsed time in seconds |
+| `uv` | `flat` mode | Screen UV coordinates (0 - 1) |
+
+### Array Literals
+
+Arrays compile to WGSL vector types:
+
+```game
+[1.0, 0.5, 0.0]    // compiles to vec3f(1.0, 0.5, 0.0)
+[0.5, 0.5]          // compiles to vec2f(0.5, 0.5)
+```
