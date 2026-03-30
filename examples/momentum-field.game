@@ -1,0 +1,63 @@
+// Momentum Field — ambient intelligence horizon for 4DA
+//
+// Design principle: ONE recognizable shape (a horizontal luminous band)
+// whose properties vary with data. Not noise — structure.
+//
+// Visual encoding:
+//   Band thickness = advantage (high = thick bright band, low = thin thread)
+//   Color warmth = trend (gold when growing, cool blue/slate when flat)
+//   Right-edge pulse = metabolism (breathing motion, faster = more active)
+//   Overall glow = urgency (subtle when calm, bright warm edge when urgent)
+//
+// The band sits at vertical center. Above and below is darkness.
+// Memory creates a soft persistence trail — the band feels alive, not static.
+
+cinematic "momentum-field" {
+  // The core band — a glowing horizontal line that breathes
+  layer band memory: 0.90 {
+    warp(scale: 1.2, octaves: 2, strength: 0.03)
+    | ring(0.5, 0.015)
+    | glow(1.8)
+    | tint(trend_warm_r, trend_warm_g, 0.12)
+  }
+
+  // Soft atmospheric glow behind the band — gives depth
+  layer atmosphere memory: 0.94 {
+    warp(scale: 1.5, octaves: 2, strength: 0.02)
+    | ring(0.5, 0.06)
+    | glow(0.6)
+    | tint(0.08, 0.08, 0.12)
+  }
+
+  // Urgency accent — warm glow that intensifies with urgency
+  layer alert {
+    if urgency > 0.3 {
+      ring(0.5, 0.04) | glow(1.2)
+      | tint(0.7, 0.2, 0.05)
+    } else {
+      ring(0.5, 0.04) | glow(0.2)
+      | tint(0.04, 0.04, 0.06)
+    }
+  }
+
+  layer config {
+    advantage: 0.5
+    trend_warm_r: 0.83
+    trend_warm_g: 0.65
+    metabolism: 0.5
+    urgency: 0.0
+    confidence: 0.7
+  }
+
+  resonate {
+    advantage -> band.brightness * 0.7
+    advantage -> atmosphere.brightness * 0.4
+    metabolism -> band.brightness * 0.15
+    confidence -> atmosphere.brightness * 0.1
+    urgency -> alert.brightness * 0.9
+  }
+
+  pass soft {
+    vignette(0.3)
+  }
+}
