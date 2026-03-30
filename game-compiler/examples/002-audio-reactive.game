@@ -1,0 +1,31 @@
+# Audio Reactive — multi-band frequency visualization
+# Three concentric rings respond to bass, mid, and treble frequencies.
+# A central energy orb pulses with overall audio energy.
+# Demonstrates: audio modulation (~), multi-layer, glow, tint colors
+
+cinematic "Audio Reactive" {
+  layer bg {
+    fn: gradient(black, deep_blue, "radial") | vignette(0.5)
+  }
+
+  layer bass {
+    fn: ring(0.12, 0.05) | glow(bass_g) | tint(ember)
+    bass_g: 1.5 ~ audio.bass * 5.0
+  }
+
+  layer mid {
+    fn: ring(0.24, 0.04) | glow(mid_g) | tint(cyan)
+    mid_g: 1.0 ~ audio.mid * 4.0
+  }
+
+  layer treble {
+    fn: ring(0.35, 0.02) | glow(treble_g) | tint(frost)
+    treble_g: 0.8 ~ audio.treble * 3.5
+  }
+
+  layer energy_core {
+    fn: circle(core_r) | glow(core_g) | tint(gold)
+    core_r: 0.04 ~ audio.energy * 0.03
+    core_g: 3.0 ~ audio.energy * 6.0
+  }
+}

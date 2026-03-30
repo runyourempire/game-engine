@@ -2,7 +2,7 @@
 
 use crate::ast::{Arg, Expr, Stage};
 use crate::builtins::{self, ShaderState};
-use crate::error::CompileError;
+use crate::error::{CompileError, ErrorCode};
 
 /// Resolve an argument value to a float string for shader emission.
 pub fn resolve_arg(arg: &Arg, idx: usize, builtin_name: &str) -> String {
@@ -49,7 +49,7 @@ pub fn validate_pipeline(stages: &[Stage]) -> Result<ShaderState, CompileError> 
     for stage in stages {
         let builtin = builtins::lookup(&stage.name).ok_or_else(|| {
             let msg = format!("unknown stage function: '{}'", stage.name);
-            let mut err = CompileError::validation(msg);
+            let mut err = CompileError::validation(msg).with_code(ErrorCode::E001);
             if let Some(suggestion) = builtins::suggest(&stage.name) {
                 err = err.with_help(format!("did you mean '{suggestion}'?"));
             }
@@ -65,7 +65,7 @@ pub fn validate_pipeline(stages: &[Stage]) -> Result<ShaderState, CompileError> 
                  help: the pipeline flows Position -> Sdf -> Color. \
                  '{}' produces {} output.",
                 stage.name, builtin.input, state, prev, state
-            )));
+            )).with_code(ErrorCode::E002));
         }
 
         prev_stage_name = Some(&stage.name);

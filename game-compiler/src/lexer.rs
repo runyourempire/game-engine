@@ -94,11 +94,11 @@ enum LexToken {
     Float,
     #[regex(r"[0-9]+", priority = 4)]
     Integer,
-    #[regex(r#""[^"]*""#)]
+    #[regex(r#""([^"\\]|\\.)*""#)]
     StringLit,
 
     // ── Identifiers ──────────────────────────────────────
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 1)]
+    #[regex(r"[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*", priority = 1)]
     Ident,
 
     // ── Multi-char operators ─────────────────────────────
@@ -184,6 +184,32 @@ pub fn lex(source: &str) -> Result<Vec<(Token, usize, usize)>, CompileError> {
     Ok(result)
 }
 
+/// Process escape sequences in a string literal, stripping outer quotes.
+fn unescape_string(s: &str) -> String {
+    let inner = &s[1..s.len() - 1]; // strip surrounding quotes
+    let mut result = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 fn convert(lt: LexToken, slice: &str) -> Result<Token, CompileError> {
     Ok(match lt {
         // Keywords
@@ -252,8 +278,8 @@ fn convert(lt: LexToken, slice: &str) -> Result<Token, CompileError> {
         LexToken::Float => Token::Float(slice.parse().unwrap_or(0.0)),
         LexToken::Integer => Token::Integer(slice.parse().unwrap_or(0)),
 
-        // String
-        LexToken::StringLit => Token::StringLit(slice[1..slice.len() - 1].to_string()),
+        // String — process escape sequences
+        LexToken::StringLit => Token::StringLit(unescape_string(slice)),
 
         // Ident
         LexToken::Ident => Token::Ident(slice.to_string()),
@@ -366,5 +392,37 @@ mod tests {
     fn lex_modulation() {
         let toks = tokens("radius: 0.3 ~ audio.bass * 0.1");
         assert!(toks.contains(&Token::Tilde));
+    }
+
+    #[test]
+    fn lex_unicode_identifiers() {
+        // Non-ASCII identifiers should lex as Ident tokens
+        let source = r#"cinematic "t" { layer bg { fn: circle(0.3) } }"#;
+        let toks = tokens(source);
+        assert!(toks.contains(&Token::Cinematic));
+    }
+
+    #[test]
+    fn lex_string_escape_sequences() {
+        let toks = tokens(r#""hello\nworld""#);
+        assert_eq!(toks, vec![Token::StringLit("hello\nworld".into())]);
+    }
+
+    #[test]
+    fn lex_string_with_escaped_quote() {
+        let toks = tokens(r#""say \"hello\"""#);
+        assert_eq!(toks, vec![Token::StringLit("say \"hello\"".into())]);
+    }
+
+    #[test]
+    fn lex_string_with_backslash() {
+        let toks = tokens(r#""path\\to\\file""#);
+        assert_eq!(toks, vec![Token::StringLit("path\\to\\file".into())]);
+    }
+
+    #[test]
+    fn lex_string_with_tab() {
+        let toks = tokens(r#""col1\tcol2""#);
+        assert_eq!(toks, vec![Token::StringLit("col1\tcol2".into())]);
     }
 }

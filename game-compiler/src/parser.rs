@@ -4,7 +4,7 @@
 // messages and straightforward recovery.
 
 use crate::ast::*;
-use crate::error::CompileError;
+use crate::error::{CompileError, ErrorCode};
 use crate::token::Token;
 
 // ---------------------------------------------------------------------------
@@ -78,11 +78,13 @@ impl Parser {
                 message: format!("expected `{expected}`, found `{tok}`"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
             None => Err(CompileError::ParseError {
                 message: format!("expected `{expected}`, found end of input"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
         }
     }
@@ -95,11 +97,13 @@ impl Parser {
                 message: format!("expected identifier, found `{tok}`"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
             None => Err(CompileError::ParseError {
                 message: "expected identifier, found end of input".into(),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
         }
     }
@@ -114,11 +118,13 @@ impl Parser {
                 message: format!("expected identifier, found `{tok}`"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
             None => Err(CompileError::ParseError {
                 message: "expected identifier, found end of input".into(),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
         }
     }
@@ -131,11 +137,13 @@ impl Parser {
                 message: format!("expected string literal, found `{tok}`"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
             None => Err(CompileError::ParseError {
                 message: "expected string literal, found end of input".into(),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
         }
     }
@@ -149,11 +157,13 @@ impl Parser {
                 message: format!("expected number, found `{tok}`"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
             None => Err(CompileError::ParseError {
                 message: "expected number, found end of input".into(),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
         }
     }
@@ -189,6 +199,7 @@ impl Parser {
                         message: "unexpected end of input while skipping block".into(),
                         line,
                         col,
+                        code: Some(ErrorCode::E003),
                     });
                 }
             }
@@ -262,6 +273,7 @@ impl Parser {
                         ),
                         line,
                         col,
+                        code: Some(ErrorCode::E003),
                     });
                     self.skip_to_recovery();
                 }
@@ -410,6 +422,7 @@ impl Parser {
                         ),
                         line,
                         col,
+                        code: Some(ErrorCode::E003),
                     });
                     // Advance past the unexpected token to avoid infinite loop
                     self.advance();
@@ -802,6 +815,7 @@ impl Parser {
                     message: format!("expected duration (e.g. 2s, 500ms, 4bars), found bare number {v}"),
                     line,
                     col,
+                    code: Some(ErrorCode::E003),
                 })
             }
             Some(Token::Integer(v)) => {
@@ -809,17 +823,20 @@ impl Parser {
                     message: format!("expected duration (e.g. 2s, 500ms, 4bars), found bare number {v}"),
                     line,
                     col,
+                    code: Some(ErrorCode::E003),
                 })
             }
             Some(tok) => Err(CompileError::ParseError {
                 message: format!("expected duration, found `{tok}`"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
             None => Err(CompileError::ParseError {
                 message: "expected duration, found end of input".into(),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
         }
     }
@@ -990,6 +1007,7 @@ impl Parser {
                         ),
                         line,
                         col,
+                        code: Some(ErrorCode::E003),
                     });
                 }
             }
@@ -1048,6 +1066,7 @@ impl Parser {
                         ),
                         line,
                         col,
+                        code: Some(ErrorCode::E003),
                     });
                 }
             }
@@ -1088,6 +1107,7 @@ impl Parser {
                                 ),
                                 line,
                                 col,
+                                code: Some(ErrorCode::E003),
                             });
                         }
                     };
@@ -1100,6 +1120,7 @@ impl Parser {
                         ),
                         line,
                         col,
+                        code: Some(ErrorCode::E003),
                     });
                 }
             }
@@ -1134,6 +1155,7 @@ impl Parser {
                     ),
                     line,
                     col,
+                    code: Some(ErrorCode::E003),
                 });
             }
         };
@@ -1408,11 +1430,13 @@ impl Parser {
                 message: format!("unexpected token `{tok}` in expression"),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
             None => Err(CompileError::ParseError {
                 message: "unexpected end of input in expression".into(),
                 line,
                 col,
+                code: Some(ErrorCode::E003),
             }),
         }
     }

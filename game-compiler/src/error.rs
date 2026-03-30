@@ -80,6 +80,53 @@ impl Diagnostic {
     }
 }
 
+// ── Error codes ────────────────────────────────────────────────
+
+/// Structured error codes for diagnostics.
+///
+/// Each variant maps to a specific class of compilation error, enabling
+/// tooling (IDEs, CI) to match on codes programmatically.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorCode {
+    /// Unknown stage function (e.g., `circl` instead of `circle`).
+    E001,
+    /// Type mismatch in pipeline (e.g., `glow` receiving Position instead of Sdf).
+    E002,
+    /// Parse error — unexpected token or missing syntax element.
+    E003,
+    /// Expected identifier but found something else.
+    E004,
+    /// Circular import detected.
+    E005,
+    /// Unknown parameter name in a stage call.
+    E006,
+    /// Too many arguments supplied to a stage function.
+    E007,
+    /// Invalid define body (e.g., empty or malformed pipeline).
+    E008,
+    /// Unused parameter in a define block.
+    E009,
+    /// Duplicate layer name within a cinematic.
+    E010,
+}
+
+impl std::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::E001 => write!(f, "E001"),
+            Self::E002 => write!(f, "E002"),
+            Self::E003 => write!(f, "E003"),
+            Self::E004 => write!(f, "E004"),
+            Self::E005 => write!(f, "E005"),
+            Self::E006 => write!(f, "E006"),
+            Self::E007 => write!(f, "E007"),
+            Self::E008 => write!(f, "E008"),
+            Self::E009 => write!(f, "E009"),
+            Self::E010 => write!(f, "E010"),
+        }
+    }
+}
+
 // ── Levenshtein distance & suggestions ──────────────────────
 
 /// Compute Levenshtein edit distance between two strings.
@@ -126,20 +173,31 @@ pub fn suggest_similar<'a>(typed: &str, candidates: &[&'a str]) -> Option<&'a st
 #[derive(Debug, Error)]
 pub enum CompileError {
     #[error("lex error at {span:?}: {message}")]
-    LexError { span: Span, message: String },
+    LexError {
+        span: Span,
+        message: String,
+        code: Option<ErrorCode>,
+    },
 
     #[error("parse error at {line}:{col}: {message}")]
     ParseError {
         line: usize,
         col: usize,
         message: String,
+        code: Option<ErrorCode>,
     },
 
     #[error("validation error: {message}")]
-    ValidationError { message: String },
+    ValidationError {
+        message: String,
+        code: Option<ErrorCode>,
+    },
 
     #[error("codegen error: {message}")]
-    CodegenError { message: String },
+    CodegenError {
+        message: String,
+        code: Option<ErrorCode>,
+    },
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
@@ -157,6 +215,7 @@ impl CompileError {
         Self::LexError {
             span: Span { start, end },
             message: msg.into(),
+            code: None,
         }
     }
 
@@ -165,18 +224,45 @@ impl CompileError {
             line,
             col,
             message: msg.into(),
+            code: Some(ErrorCode::E003),
         }
     }
 
     pub fn validation(msg: impl Into<String>) -> Self {
         Self::ValidationError {
             message: msg.into(),
+            code: None,
         }
     }
 
     pub fn codegen(msg: impl Into<String>) -> Self {
         Self::CodegenError {
             message: msg.into(),
+            code: None,
+        }
+    }
+
+    /// Set the error code on this error variant.
+    pub fn with_code(mut self, error_code: ErrorCode) -> Self {
+        match &mut self {
+            Self::LexError { code, .. } => *code = Some(error_code),
+            Self::ParseError { code, .. } => *code = Some(error_code),
+            Self::ValidationError { code, .. } => *code = Some(error_code),
+            Self::CodegenError { code, .. } => *code = Some(error_code),
+            Self::IoError(_) | Self::WithHelp { .. } => {} // no code slot
+        }
+        self
+    }
+
+    /// Retrieve the error code, if any.
+    pub fn code(&self) -> Option<ErrorCode> {
+        match self {
+            Self::LexError { code, .. } => *code,
+            Self::ParseError { code, .. } => *code,
+            Self::ValidationError { code, .. } => *code,
+            Self::CodegenError { code, .. } => *code,
+            Self::WithHelp { inner, .. } => inner.code(),
+            Self::IoError(_) => None,
         }
     }
 
@@ -208,7 +294,11 @@ impl CompileError {
 /// Render an error with source context: source line and caret underline.
 /// Also renders help text and suggestions when attached via `with_help`.
 pub fn render_with_source(error: &CompileError, source: &str) -> String {
-    let mut out = format!("error: {error}");
+    let mut out = if let Some(code) = error.code() {
+        format!("error[{code}]: {error}")
+    } else {
+        format!("error: {error}")
+    };
 
     // Unwrap through WithHelp to get the underlying error for span rendering
     let inner = error.inner();
@@ -348,7 +438,7 @@ mod tests {
         let err = CompileError::validation("inner msg")
             .with_help("some help");
         match err.inner() {
-            CompileError::ValidationError { message } => {
+            CompileError::ValidationError { message, .. } => {
                 assert_eq!(message, "inner msg");
             }
             _ => panic!("expected ValidationError"),
@@ -383,5 +473,47 @@ mod tests {
         let rendered = render_diagnostic(&diag, "");
         assert!(rendered.contains("warning: unused variable"));
         assert!(rendered.contains("suggestion: remove it or prefix with _"));
+    }
+
+    #[test]
+    fn error_code_display() {
+        assert_eq!(format!("{}", ErrorCode::E001), "E001");
+        assert_eq!(format!("{}", ErrorCode::E010), "E010");
+    }
+
+    #[test]
+    fn with_code_sets_code() {
+        let err = CompileError::validation("bad function")
+            .with_code(ErrorCode::E001);
+        assert_eq!(err.code(), Some(ErrorCode::E001));
+    }
+
+    #[test]
+    fn parse_error_has_default_code() {
+        let err = CompileError::parse(1, 0, "unexpected token");
+        assert_eq!(err.code(), Some(ErrorCode::E003));
+    }
+
+    #[test]
+    fn code_survives_with_help() {
+        let err = CompileError::validation("unknown function 'cicle'")
+            .with_code(ErrorCode::E001)
+            .with_help("did you mean 'circle'?");
+        assert_eq!(err.code(), Some(ErrorCode::E001));
+    }
+
+    #[test]
+    fn render_with_source_includes_error_code() {
+        let err = CompileError::validation("unknown stage function: 'cicle'")
+            .with_code(ErrorCode::E001);
+        let rendered = render_with_source(&err, "");
+        assert!(rendered.starts_with("error[E001]:"), "should include error code: {rendered}");
+    }
+
+    #[test]
+    fn render_without_code_has_no_brackets() {
+        let err = CompileError::validation("something bad");
+        let rendered = render_with_source(&err, "");
+        assert!(rendered.starts_with("error: "), "should not have brackets: {rendered}");
     }
 }

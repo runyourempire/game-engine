@@ -1,0 +1,55 @@
+# Resonance — coupled oscillating rings with arc timeline
+# Three rings with increasing size, connected through resonate coupling.
+# An arc timeline drives the scene through emergence, bloom, and fade phases.
+# Demonstrates: resonate block, arc timeline, ease(), over, define
+
+cinematic "Resonance" {
+  define glow_ring(size, width) {
+    ring(size, width) | glow(ring_glow) | tint(cyan)
+  }
+
+  layer bg {
+    fn: gradient(black, deep_blue, "radial")
+  }
+
+  layer inner_ring {
+    fn: glow_ring(inner_s, 0.03) | tint(gold)
+    inner_s: 0.1
+    ring_glow: 1.5
+  }
+
+  layer mid_ring {
+    fn: glow_ring(mid_s, 0.02) | tint(cyan)
+    mid_s: 0.2
+    ring_glow: 1.0
+  }
+
+  layer outer_ring {
+    fn: glow_ring(outer_s, 0.015) | tint(frost)
+    outer_s: 0.3
+    ring_glow: 0.8
+  }
+
+  resonate {
+    inner_ring <> mid_ring: 0.3
+    mid_ring <> outer_ring: 0.2
+  }
+
+  arc {
+    0:00 "emergence" {
+      inner_s: 0.02
+      mid_s: 0.04
+      outer_s: 0.06
+    }
+    0:03 "bloom" {
+      inner_s -> 0.15 ease(expo_out) over 3s
+      mid_s -> 0.25 ease(expo_out) over 3s
+      outer_s -> 0.35 ease(cubic_in_out) over 4s
+    }
+    0:10 "fade" {
+      inner_s -> 0.05 ease(smooth) over 3s
+      mid_s -> 0.10 ease(smooth) over 3s
+      outer_s -> 0.15 ease(expo_in) over 4s
+    }
+  }
+}

@@ -1,0 +1,28 @@
+# Interactive — mouse-driven particle orbits
+# Cursor controls a golden orb; secondary rings orbit around it.
+# Background uses simplex noise for organic texture.
+# Demonstrates: mouse modulation (~), translate, multiple layers
+
+cinematic "Interactive" {
+  layer bg {
+    fn: simplex(4.0) | glow(0.6) | tint(deep_blue) | vignette(0.4)
+  }
+
+  layer orbit_outer {
+    fn: translate(ox, oy) | ring(0.18, 0.015) | glow(1.8) | tint(frost)
+    ox: 0.0 ~ mouse.x * 1.4 - 0.7
+    oy: 0.0 ~ mouse.y * 1.4 - 0.7
+  }
+
+  layer orbit_inner {
+    fn: translate(ix, iy) | ring(0.09, 0.01) | glow(2.5) | tint(cyan)
+    ix: 0.0 ~ mouse.x * 1.6 - 0.8
+    iy: 0.0 ~ mouse.y * 1.6 - 0.8
+  }
+
+  layer cursor_orb {
+    fn: translate(cx, cy) | circle(0.05) | glow(4.0) | tint(gold)
+    cx: 0.0 ~ mouse.x * 2.0 - 1.0
+    cy: 0.0 ~ mouse.y * 2.0 - 1.0
+  }
+}
