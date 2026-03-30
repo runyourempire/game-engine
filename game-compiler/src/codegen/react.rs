@@ -1,284 +1,362 @@
-//! React block compilation — maps user inputs to actions via JS event listeners.
+//! React block codegen — compiles `react { signal -> action }` into JS event listeners.
 //!
-//! The `react {}` block specifies how user input drives the cinematic:
-//!   react {
-//!     mouse.click -> particles.burst(...)
-//!     key("space") -> arc.pause_toggle
-//!     key("r") -> arc.restart
-//!     key("d") -> density.set(2.0)
-//!     key("t") -> opacity.toggle(0.0, 1.0)
-//!     mouse.x -> fire.intensity.bias(0.3)
-//!     audio.bass > 0.5 -> arc.pause_toggle
-//!   }
-//!
-//! This compiles to JS event listeners injected into the runtime.
+//! Categorizes signals by pattern matching on Expr variants:
+//! - `mouse.click` → click listener
+//! - `mouse.x`/`mouse.y` → mousemove with normalized coordinates
+//! - `key("x")` → keydown listener
+//! - `audio.field > threshold` → audio threshold check in animation loop
 
-use crate::ast::{Arg, Expr, ReactBlock};
-use crate::codegen::CompiledParam;
-use crate::codegen::expr::compile_expr_js;
+use crate::ast::{BinOp, Expr, ReactBlock};
+use crate::codegen::expr;
+use crate::codegen::UniformInfo;
 
-/// Compile a ReactBlock into JS event listener code.
-pub fn compile_react(
-    block: &ReactBlock,
-    params: &[CompiledParam],
-    warnings: &mut Vec<String>,
-) -> String {
+/// Signal category determined by pattern matching the signal expression.
+enum SignalKind {
+    /// `mouse.click` — generates a click addEventListener
+    MouseClick,
+    /// `mouse.x` or `mouse.y` — generates a mousemove listener with normalized coords
+    MouseMove(String),
+    /// `key("x")` — generates a keydown listener for a specific key
+    Key(String),
+    /// `audio.field > threshold` — generates an audio threshold check
+    AudioThreshold { field: String, threshold: f64 },
+    /// Unrecognized signal — emit as a comment
+    Unknown(String),
+}
+
+/// Classify a signal expression into a SignalKind.
+fn classify_signal(signal: &Expr) -> SignalKind {
+    match signal {
+        Expr::DottedIdent { object, field } if object == "mouse" && field == "click" => {
+            SignalKind::MouseClick
+        }
+        Expr::DottedIdent { object, field }
+            if object == "mouse" && (field == "x" || field == "y") =>
+        {
+            SignalKind::MouseMove(field.clone())
+        }
+        Expr::Call { name, args } if name == "key" => {
+            let key_name = args.first().and_then(|a| match &a.value {
+                Expr::String(s) => Some(s.clone()),
+                Expr::Ident(s) => Some(s.clone()),
+                _ => None,
+            });
+            SignalKind::Key(key_name.unwrap_or_else(|| "unknown".into()))
+        }
+        Expr::BinOp {
+            op: BinOp::Gt,
+            left,
+            right,
+        } => {
+            if let Expr::DottedIdent { object, field } = left.as_ref() {
+                if object == "audio" {
+                    let threshold = match right.as_ref() {
+                        Expr::Number(v) => *v,
+                        _ => 0.5,
+                    };
+                    return SignalKind::AudioThreshold {
+                        field: field.clone(),
+                        threshold,
+                    };
+                }
+            }
+            SignalKind::Unknown(expr::compile_js(signal))
+        }
+        _ => SignalKind::Unknown(expr::compile_js(signal)),
+    }
+}
+
+/// Determine the action JS code from an action expression.
+///
+/// Recognizes:
+/// - `Ident(name)` → set uniform by name
+/// - `Call { name: "pulse", args }` → impulse with decay
+/// - `Call { name: "toggle", args }` → toggle uniform between 0 and 1
+/// - Other expressions → compile to JS
+fn compile_action(action: &Expr, uniforms: &[UniformInfo]) -> String {
+    match action {
+        Expr::Ident(name) => {
+            // Setting a uniform directly via the renderer
+            if uniforms.iter().any(|u| u.name == *name) {
+                format!("renderer.setParam('{name}', v);")
+            } else {
+                format!("// set {name} = v;")
+            }
+        }
+        Expr::Call { name, args } if name == "pulse" => {
+            let magnitude = args
+                .first()
+                .map(|a| expr::compile_js(&a.value))
+                .unwrap_or_else(|| "1.0".into());
+            format!("pulse({magnitude});")
+        }
+        Expr::Call { name, args } if name == "toggle" => {
+            let target = args
+                .first()
+                .map(|a| expr::compile_js(&a.value))
+                .unwrap_or_else(|| "0".into());
+            format!("toggle({target});")
+        }
+        _ => {
+            let js = expr::compile_js(action);
+            format!("{js};")
+        }
+    }
+}
+
+/// Compile a ReactBlock into a JS setup function.
+///
+/// Generates a `_gameReactSetup(canvas, renderer)` function that attaches event
+/// listeners and wires audio threshold checks into the renderer's `_onRender`
+/// callback. Called by the component/HTML after the renderer is initialized.
+pub fn generate_react_js(block: &ReactBlock, uniforms: &[UniformInfo]) -> String {
     if block.reactions.is_empty() {
         return String::new();
     }
 
-    let mut js = String::with_capacity(1024);
-    js.push_str("// ── React: user interaction handlers ──\n");
+    // Collect audio threshold fields to wire into the render loop
+    let audio_fields: Vec<String> = block
+        .reactions
+        .iter()
+        .filter_map(|r| match classify_signal(&r.signal) {
+            SignalKind::AudioThreshold { field, .. } => Some(field),
+            _ => None,
+        })
+        .collect();
+
+    let mut s = String::with_capacity(1024);
+    s.push_str("// GAME react — event listeners + audio threshold checks\n");
+    s.push_str("function _gameReactSetup(canvas, renderer) {\n");
+
+    // Collect pulse/toggle helpers if needed
+    let needs_pulse = block
+        .reactions
+        .iter()
+        .any(|r| matches!(&r.action, Expr::Call { name, .. } if name == "pulse"));
+    let needs_toggle = block
+        .reactions
+        .iter()
+        .any(|r| matches!(&r.action, Expr::Call { name, .. } if name == "toggle"));
+
+    if needs_pulse {
+        s.push_str("  let _pulseVal = 0;\n");
+        s.push_str("  function pulse(mag) { _pulseVal = mag; }\n");
+    }
+    if needs_toggle {
+        s.push_str("  let _toggleState = 0;\n");
+        s.push_str("  function toggle(name) { _toggleState = 1 - _toggleState; renderer.setParam(name, _toggleState); }\n");
+    }
 
     for reaction in &block.reactions {
-        let action = categorize_action(&reaction.action, params);
+        let kind = classify_signal(&reaction.signal);
+        let action_js = compile_action(&reaction.action, uniforms);
 
-        match categorize_signal(&reaction.signal) {
-            SignalType::MouseClick => {
-                js.push_str("el.addEventListener('click', (e) => {\n");
-                emit_action(&mut js, &action, "  ");
-                js.push_str("});\n");
+        match kind {
+            SignalKind::MouseClick => {
+                s.push_str("  canvas.addEventListener('click', function(e) {\n");
+                s.push_str("    const v = 1.0;\n");
+                s.push_str(&format!("    {action_js}\n"));
+                s.push_str("  });\n");
             }
-            SignalType::KeyPress(key) => {
-                js.push_str("document.addEventListener('keydown', (e) => {\n");
-                js.push_str(&format!("  if (e.key === '{key}') {{\n"));
-                js.push_str("    e.preventDefault();\n");
-                emit_action(&mut js, &action, "    ");
-                js.push_str("  }\n");
-                js.push_str("});\n");
-            }
-            SignalType::MouseAxis(axis) => {
-                let mouse_var = match axis.as_str() {
-                    "x" => "mouseX",
-                    _ => "mouseY",
-                };
-                match &action {
-                    Action::ParamBias { param_idx, amount } => {
-                        js.push_str(&format!(
-                            "// mouse.{axis} -> param[{param_idx}].bias({amount})\n"
-                        ));
-                        js.push_str(&format!(
-                            "Object.defineProperty(window, '_game_mouse_{axis}_bias', {{ value: {{ idx: {param_idx}, amt: {amount} }}, writable: true }});\n"
-                        ));
-                        js.push_str(&format!(
-                            "// Applied in frame loop: params[{param_idx}].base += ({mouse_var} - 0.5) * {amount}\n"
-                        ));
-                    }
-                    _ => {
-                        warnings.push(format!(
-                            "mouse.{axis} signal only supports param.bias() action"
-                        ));
-                        js.push_str(&format!("// mouse.{axis} reaction (unsupported action)\n"));
-                    }
+            SignalKind::MouseMove(axis) => {
+                s.push_str("  canvas.addEventListener('mousemove', function(e) {\n");
+                s.push_str("    const rect = canvas.getBoundingClientRect();\n");
+                if axis == "x" {
+                    s.push_str(
+                        "    const v = (e.clientX - rect.left) / rect.width;\n",
+                    );
+                } else {
+                    s.push_str(
+                        "    const v = 1.0 - (e.clientY - rect.top) / rect.height;\n",
+                    );
                 }
+                s.push_str(&format!("    {action_js}\n"));
+                s.push_str("  });\n");
             }
-            SignalType::AudioThreshold { field, threshold } => {
-                js.push_str(&format!(
-                    "// audio.{field} > {threshold} -> action (checked each frame)\n"
+            SignalKind::Key(key) => {
+                s.push_str("  document.addEventListener('keydown', function(e) {\n");
+                s.push_str(&format!(
+                    "    if (e.key === '{key}') {{\n"
                 ));
-                js.push_str(&format!(
-                    "window._game_threshold_{field} = {{ threshold: {threshold}, triggered: false }};\n"
-                ));
-                js.push_str(&format!(
-                    "// Frame loop checks: if ({field} > {threshold} && !triggered) {{ action; triggered = true }}\n"
-                ));
-                js.push_str(&format!(
-                    "// Reset: if ({field} <= {threshold}) triggered = false\n"
-                ));
-                // Emit the actual threshold check as a function for the frame loop
-                js.push_str(&format!(
-                    "window._game_threshold_{field}_fn = function({field}Val) {{\n"
-                ));
-                js.push_str(&format!(
-                    "  const state = window._game_threshold_{field};\n"
-                ));
-                js.push_str(&format!(
-                    "  if ({field}Val > state.threshold && !state.triggered) {{\n"
-                ));
-                js.push_str("    state.triggered = true;\n");
-                emit_action(&mut js, &action, "    ");
-                js.push_str("  }\n");
-                js.push_str(&format!(
-                    "  if ({field}Val <= state.threshold) state.triggered = false;\n"
-                ));
-                js.push_str("};\n");
+                s.push_str("      const v = 1.0;\n");
+                s.push_str(&format!("      {action_js}\n"));
+                s.push_str("    }\n");
+                s.push_str("  });\n");
             }
-            SignalType::Other => {
-                let signal_js = compile_expr_js(&reaction.signal);
-                warnings.push(format!(
-                    "unrecognized react signal '{signal_js}' — supported: mouse.click, key(\"x\"), mouse.x/y, audio.field > threshold"
+            SignalKind::AudioThreshold { field, threshold } => {
+                s.push_str(&format!(
+                    "  // audio threshold: {field} > {threshold}\n"
                 ));
-                js.push_str(&format!("// Unrecognized react signal: {signal_js}\n"));
+                s.push_str(&format!(
+                    "  function _checkAudio_{field}() {{\n"
+                ));
+                s.push_str(&format!(
+                    "    const audioData = renderer.audioData;\n"
+                ));
+                s.push_str(&format!(
+                    "    if (audioData && audioData.{field} > {threshold}) {{\n"
+                ));
+                s.push_str("      const v = 1.0;\n");
+                s.push_str(&format!("      {action_js}\n"));
+                s.push_str("    }\n");
+                s.push_str("  }\n");
+            }
+            SignalKind::Unknown(sig_js) => {
+                s.push_str(&format!("  // unknown signal: {sig_js}\n"));
             }
         }
     }
 
-    js
-}
-
-// ── Signal categorization ─────────────────────────────────────────────
-
-enum SignalType {
-    MouseClick,
-    KeyPress(String),
-    MouseAxis(String),
-    AudioThreshold { field: String, threshold: f64 },
-    Other,
-}
-
-fn categorize_signal(signal: &Expr) -> SignalType {
-    match signal {
-        Expr::FieldAccess { object, field } => {
-            if let Expr::Ident(obj) = object.as_ref() {
-                if obj == "mouse" && field == "click" {
-                    return SignalType::MouseClick;
-                }
-                if obj == "mouse" && (field == "x" || field == "y") {
-                    return SignalType::MouseAxis(field.clone());
-                }
-            }
+    // Wire audio threshold checks into the render loop via _onRender callback
+    if !audio_fields.is_empty() {
+        s.push_str("  renderer._onRender = function() {\n");
+        for field in &audio_fields {
+            s.push_str(&format!("    _checkAudio_{field}();\n"));
         }
-        Expr::Call(call) if call.name == "key" => {
-            if let Some(Arg::Positional(Expr::String(key))) = call.args.first() {
-                return SignalType::KeyPress(key.clone());
-            }
-        }
-        // audio.bass > 0.5 -> threshold trigger
-        Expr::BinaryOp { left, op: crate::ast::BinOp::Gt, right } => {
-            if let Expr::FieldAccess { object, field } = left.as_ref() {
-                if let Expr::Ident(obj) = object.as_ref() {
-                    if obj == "audio" {
-                        if let Expr::Number(threshold) = right.as_ref() {
-                            return SignalType::AudioThreshold {
-                                field: field.clone(),
-                                threshold: *threshold,
-                            };
-                        }
-                    }
-                }
-            }
-        }
-        _ => {}
+        s.push_str("  };\n");
     }
-    SignalType::Other
+
+    s.push_str("}\n");
+    s
 }
 
-// ── Action categorization ─────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::*;
 
-enum Action {
-    ArcPauseToggle,
-    ArcRestart,
-    ParamSet { param_idx: usize, value: f64 },
-    ParamToggle { param_idx: usize, val_a: f64, val_b: f64 },
-    ParamBias { param_idx: usize, amount: f64 },
-    ClickImpulse,
-    Unknown(String),
-}
-
-fn categorize_action(action: &Expr, params: &[CompiledParam]) -> Action {
-    match action {
-        // arc.pause_toggle
-        Expr::FieldAccess { object, field } => {
-            if let Expr::Ident(obj) = object.as_ref() {
-                if obj == "arc" && field == "pause_toggle" {
-                    return Action::ArcPauseToggle;
-                }
-                if obj == "arc" && field == "restart" {
-                    return Action::ArcRestart;
-                }
-            }
-        }
-        // param.set(value) or param.toggle(a, b) or param.bias(amount)
-        Expr::Call(call) => {
-            if let Some(dot_pos) = call.name.rfind('.') {
-                let param_name = &call.name[..dot_pos];
-                let method = &call.name[dot_pos + 1..];
-
-                if let Some(idx) = params.iter().position(|p| p.name == param_name) {
-                    return match method {
-                        "set" => {
-                            let val = extract_first_number(&call.args).unwrap_or(0.0);
-                            Action::ParamSet { param_idx: idx, value: val }
-                        }
-                        "toggle" => {
-                            let val_a = extract_number_at(&call.args, 0).unwrap_or(0.0);
-                            let val_b = extract_number_at(&call.args, 1).unwrap_or(1.0);
-                            Action::ParamToggle { param_idx: idx, val_a, val_b }
-                        }
-                        "bias" => {
-                            let amount = extract_first_number(&call.args).unwrap_or(0.5);
-                            Action::ParamBias { param_idx: idx, amount }
-                        }
-                        _ => Action::Unknown(compile_expr_js(action)),
-                    };
-                }
-            }
-            // mouse.click -> particles.burst(...) => impulse
-            if call.name.contains("burst") || call.name.contains("spawn") {
-                return Action::ClickImpulse;
-            }
-        }
-        _ => {}
+    #[test]
+    fn empty_react_block_returns_empty() {
+        let block = ReactBlock {
+            reactions: vec![],
+        };
+        let js = generate_react_js(&block, &[]);
+        assert!(js.is_empty());
     }
-    // Fallback: parse the action expression
-    let action_str = compile_expr_js(action);
-    if action_str.contains("pause_toggle") {
-        Action::ArcPauseToggle
-    } else if action_str.contains("restart") {
-        Action::ArcRestart
-    } else {
-        Action::Unknown(action_str)
+
+    #[test]
+    fn mouse_click_generates_click_listener() {
+        let block = ReactBlock {
+            reactions: vec![Reaction {
+                signal: Expr::DottedIdent {
+                    object: "mouse".into(),
+                    field: "click".into(),
+                },
+                action: Expr::Call {
+                    name: "pulse".into(),
+                    args: vec![Arg {
+                        name: None,
+                        value: Expr::Number(1.0),
+                    }],
+                },
+            }],
+        };
+        let js = generate_react_js(&block, &[]);
+        assert!(js.contains("addEventListener('click'"));
+        assert!(js.contains("pulse(1.0)"));
     }
-}
 
-fn extract_first_number(args: &[Arg]) -> Option<f64> {
-    if let Some(Arg::Positional(Expr::Number(n))) = args.first() {
-        Some(*n)
-    } else {
-        None
+    #[test]
+    fn mouse_x_generates_mousemove_listener() {
+        let uniforms = vec![UniformInfo {
+            name: "intensity".into(),
+            default: 0.5,
+        }];
+        let block = ReactBlock {
+            reactions: vec![Reaction {
+                signal: Expr::DottedIdent {
+                    object: "mouse".into(),
+                    field: "x".into(),
+                },
+                action: Expr::Ident("intensity".into()),
+            }],
+        };
+        let js = generate_react_js(&block, &uniforms);
+        assert!(js.contains("addEventListener('mousemove'"));
+        assert!(js.contains("rect.width"));
+        assert!(js.contains("renderer.setParam('intensity', v);"));
     }
-}
 
-fn extract_number_at(args: &[Arg], idx: usize) -> Option<f64> {
-    if let Some(Arg::Positional(Expr::Number(n))) = args.get(idx) {
-        Some(*n)
-    } else {
-        None
+    #[test]
+    fn key_signal_generates_keydown_listener() {
+        let block = ReactBlock {
+            reactions: vec![Reaction {
+                signal: Expr::Call {
+                    name: "key".into(),
+                    args: vec![Arg {
+                        name: None,
+                        value: Expr::String("x".into()),
+                    }],
+                },
+                action: Expr::Call {
+                    name: "pulse".into(),
+                    args: vec![Arg {
+                        name: None,
+                        value: Expr::Number(2.0),
+                    }],
+                },
+            }],
+        };
+        let js = generate_react_js(&block, &[]);
+        assert!(js.contains("addEventListener('keydown'"));
+        assert!(js.contains("e.key === 'x'"));
     }
-}
 
-// ── Action code emission ──────────────────────────────────────────────
+    #[test]
+    fn audio_threshold_generates_check() {
+        let block = ReactBlock {
+            reactions: vec![Reaction {
+                signal: Expr::BinOp {
+                    op: BinOp::Gt,
+                    left: Box::new(Expr::DottedIdent {
+                        object: "audio".into(),
+                        field: "bass".into(),
+                    }),
+                    right: Box::new(Expr::Number(0.8)),
+                },
+                action: Expr::Call {
+                    name: "pulse".into(),
+                    args: vec![Arg {
+                        name: None,
+                        value: Expr::Number(1.0),
+                    }],
+                },
+            }],
+        };
+        let js = generate_react_js(&block, &[]);
+        assert!(js.contains("audioData.bass > 0.8"));
+        assert!(js.contains("renderer._onRender"), "audio checks must be wired into render loop");
+        assert!(js.contains("_checkAudio_bass()"));
+    }
 
-fn emit_action(js: &mut String, action: &Action, indent: &str) {
-    match action {
-        Action::ArcPauseToggle => {
-            js.push_str(&format!("{indent}if (typeof btnToggle !== 'undefined') btnToggle.click();\n"));
-        }
-        Action::ArcRestart => {
-            js.push_str(&format!("{indent}if (typeof arcState !== 'undefined') {{\n"));
-            js.push_str(&format!("{indent}  arcState.startTime = performance.now() / 1000;\n"));
-            js.push_str(&format!("{indent}  arcState.currentMoment = 0;\n"));
-            js.push_str(&format!("{indent}}}\n"));
-        }
-        Action::ParamSet { param_idx, value } => {
-            js.push_str(&format!("{indent}if (params[{param_idx}]) params[{param_idx}].base = {value};\n"));
-        }
-        Action::ParamToggle { param_idx, val_a, val_b } => {
-            js.push_str(&format!(
-                "{indent}if (params[{param_idx}]) params[{param_idx}].base = (params[{param_idx}].base === {val_a}) ? {val_b} : {val_a};\n"
-            ));
-        }
-        Action::ParamBias { param_idx, amount } => {
-            js.push_str(&format!(
-                "{indent}// bias applied in frame loop for param[{param_idx}] by {amount}\n"
-            ));
-        }
-        Action::ClickImpulse => {
-            js.push_str(&format!("{indent}// Impulse: set a decay uniform that fades over frames\n"));
-            js.push_str(&format!("{indent}window._game_impulse = 1.0;\n"));
-        }
-        Action::Unknown(action_js) => {
-            js.push_str(&format!("{indent}console.log('[GAME react]', {action_js:?});\n"));
-        }
+    #[test]
+    fn mouse_y_generates_inverted_coord() {
+        let uniforms = vec![UniformInfo {
+            name: "height".into(),
+            default: 0.0,
+        }];
+        let block = ReactBlock {
+            reactions: vec![Reaction {
+                signal: Expr::DottedIdent {
+                    object: "mouse".into(),
+                    field: "y".into(),
+                },
+                action: Expr::Ident("height".into()),
+            }],
+        };
+        let js = generate_react_js(&block, &uniforms);
+        assert!(js.contains("1.0 - (e.clientY"));
+    }
+
+    #[test]
+    fn unknown_signal_emits_comment() {
+        let block = ReactBlock {
+            reactions: vec![Reaction {
+                signal: Expr::Number(42.0),
+                action: Expr::Ident("x".into()),
+            }],
+        };
+        let js = generate_react_js(&block, &[]);
+        assert!(js.contains("// unknown signal"));
     }
 }
