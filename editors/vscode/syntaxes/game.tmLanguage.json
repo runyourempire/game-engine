@@ -150,7 +150,7 @@
       "patterns": [
         {
           "name": "keyword.control.game",
-          "match": "\\b(cinematic|scene|fn|import|use|layer|listen|arc|resonate|blend|memory|breed|flow|react|swarm|gravity|matrix)\\b"
+          "match": "\\b(cinematic|scene|fn|import|use|layer|listen|arc|resonate|blend|memory|breed|flow|react|swarm|gravity|matrix|props|dom|on|role|state|pass|config|particles|texture|scene3d|opacity|cast|feedback)\\b"
         }
       ]
     },
@@ -260,6 +260,11 @@
           "comment": "SDF -> SDF builtins",
           "name": "support.function.game",
           "match": "\\b(round|shell|onion|mask_arc)\\b"
+        },
+        {
+          "comment": "Post-processing pass effects",
+          "name": "support.function.game",
+          "match": "\\b(blur|vignette|chromatic|sharpen|film_grain)\\b"
         }
       ]
     },

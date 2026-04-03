@@ -202,5 +202,78 @@
       "}"
     ],
     "description": "Full GAME component with listen, layers, resonate, and arc"
+  },
+  "Wallpaper": {
+    "prefix": "wallpaper",
+    "body": [
+      "// ${1:Wallpaper description}",
+      "",
+      "cinematic \"${2:wallpaper-name}\" {",
+      "\tlayer config {",
+      "\t\t${3:intensity}: 0.5",
+      "\t}",
+      "",
+      "\t// Background field",
+      "\tlayer bg memory: 0.92 {",
+      "\t\twarp(scale: ${4:2.0}, octaves: 5, persistence: 0.5, strength: 0.2)",
+      "\t\t| fbm(scale: ${5:3.0}, octaves: 5)",
+      "\t\t| palette(${6|twilight,aurora,ocean,fire,ember,plasma,cyber|})",
+      "\t}",
+      "",
+      "\t// Focal element",
+      "\tlayer focal memory: 0.90 blend: add {",
+      "\t\tdistort(scale: 2.0, speed: 0.4, strength: 0.03)",
+      "\t\t| ${7:circle(0.15)} | glow(${8:3.0}) | tint(1.0, 0.9, 0.7)",
+      "\t}",
+      "",
+      "\t// Subtle atmosphere",
+      "\tlayer atmosphere memory: 0.88 blend: add {",
+      "\t\twarp(scale: 3.0, octaves: 4, strength: 0.15)",
+      "\t\t| simplex(${9:6.0}) | glow(1.0) | tint(0.3, 0.4, 0.6)",
+      "\t}",
+      "",
+      "\tarc {",
+      "\t\t$3: 0.0 -> 1.0 over ${10:12}s ease-in-out",
+      "\t}",
+      "",
+      "\tresonate {",
+      "\t\t$3 -> focal.brightness * 0.5",
+      "\t\t$3 -> atmosphere.intensity * 0.3",
+      "\t}",
+      "",
+      "\tpass soft { blur(2.0) }",
+      "\tpass frame { vignette(0.35) }",
+      "}"
+    ],
+    "description": "Desktop wallpaper — multi-layer ambient with memory, arc, resonate, and post-processing. Compile with: game build --format wallpaper"
+  },
+  "Post-Processing Pass": {
+    "prefix": "pass",
+    "body": [
+      "pass ${1:name} { ${2|blur,vignette,chromatic,sharpen,film_grain|}(${3:2.0}) }"
+    ],
+    "description": "Add a post-processing pass (blur, vignette, chromatic, sharpen, film_grain)"
+  },
+  "Color Matrix": {
+    "prefix": "matrix-color",
+    "body": [
+      "matrix color {",
+      "\t[",
+      "\t\t${1:1.0}, ${2:0.0}, ${3:0.0},",
+      "\t\t${4:0.0}, ${5:1.0}, ${6:0.0},",
+      "\t\t${7:0.0}, ${8:0.0}, ${9:1.0}",
+      "\t]",
+      "}"
+    ],
+    "description": "3x3 RGB color grading matrix"
+  },
+  "Config Layer": {
+    "prefix": "config",
+    "body": [
+      "layer config {",
+      "\t${1:param_name}: ${2:0.5}",
+      "}"
+    ],
+    "description": "Config layer declaring uniform parameters with defaults"
   }
 }
