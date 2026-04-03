@@ -1,0 +1,134 @@
+// Primordial — the birth of everything from nothing.
+// A void ignites. Fractal light spirals outward. Memory leaves
+// trails of creation. Each layer builds on the last until the
+// cosmos breathes. This is what genesis looks like on a GPU.
+
+cinematic "primordial" {
+  layer config {
+    ignition: 0.0
+    expansion: 0.0
+    consciousness: 0.0
+  }
+
+  // The void substrate — deep space warped by gravity
+  layer void memory: 0.93 {
+    warp(scale: 1.8, octaves: 6, persistence: 0.55, strength: 0.18 + ignition * 0.12)
+    | fbm(scale: 2.5, octaves: 6, persistence: 0.5)
+    | palette(
+        a_r: 0.01, a_g: 0.005, a_b: 0.025,
+        b_r: 0.05, b_g: 0.025, b_b: 0.1,
+        c_r: 0.2, c_g: 0.1, c_b: 0.4,
+        d_r: 0.0, d_g: 0.05, d_b: 0.15
+      )
+  }
+
+  // Fractal spirals — polar coordinate expansion
+  layer spiral memory: 0.88 opacity: 0.7 {
+    polar
+    | warp(scale: 4.0, octaves: 5, persistence: 0.5, strength: 0.25 + expansion * 0.12)
+    | fbm(scale: 5.0, octaves: 5)
+    | palette(
+        a_r: 0.02, a_g: 0.01, a_b: 0.04,
+        b_r: 0.15, b_g: 0.08, b_b: 0.3,
+        c_r: 0.5, c_g: 0.3, c_b: 0.7,
+        d_r: 0.0, d_g: 0.1, d_b: 0.25
+      )
+  }
+
+  // Nebula — matter condensing, aurora palette
+  layer nebula memory: 0.89 opacity: 0.5 {
+    translate(0.08, -0.04)
+    | warp(scale: 2.5, octaves: 5, persistence: 0.55, strength: 0.2 + consciousness * 0.08)
+    | fbm(scale: 3.5, octaves: 5, persistence: 0.5)
+    | palette(aurora)
+  }
+
+  // Energy filaments — simplex noise threads
+  layer filaments memory: 0.85 blend: add {
+    polar
+    | distort(scale: 3.0, speed: 0.5, strength: 0.05 + expansion * 0.03)
+    | warp(scale: 5.0, octaves: 4, persistence: 0.4, strength: 0.15)
+    | simplex(10.0)
+    | glow(0.6 + expansion * 0.4)
+    | tint(0.4, 0.25, 0.7)
+  }
+
+  // Star field — voronoi pinpoints
+  layer stars memory: 0.80 opacity: 0.6 {
+    warp(scale: 2.5, octaves: 3, strength: 0.1)
+    | voronoi(22.0)
+    | palette(
+        a_r: 0.0, a_g: 0.0, a_b: 0.01,
+        b_r: 0.05, b_g: 0.05, b_b: 0.08,
+        c_r: 0.9, c_g: 0.9, c_b: 1.0,
+        d_r: 0.0, d_g: 0.0, d_b: 0.0
+      )
+  }
+
+  // The ignition seed — golden core
+  layer seed memory: 0.90 blend: add {
+    distort(scale: 2.0, speed: 0.4, strength: 0.015 + ignition * 0.01)
+    | circle(0.03 + ignition * 0.02)
+    | glow(3.5 + ignition * 2.0)
+    | tint(1.0, 0.82, 0.4)
+  }
+
+  // Golden rings — the pulse of consciousness
+  layer rings memory: 0.86 blend: add {
+    distort(scale: 1.8, speed: 0.3, strength: 0.012 + consciousness * 0.008)
+    | ring(0.14 + consciousness * 0.04, 0.003)
+    | glow(1.8 + consciousness * 1.2)
+    | tint(0.83, 0.69, 0.22)
+  }
+
+  // Heartbeat — onion rings radiating from center
+  layer pulse memory: 0.84 blend: add {
+    distort(scale: 1.5, speed: 0.7, strength: 0.012)
+    | circle(0.06 + consciousness * 0.025)
+    | onion(3, 0.003)
+    | glow(1.0 + consciousness * 0.8)
+    | tint(0.3, 0.22, 0.55)
+  }
+
+  // Orbiting star — consciousness emerging
+  layer orbiter memory: 0.82 blend: add {
+    translate(sin(time * 0.4) * (0.13 + consciousness * 0.07), cos(time * 0.4) * (0.13 + consciousness * 0.07))
+    | star(5.0, 0.015 + consciousness * 0.007, 0.006)
+    | glow(2.0 + consciousness * 0.8)
+    | tint(1.0, 0.65, 0.25)
+  }
+
+  // Frame
+  layer boundary {
+    ring(0.46, 0.001) | glow(0.3 + consciousness * 0.15) | tint(0.2, 0.15, 0.4)
+  }
+
+  // 30 seconds of genesis
+  arc {
+    ignition: 0.0 -> 1.0 over 8s ease-in-out
+    expansion: 0.0 -> 1.0 over 18s ease-out
+    consciousness: 0.0 -> 1.0 over 30s ease-in-out
+  }
+
+  resonate {
+    ignition -> seed.brightness * 0.5
+    ignition -> spiral.intensity * 0.3
+    expansion -> filaments.brightness * 0.4
+    expansion -> nebula.intensity * 0.25
+    consciousness -> rings.brightness * 0.4
+    consciousness -> pulse.brightness * 0.3
+    consciousness -> orbiter.brightness * 0.25
+  }
+
+  matrix color {
+    [
+      0.92, -0.03, 0.15,
+      0.0,   0.85, 0.08,
+      0.1,   0.02, 1.25
+    ]
+  }
+
+  pass glow { blur(2.0) }
+  pass split { chromatic(0.004) }
+  pass frame { vignette(0.4) }
+}

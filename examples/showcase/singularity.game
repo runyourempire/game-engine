@@ -1,0 +1,160 @@
+// Singularity — a sentient cosmos that watches, breathes, and responds to you.
+// Mouse-reactive: the universe follows your gaze. Click to ignite.
+// 10 layers of depth. Memory trails. Orbiting geometry. Living texture.
+// This is not a wallpaper. This is a window into something alive.
+
+cinematic "singularity" {
+  layer config {
+    awakening: 0.0
+    depth: 0.0
+  }
+
+  // Layer 1: The abyss — hand-built vignette from dark edges to subtle center
+  // This replaces post-processing vignette with an in-shader solution
+  layer abyss {
+    radial_fade(0.0, 0.55)
+    | palette(
+        a_r: 0.0, a_g: 0.0, a_b: 0.0,
+        b_r: 0.02, b_g: 0.01, b_b: 0.04,
+        c_r: 0.08, c_g: 0.04, c_b: 0.15,
+        d_r: 0.0, d_g: 0.0, d_b: 0.1
+      )
+  }
+
+  // Layer 2: Cosmic dust — warped noise creating depth and movement
+  layer dust memory: 0.82 {
+    warp(scale: 2.0, octaves: 6, persistence: 0.55, strength: 0.15 + awakening * 0.08)
+    | fbm(scale: 3.0, octaves: 6, persistence: 0.5)
+    | palette(
+        a_r: 0.005, a_g: 0.002, a_b: 0.015,
+        b_r: 0.03, b_g: 0.015, b_b: 0.07,
+        c_r: 0.15, c_g: 0.08, c_b: 0.3,
+        d_r: 0.0, d_g: 0.03, d_b: 0.12
+      )
+  }
+
+  // Layer 3: Star field — sharp pinpoints of light in the dark
+  layer stars {
+    warp(scale: 1.5, octaves: 3, strength: 0.08)
+    | voronoi(28.0)
+    | palette(
+        a_r: 0.0, a_g: 0.0, a_b: 0.0,
+        b_r: 0.02, b_g: 0.02, b_b: 0.03,
+        c_r: 0.8, c_g: 0.8, c_b: 1.0,
+        d_r: 0.0, d_g: 0.0, d_b: 0.0
+      )
+  }
+
+  // Layer 4: Radial energy — polar spoke pattern radiating from center
+  // Responds to mouse: shifts with cursor position
+  layer spokes memory: 0.78 blend: add {
+    translate(mouse_x * 0.06 - 0.03, mouse_y * 0.06 - 0.03)
+    | polar
+    | warp(scale: 3.5, octaves: 4, persistence: 0.4, strength: 0.12 + depth * 0.06)
+    | simplex(9.0)
+    | glow(0.4 + depth * 0.25)
+    | tint(0.2, 0.12, 0.45)
+  }
+
+  // Layer 5: The event horizon — a living ring that breathes
+  // Follows mouse subtly — the eye tracks you
+  layer horizon memory: 0.80 blend: add {
+    translate(mouse_x * 0.12 - 0.06, mouse_y * 0.12 - 0.06)
+    | distort(scale: 2.5, speed: 0.4, strength: 0.018 + awakening * 0.008)
+    | ring(0.16 + awakening * 0.03, 0.004)
+    | glow(2.0 + awakening * 1.0)
+    | tint(0.5, 0.35, 0.9)
+  }
+
+  // Layer 6: Inner fire — plasma trapped inside the ring
+  // Grows in intensity on mouse_down
+  layer plasma memory: 0.83 opacity: 0.6 {
+    translate(mouse_x * 0.08 - 0.04, mouse_y * 0.08 - 0.04)
+    | warp(scale: 5.0, octaves: 4, persistence: 0.5, strength: 0.18 + mouse_down * 0.08 + awakening * 0.06)
+    | fbm(scale: 4.0, octaves: 4, persistence: 0.45)
+    | palette(
+        a_r: 0.08, a_g: 0.02, a_b: 0.0,
+        b_r: 0.4, b_g: 0.15, b_b: 0.05,
+        c_r: 0.8, c_g: 0.4, c_b: 0.1,
+        d_r: 0.0, d_g: 0.1, d_b: 0.2
+      )
+  }
+
+  // Layer 7: Photon ring — thin bright line just outside the horizon
+  layer photon memory: 0.76 blend: add {
+    translate(mouse_x * 0.1 - 0.05, mouse_y * 0.1 - 0.05)
+    | distort(scale: 2.0, speed: 0.6, strength: 0.01)
+    | ring(0.2 + awakening * 0.03, 0.002)
+    | glow(1.5 + awakening * 0.8)
+    | tint(0.8, 0.65, 1.0)
+  }
+
+  // Layer 8: The pupil — absolute darkness at the core
+  layer void_core {
+    translate(mouse_x * 0.14 - 0.07, mouse_y * 0.14 - 0.07)
+    | distort(scale: 1.5, speed: 0.3, strength: 0.008)
+    | circle(0.05 + mouse_down * 0.02)
+    | shade(0.0, 0.0, 0.0)
+  }
+
+  // Layer 9: Orbiting sentinel — golden star tracing a path
+  layer sentinel memory: 0.75 blend: add {
+    translate(
+      sin(time * 0.35) * (0.25 + depth * 0.05) + mouse_x * 0.04 - 0.02,
+      cos(time * 0.35) * (0.22 + depth * 0.05) + mouse_y * 0.04 - 0.02
+    )
+    | distort(scale: 2.0, speed: 0.6, strength: 0.01)
+    | star(5.0, 0.012 + depth * 0.005, 0.005)
+    | glow(1.8 + depth * 0.6)
+    | tint(0.83, 0.69, 0.22)
+  }
+
+  // Layer 10: Second sentinel — blue, opposite orbit
+  layer sentinel_b memory: 0.73 blend: add {
+    translate(
+      cos(time * 0.28) * (0.3 + depth * 0.04) + mouse_x * 0.03 - 0.015,
+      sin(time * 0.22) * (0.26 + depth * 0.04) + mouse_y * 0.03 - 0.015
+    )
+    | distort(scale: 2.0, speed: 0.5, strength: 0.01)
+    | star(6.0, 0.01 + depth * 0.004, 0.004)
+    | glow(1.5 + depth * 0.5)
+    | tint(0.3, 0.5, 1.0)
+  }
+
+  // Layer 11: Outer containment — structural boundary
+  layer frame blend: add {
+    ring(0.44, 0.001)
+    | glow(0.25 + awakening * 0.1)
+    | tint(0.15, 0.1, 0.3)
+  }
+
+  // 20 second awakening — the singularity comes alive
+  arc {
+    awakening: 0.0 -> 1.0 over 12s ease-in-out
+    depth: 0.0 -> 1.0 over 20s ease-out
+  }
+
+  // Cross-layer resonance — everything is connected
+  resonate {
+    awakening -> horizon.brightness * 0.4
+    awakening -> plasma.intensity * 0.3
+    awakening -> photon.brightness * 0.3
+    depth -> spokes.intensity * 0.3
+    depth -> sentinel.brightness * 0.25
+    depth -> sentinel_b.brightness * 0.25
+  }
+
+  // Cinematic grading — cold highlights, warm shadows
+  matrix color {
+    [
+      0.95, -0.02, 0.1,
+      0.0,   0.88, 0.06,
+      0.08,  0.0,  1.15
+    ]
+  }
+
+  // Post-processing — enhances WebGPU, graceful without
+  pass glow { blur(1.5) }
+  pass split { chromatic(0.003) }
+  pass darkness { vignette(0.35) }
+}
