@@ -1,0 +1,126 @@
+// Aurora Drift — northern lights rippling across a dark arctic sky.
+// Vertical curtains of green, blue, and violet light that wave
+// and breathe. Mouse steers the solar wind. Click intensifies.
+// The most colorful wallpaper — designed for maximum palette range.
+//
+// Compile: game build aurora-drift.game -o dist --format wallpaper
+
+cinematic "aurora-drift" {
+  layer config {
+    solar_wind: 0.0          // 0.0-1.0 — aurora intensity (animated)
+    curtain_wave: 0.0        // 0.0-1.0 — curtain movement (animated)
+    altitude: 5.0            // 3.0-10.0 — pattern height/scale
+    color_temp: 0.5          // 0.0-1.0 — 0=pure green, 0.5=mixed, 1=violet dominant
+  }
+
+  // Layer 1: Night sky — deep dark blue-black with hint of stars
+  layer sky {
+    warp(scale: 1.0, octaves: 3, persistence: 0.4, strength: 0.06)
+    | voronoi(30.0)
+    | palette(
+        a_r: 0.003, a_g: 0.005, a_b: 0.015,
+        b_r: 0.008, b_g: 0.008, b_b: 0.02,
+        c_r: 0.6, c_g: 0.6, c_b: 0.8,
+        d_r: 0.0, d_g: 0.0, d_b: 0.0
+      )
+  }
+
+  // Layer 2: Primary aurora curtain — green dominant
+  // Vertical warp creates the curtain hang effect
+  layer curtain_green memory: 0.87 {
+    translate(0.0, 0.12 + mouse_y * 0.06 - 0.03)
+    | warp(scale: 1.5 + mouse_x * 0.3, octaves: 6, persistence: 0.6, strength: 0.3 + solar_wind * 0.12 + mouse_down * 0.06)
+    | distort(scale: 2.0, speed: 0.25 + curtain_wave * 0.15, strength: 0.1 + curtain_wave * 0.04)
+    | fbm(scale: altitude * 0.6, octaves: 6, persistence: 0.55)
+    | palette(
+        a_r: 0.005 + color_temp * 0.01, a_g: 0.03 - color_temp * 0.01, a_b: 0.015,
+        b_r: 0.02 + color_temp * 0.04, b_g: 0.12 - color_temp * 0.04, b_b: 0.06 + color_temp * 0.03,
+        c_r: 0.5, c_g: 1.0 - color_temp * 0.3, c_b: 0.5 + color_temp * 0.3,
+        d_r: 0.1 + color_temp * 0.1, d_g: 0.3 - color_temp * 0.1, d_b: 0.2 + color_temp * 0.1
+      )
+  }
+
+  // Layer 3: Secondary curtain — blue-violet, offset
+  layer curtain_blue memory: 0.84 opacity: 0.7 {
+    translate(0.08, -0.08 + mouse_y * 0.04 - 0.02)
+    | warp(scale: 2.0 + mouse_x * 0.2, octaves: 5, persistence: 0.55, strength: 0.25 + solar_wind * 0.1)
+    | distort(scale: 2.5, speed: 0.3 + curtain_wave * 0.12, strength: 0.08 + curtain_wave * 0.03)
+    | fbm(scale: altitude * 0.8, octaves: 5, persistence: 0.5)
+    | palette(
+        a_r: 0.005, a_g: 0.01, a_b: 0.025,
+        b_r: 0.02, b_g: 0.04, b_b: 0.1,
+        c_r: 0.5, c_g: 0.8, c_b: 1.0,
+        d_r: 0.15, d_g: 0.25, d_b: 0.55
+      )
+  }
+
+  // Layer 4: Bright peaks — concentrated glow at curtain high points
+  layer peaks memory: 0.80 opacity: 0.45 {
+    translate(0.0, 0.15)
+    | warp(scale: 2.5, octaves: 4, persistence: 0.5, strength: 0.2 + solar_wind * 0.08)
+    | distort(scale: 3.0, speed: 0.35 + curtain_wave * 0.15, strength: 0.06)
+    | simplex(altitude * 1.2)
+    | palette(
+        a_r: 0.01, a_g: 0.04 - color_temp * 0.02, a_b: 0.01 + color_temp * 0.02,
+        b_r: 0.03, b_g: 0.1 - color_temp * 0.03, b_b: 0.04 + color_temp * 0.04,
+        c_r: 0.6, c_g: 1.0, c_b: 0.5,
+        d_r: 0.0, d_g: 0.3, d_b: 0.0
+      )
+  }
+
+  // Layer 5: Corona rays — radial structure in the aurora
+  layer corona memory: 0.76 opacity: 0.3 {
+    polar
+    | warp(scale: 2.0, octaves: 4, persistence: 0.4, strength: 0.15 + solar_wind * 0.06)
+    | simplex(altitude * 1.5)
+    | palette(
+        a_r: 0.005, a_g: 0.015, a_b: 0.005,
+        b_r: 0.02, b_g: 0.06, b_b: 0.03,
+        c_r: 0.4, c_g: 0.8, c_b: 0.6,
+        d_r: 0.1, d_g: 0.2, d_b: 0.3
+      )
+  }
+
+  // Layer 6: Horizon glow — warm reflected light below
+  layer horizon memory: 0.90 opacity: 0.4 {
+    translate(0.0, -0.3)
+    | radial_fade(0.0, 0.35)
+    | palette(
+        a_r: 0.01, a_g: 0.015, a_b: 0.02,
+        b_r: 0.02, b_g: 0.025, b_b: 0.03,
+        c_r: 0.3, c_g: 0.35, c_b: 0.4,
+        d_r: 0.0, d_g: 0.1, d_b: 0.15
+      )
+  }
+
+  // Layer 7: Cursor influence — pulls the solar wind
+  layer cursor blend: add {
+    translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+    | circle(0.025 + mouse_down * 0.03)
+    | glow(0.3 + mouse_down * 0.4)
+    | tint(0.2, 0.5, 0.3)
+  }
+
+  arc {
+    solar_wind: 0.0 -> 1.0 over 10s ease-in-out
+    curtain_wave: 0.0 -> 0.8 over 16s ease-out
+  }
+
+  resonate {
+    solar_wind -> curtain_green.intensity * 0.3
+    solar_wind -> curtain_blue.brightness * 0.25
+    curtain_wave -> peaks.brightness * 0.3
+    curtain_wave -> corona.intensity * 0.2
+  }
+
+  matrix color {
+    [
+      0.9, 0.0, 0.05,
+      0.0, 1.05, 0.0,
+      0.0, 0.04, 1.1
+    ]
+  }
+
+  pass soft { blur(1.5) }
+  pass frame { vignette(0.25) }
+}

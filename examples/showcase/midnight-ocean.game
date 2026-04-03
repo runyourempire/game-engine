@@ -1,0 +1,115 @@
+// Midnight Ocean — deep bioluminescent waters flowing across your screen.
+// Mouse-reactive: currents follow your cursor. Click to create a pulse.
+// Every parameter is in the config block — LLMs can remix by changing values.
+//
+// Compile: game build midnight-ocean.game -o dist --format wallpaper
+// Customize: change config values, recompile, instant new wallpaper.
+
+cinematic "midnight-ocean" {
+  layer config {
+    // Flow behavior
+    flow_speed: 0.3          // 0.1-1.0 — current speed
+    flow_strength: 0.28      // 0.1-0.5 — how much the water warps
+    turbulence: 0.15         // 0.0-0.4 — surface choppiness
+    // Visual
+    depth: 6.0               // 2.0-12.0 — pattern density (higher = finer detail)
+    bio_intensity: 0.0       // 0.0-1.0 — bioluminescence brightness (animated by arc)
+    warmth: 0.0              // 0.0-1.0 — 0=cold deep blue, 1=warm teal
+  }
+
+  // Layer 1: The deep — base water color, fills entire screen
+  // This is the foundation. Rich, dark, with visible flow texture.
+  layer deep memory: 0.88 {
+    warp(scale: 1.5, octaves: 6, persistence: 0.55, lacunarity: 2.0, strength: flow_strength + mouse_down * 0.08)
+    | distort(scale: 2.0, speed: flow_speed, strength: turbulence)
+    | fbm(scale: depth * 0.5, octaves: 6, persistence: 0.5)
+    | palette(
+        a_r: 0.01 + warmth * 0.02, a_g: 0.02, a_b: 0.06 - warmth * 0.02,
+        b_r: 0.03 + warmth * 0.03, b_g: 0.06, b_b: 0.15 - warmth * 0.05,
+        c_r: 0.8, c_g: 0.6 + warmth * 0.2, c_b: 0.4 + warmth * 0.2,
+        d_r: 0.55, d_g: 0.65, d_b: 0.75
+      )
+  }
+
+  // Layer 2: Mid-water current — faster, finer texture on top
+  // Mouse position influences the warp: cursor pulls the current
+  layer current memory: 0.84 opacity: 0.7 {
+    warp(scale: 2.5 + mouse_x * 0.5, octaves: 5, persistence: 0.5, strength: flow_strength * 1.2 + mouse_down * 0.06)
+    | distort(scale: 3.0, speed: flow_speed * 1.3, strength: turbulence * 1.2)
+    | fbm(scale: depth, octaves: 5, persistence: 0.45)
+    | palette(
+        a_r: 0.005, a_g: 0.015 + warmth * 0.01, a_b: 0.04 - warmth * 0.01,
+        b_r: 0.02 + warmth * 0.02, b_g: 0.05, b_b: 0.12 - warmth * 0.03,
+        c_r: 1.2, c_g: 0.8, c_b: 0.5,
+        d_r: 0.6, d_g: 0.7, d_b: 0.8
+      )
+  }
+
+  // Layer 3: Surface ripples — high frequency flowing detail
+  layer surface memory: 0.80 opacity: 0.5 {
+    warp(scale: 3.5 + mouse_y * 0.3, octaves: 4, persistence: 0.45, strength: flow_strength * 0.8)
+    | distort(scale: 4.0, speed: flow_speed * 1.8, strength: turbulence * 1.5)
+    | simplex(depth * 1.5)
+    | palette(
+        a_r: 0.0, a_g: 0.01, a_b: 0.03,
+        b_r: 0.01, b_g: 0.04, b_b: 0.08,
+        c_r: 1.5, c_g: 1.0, c_b: 0.6,
+        d_r: 0.5, d_g: 0.6, d_b: 0.7
+      )
+  }
+
+  // Layer 4: Bioluminescent organisms — scattered glowing particles
+  // Uses repeat() to tile tiny organisms across the screen, distort animates them
+  layer biolum memory: 0.75 blend: add {
+    distort(scale: 4.0, speed: flow_speed * 0.8, strength: 0.18)
+    | warp(scale: 2.5, octaves: 3, strength: 0.2)
+    | repeat(0.12, 0.12)
+    | circle(0.015)
+    | glow(1.5 + bio_intensity * 1.0)
+    | tint(0.15 + warmth * 0.15, 0.5 + bio_intensity * 0.3, 0.8 - warmth * 0.2)
+  }
+
+  // Layer 5: Deep bioluminescence trail — memory creates long flowing trails
+  layer bio_trail memory: 0.92 opacity: 0.3 {
+    warp(scale: 2.0, octaves: 5, persistence: 0.5, strength: 0.2 + bio_intensity * 0.08)
+    | distort(scale: 3.0, speed: flow_speed * 0.6, strength: 0.12)
+    | fbm(scale: depth * 0.8, octaves: 5)
+    | palette(
+        a_r: 0.0, a_g: 0.02 + bio_intensity * 0.02, a_b: 0.04,
+        b_r: 0.0, b_g: 0.06 + bio_intensity * 0.04, b_b: 0.1,
+        c_r: 0.3, c_g: 0.8, c_b: 1.0,
+        d_r: 0.5, d_g: 0.65, d_b: 0.8
+      )
+  }
+
+  // Layer 6: Cursor glow — subtle light follows mouse
+  layer cursor_light blend: add {
+    translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+    | circle(0.04 + mouse_down * 0.03)
+    | glow(0.6 + mouse_down * 0.4 + bio_intensity * 0.3)
+    | tint(0.2, 0.4 + bio_intensity * 0.2, 0.6)
+  }
+
+  // Bioluminescence awakening over 15 seconds
+  arc {
+    bio_intensity: 0.0 -> 0.8 over 15s ease-in-out
+  }
+
+  resonate {
+    bio_intensity -> biolum.brightness * 0.4
+    bio_intensity -> bio_trail.intensity * 0.3
+    bio_intensity -> surface.brightness * 0.15
+  }
+
+  matrix color {
+    [
+      0.9, -0.02, 0.08,
+      0.0,  0.95,  0.04,
+      0.05, 0.0,   1.1
+    ]
+  }
+
+  pass glow { blur(1.5) }
+  pass split { chromatic(0.002) }
+  pass frame { vignette(0.25) }
+}

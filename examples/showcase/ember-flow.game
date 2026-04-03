@@ -1,0 +1,108 @@
+// Ember Flow — volcanic rivers of light through obsidian.
+// Deep black with molten amber veins. Mouse pulls the lava.
+// Click to erupt — intensifies flow around cursor.
+//
+// Compile: game build ember-flow.game -o dist --format wallpaper
+
+cinematic "ember-flow" {
+  layer config {
+    heat: 0.0               // 0.0-1.0 — volcanic activity (animated)
+    viscosity: 0.25          // 0.1-0.5 — how thick the lava flows
+    vein_scale: 5.0          // 2.0-10.0 — size of lava veins
+    eruption: 0.0            // 0.0-1.0 — eruption intensity (animated)
+  }
+
+  // Layer 1: Obsidian base — nearly black with subtle structure
+  layer obsidian memory: 0.86 {
+    warp(scale: 1.8, octaves: 5, persistence: 0.5, strength: viscosity * 0.6)
+    | distort(scale: 2.0, speed: 0.15, strength: 0.06)
+    | fbm(scale: 3.0, octaves: 5, persistence: 0.5)
+    | palette(
+        a_r: 0.015, a_g: 0.008, a_b: 0.005,
+        b_r: 0.03, b_g: 0.015, b_b: 0.01,
+        c_r: 0.15, c_g: 0.08, c_b: 0.05,
+        d_r: 0.0, d_g: 0.05, d_b: 0.1
+      )
+  }
+
+  // Layer 2: Primary lava veins — the main flowing channels
+  layer lava memory: 0.85 opacity: 0.8 {
+    warp(scale: 2.5 + mouse_x * 0.3, octaves: 6, persistence: 0.55, strength: viscosity + heat * 0.1 + mouse_down * 0.08)
+    | distort(scale: 2.5, speed: 0.3 + heat * 0.15, strength: viscosity * 0.8)
+    | voronoi(vein_scale)
+    | palette(
+        a_r: 0.02, a_g: 0.005, a_b: 0.0,
+        b_r: 0.3 + heat * 0.15, b_g: 0.1 + heat * 0.05, b_b: 0.02,
+        c_r: 1.5, c_g: 0.7, c_b: 0.3,
+        d_r: 0.0, d_g: 0.1, d_b: 0.15
+      )
+  }
+
+  // Layer 3: Secondary flow — smaller, faster channels between main veins
+  layer veins memory: 0.82 opacity: 0.6 {
+    warp(scale: 3.5 + mouse_y * 0.3, octaves: 5, persistence: 0.5, strength: viscosity * 0.9)
+    | distort(scale: 3.5, speed: 0.4 + heat * 0.2, strength: viscosity * 1.1)
+    | fbm(scale: vein_scale * 1.8, octaves: 5, persistence: 0.5)
+    | palette(
+        a_r: 0.01, a_g: 0.003, a_b: 0.0,
+        b_r: 0.2 + heat * 0.1, b_g: 0.06 + heat * 0.03, b_b: 0.01,
+        c_r: 1.2, c_g: 0.5, c_b: 0.2,
+        d_r: 0.05, d_g: 0.12, d_b: 0.2
+      )
+  }
+
+  // Layer 4: Hot spots — ember particles along the channels
+  layer embers memory: 0.72 blend: add {
+    distort(scale: 5.0, speed: 0.5 + heat * 0.3, strength: 0.2)
+    | warp(scale: 3.0, octaves: 3, strength: 0.25)
+    | repeat(0.1, 0.1)
+    | circle(0.01 + heat * 0.005)
+    | glow(0.8 + heat * 0.6 + eruption * 0.5)
+    | tint(1.0, 0.5 + heat * 0.2, 0.1)
+  }
+
+  // Layer 5: Heat haze — warped simplex creating shimmer above lava
+  layer haze memory: 0.78 opacity: 0.35 {
+    warp(scale: 4.0, octaves: 4, persistence: 0.4, strength: 0.15 + heat * 0.06)
+    | distort(scale: 6.0, speed: 0.6 + heat * 0.3, strength: 0.1)
+    | simplex(vein_scale * 2.0)
+    | palette(
+        a_r: 0.02, a_g: 0.01, a_b: 0.005,
+        b_r: 0.08 + heat * 0.05, b_g: 0.03, b_b: 0.01,
+        c_r: 0.6, c_g: 0.3, c_b: 0.15,
+        d_r: 0.1, d_g: 0.15, d_b: 0.2
+      )
+  }
+
+  // Layer 6: Cursor eruption — light follows mouse
+  layer eruption_point blend: add {
+    translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+    | circle(0.03 + mouse_down * 0.04)
+    | glow(0.4 + mouse_down * 0.6 + eruption * 0.3)
+    | tint(1.0, 0.6, 0.15)
+  }
+
+  arc {
+    heat: 0.0 -> 0.9 over 12s ease-in-out
+    eruption: 0.0 -> 0.6 over 20s ease-out
+  }
+
+  resonate {
+    heat -> lava.intensity * 0.3
+    heat -> veins.brightness * 0.25
+    heat -> embers.brightness * 0.4
+    eruption -> haze.intensity * 0.3
+    eruption -> embers.brightness * 0.2
+  }
+
+  matrix color {
+    [
+      1.1, -0.02, 0.05,
+      0.0,  0.85,  0.03,
+      0.02, -0.01, 0.8
+    ]
+  }
+
+  pass glow { blur(1.5) }
+  pass frame { vignette(0.3) }
+}

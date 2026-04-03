@@ -1,0 +1,107 @@
+// Void Silk — threads of silver-violet light flowing through pure darkness.
+// Minimal, elegant, hypnotic. Mouse weaves new threads. Click brightens.
+// The darkest wallpaper in the collection — designed for OLED screens.
+//
+// Compile: game build void-silk.game -o dist --format wallpaper
+
+cinematic "void-silk" {
+  layer config {
+    weave: 0.0              // 0.0-1.0 — thread complexity (animated)
+    shimmer: 0.0            // 0.0-1.0 — thread brightness (animated)
+    thread_scale: 8.0       // 4.0-16.0 — fineness of threads
+    flow_speed: 0.25        // 0.1-0.6 — thread flow speed
+  }
+
+  // Layer 1: The void — absolute darkness with barely-there depth
+  layer darkness {
+    warp(scale: 1.0, octaves: 3, persistence: 0.4, strength: 0.05)
+    | fbm(scale: 1.5, octaves: 3)
+    | palette(
+        a_r: 0.003, a_g: 0.003, a_b: 0.005,
+        b_r: 0.005, b_g: 0.003, b_b: 0.008,
+        c_r: 0.02, c_g: 0.015, c_b: 0.03,
+        d_r: 0.0, d_g: 0.0, d_b: 0.0
+      )
+  }
+
+  // Layer 2: Primary silk threads — the main visual element
+  // Warp creates flowing organic lines, voronoi creates thread boundaries
+  layer silk_primary memory: 0.86 {
+    warp(scale: 2.0 + mouse_x * 0.4, octaves: 6, persistence: 0.55, strength: 0.3 + weave * 0.1 + mouse_down * 0.08)
+    | distort(scale: 2.5, speed: flow_speed, strength: 0.1 + weave * 0.04)
+    | voronoi(thread_scale)
+    | palette(
+        a_r: 0.01, a_g: 0.008, a_b: 0.02,
+        b_r: 0.04 + shimmer * 0.03, b_g: 0.03 + shimmer * 0.02, b_b: 0.08 + shimmer * 0.04,
+        c_r: 1.5, c_g: 1.0, c_b: 0.5,
+        d_r: 0.6, d_g: 0.65, d_b: 0.75
+      )
+  }
+
+  // Layer 3: Fine threads — higher frequency detail
+  layer silk_fine memory: 0.82 opacity: 0.5 {
+    warp(scale: 3.5 + mouse_y * 0.3, octaves: 5, persistence: 0.5, strength: 0.25 + weave * 0.08)
+    | distort(scale: 3.0, speed: flow_speed * 1.4, strength: 0.08 + weave * 0.03)
+    | voronoi(thread_scale * 2.0)
+    | palette(
+        a_r: 0.005, a_g: 0.003, a_b: 0.012,
+        b_r: 0.03 + shimmer * 0.02, b_g: 0.02, b_b: 0.06 + shimmer * 0.03,
+        c_r: 2.0, c_g: 1.2, c_b: 0.6,
+        d_r: 0.55, d_g: 0.6, d_b: 0.7
+      )
+  }
+
+  // Layer 4: Silk shimmer — FBM noise creating iridescent highlights
+  layer shimmer_layer memory: 0.80 opacity: 0.35 {
+    warp(scale: 3.0, octaves: 5, persistence: 0.5, strength: 0.2 + shimmer * 0.06)
+    | distort(scale: 4.0, speed: flow_speed * 1.6, strength: 0.06)
+    | fbm(scale: thread_scale * 1.5, octaves: 4, persistence: 0.45)
+    | palette(
+        a_r: 0.0, a_g: 0.005, a_b: 0.01,
+        b_r: 0.02, b_g: 0.015, b_b: 0.04,
+        c_r: 0.5, c_g: 0.6, c_b: 1.0,
+        d_r: 0.5, d_g: 0.55, d_b: 0.65
+      )
+  }
+
+  // Layer 5: Stardust — rare bright points scattered in the weave
+  layer stardust memory: 0.68 blend: add {
+    distort(scale: 5.0, speed: flow_speed * 0.6, strength: 0.15)
+    | warp(scale: 2.0, octaves: 3, strength: 0.2)
+    | repeat(0.14, 0.14)
+    | circle(0.006 + shimmer * 0.003)
+    | glow(0.5 + shimmer * 0.4)
+    | tint(0.6, 0.5, 0.9)
+  }
+
+  // Layer 6: Cursor thread — light follows mouse through the silk
+  layer cursor_thread blend: add {
+    translate(mouse_x * 2.0 - 1.0, mouse_y * 2.0 - 1.0)
+    | circle(0.02 + mouse_down * 0.025)
+    | glow(0.3 + mouse_down * 0.4)
+    | tint(0.5, 0.4, 0.8)
+  }
+
+  arc {
+    weave: 0.0 -> 1.0 over 12s ease-in-out
+    shimmer: 0.0 -> 0.7 over 18s ease-out
+  }
+
+  resonate {
+    weave -> silk_primary.intensity * 0.25
+    weave -> silk_fine.brightness * 0.2
+    shimmer -> shimmer_layer.intensity * 0.3
+    shimmer -> stardust.brightness * 0.35
+  }
+
+  matrix color {
+    [
+      0.88, -0.02, 0.12,
+      0.0,   0.85, 0.06,
+      0.08,  0.02, 1.15
+    ]
+  }
+
+  pass soft { blur(1.0) }
+  pass frame { vignette(0.2) }
+}
