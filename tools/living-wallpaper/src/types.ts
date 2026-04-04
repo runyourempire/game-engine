@@ -1,6 +1,9 @@
 /** Animation behavior for a region */
 export type AnimationClass = 'static' | 'water' | 'sky' | 'vegetation' | 'fire' | 'smoke';
 
+/** Scene type for preset selection */
+export type SceneType = 'sunset_landscape' | 'ocean_coast' | 'forest_stream' | 'mountain_lake' | 'urban_night' | 'desert' | 'generic';
+
 /** A region identified by Claude Vision with animation parameters */
 export interface RegionRecipe {
   name: string;
@@ -19,6 +22,16 @@ export interface ImageRecipe {
   regions: RegionRecipe[];
   global_wind_direction: [number, number];
   ambient_motion_intensity: number;
+  /** Normalized UV position of brightest light source */
+  sun_position?: [number, number];
+  /** Dominant color temperature */
+  color_temp?: 'warm' | 'cool' | 'neutral';
+  /** Time of day classification */
+  time_of_day?: 'dawn' | 'day' | 'golden_hour' | 'dusk' | 'night';
+  /** Whether visible water surface is present */
+  has_water?: boolean;
+  /** Whether visible sky is present */
+  has_sky?: boolean;
 }
 
 /** Pipeline output: all generated assets */

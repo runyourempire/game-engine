@@ -8,12 +8,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ImageRecipe } from './types.js';
 
-const ANALYSIS_PROMPT = `Analyze this image for a living wallpaper animation system. I need to identify distinct visual regions that would animate differently to make this static photo look alive.
+const ANALYSIS_PROMPT = `Analyze this image for a living wallpaper system that composites procedural atmospheric effects on top of a static photo. I need to understand the scene structure, lighting, and regions.
 
 Return ONLY valid JSON (no markdown, no explanation) matching this exact schema:
 
 {
   "scene_type": "brief description of the scene",
+  "sun_position": [0.0, 0.3],
+  "color_temp": "warm",
+  "time_of_day": "golden_hour",
+  "has_water": true,
+  "has_sky": true,
+  "global_wind_direction": [1.0, 0.0],
+  "ambient_motion_intensity": 0.3,
   "regions": [
     {
       "name": "descriptive_name_snake_case",
@@ -25,22 +32,25 @@ Return ONLY valid JSON (no markdown, no explanation) matching this exact schema:
       "warp_amount": 0.3,
       "distort_frequency": 0.5
     }
-  ],
-  "global_wind_direction": [1.0, 0.0],
-  "ambient_motion_intensity": 0.3
+  ]
 }
 
-Rules:
+Top-level fields:
+- sun_position: [x, y] normalized position of brightest light source in GAME coordinates (x: -1 to 1, y: -1 to 1, 0,0 is center). Null if no visible light source.
+- color_temp: "warm" (sunset, golden), "cool" (overcast, blue), "neutral"
+- time_of_day: "dawn", "day", "golden_hour", "dusk", "night"
+- has_water: true if visible water surface (river, lake, ocean)
+- has_sky: true if sky is visible
+- ambient_motion_intensity: 0.1 (calm) to 0.5 (dramatic). Most scenes: 0.2-0.4.
+
+Region rules:
 - bounds: normalized 0-1 coordinates, (0,0) is top-left
 - depth_hint: 0.0=far background, 1.0=near foreground
 - animation_class: one of "static", "water", "sky", "vegetation", "fire", "smoke"
 - flow_direction: [dx, dy] unit vector. Water flows downhill, sky/clouds drift with wind
-- flow_speed: 0.0=still, 1.0=fast. Water: 0.3-0.6, clouds: 0.1-0.3, vegetation: 0
-- warp_amount: organic distortion 0.0-1.0. Water: 0.3-0.5, trees: 0.4-0.7, sky: 0.1-0.2, rocks: 0
-- distort_frequency: turbulence frequency 0.0-1.0. Water: 0.4-0.7, sky: 0.2-0.4
+- flow_speed: 0.0=still, 1.0=fast. Water: 0.3-0.6, clouds: 0.1-0.3
 
-Identify 3-8 regions. Include the full background as a region. Every pixel should be covered.
-Prioritize water, sky, and vegetation regions — these create the most compelling living photo effect.`;
+Identify 3-8 regions. Every pixel should be covered.`;
 
 /**
  * Analyze an image using Claude Vision API.
@@ -108,6 +118,11 @@ function fallbackAnalysis(): ImageRecipe {
   console.log('[analyze] Using default landscape recipe (sky + water + ground)');
   return {
     scene_type: 'generic landscape',
+    sun_position: [0.0, 0.35],
+    color_temp: 'warm',
+    time_of_day: 'golden_hour',
+    has_water: true,
+    has_sky: true,
     regions: [
       {
         name: 'sky',

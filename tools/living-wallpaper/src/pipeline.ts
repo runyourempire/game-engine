@@ -109,14 +109,15 @@ export async function runPipeline(
   // Step 5: Generate .game source
   console.log('\n=== Generating .game Source ===');
   const maskNames = Array.from(masks.keys());
-  const hasWater = resolvedRecipe.regions.some(r => r.animation_class === 'water');
-  const hasSky = resolvedRecipe.regions.some(r => r.animation_class === 'sky');
+  const hasWater = resolvedRecipe.has_water ?? resolvedRecipe.regions.some(r => r.animation_class === 'water');
+  const hasSky = resolvedRecipe.has_sky ?? resolvedRecipe.regions.some(r => r.animation_class === 'sky');
   const hasVegetation = resolvedRecipe.regions.some(r => r.animation_class === 'vegetation');
 
   const gameSource = generateGameSource(resolvedRecipe, {
     imageName: `${baseName}${sourceExt}`,
     outputDir,
     maskNames,
+    baseName,
     hasWater,
     hasSky,
     hasVegetation,
