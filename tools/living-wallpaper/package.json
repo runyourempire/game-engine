@@ -1,0 +1,19 @@
+{
+  "name": "@game/living-wallpaper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AI pipeline: single image -> living wallpaper textures + .game source",
+  "scripts": {
+    "generate": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@huggingface/transformers": "^3.4.0",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
