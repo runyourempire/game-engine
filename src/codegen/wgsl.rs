@@ -539,6 +539,7 @@ fn generate_fragment_inner(
             fns,
             cinematic.matrix_color.is_some(),
             compute_kind,
+            !cinematic.textures.is_empty(),
         );
     }
 
@@ -555,8 +556,14 @@ fn generate_fragment_inner(
         if cinematic.matrix_color.is_some() {
             s.push_str("    final_color = vec4<f32>(apply_color_matrix(final_color.rgb), final_color.a);\n");
         }
-        // Quality output pipeline: tonemap + dither
-        s.push_str("    final_color = vec4<f32>(aces_tonemap(final_color.rgb), final_color.a);\n");
+        // Quality output pipeline: tonemap (skip for photo textures) + dither
+        if cinematic.textures.is_empty() {
+            // Procedural content can exceed 1.0 (glow) — needs tonemapping
+            s.push_str("    final_color = vec4<f32>(aces_tonemap(final_color.rgb), final_color.a);\n");
+        } else {
+            // Photo textures are already 0-1 — tonemapping would lift blacks and crush highlights
+            s.push_str("    final_color = vec4<f32>(clamp(final_color.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), final_color.a);\n");
+        }
         s.push_str("    final_color = final_color + (dither_noise(input.uv * u.resolution) - 0.5) / 255.0;\n");
         s.push_str("    return final_color;\n");
     }
@@ -808,6 +815,7 @@ fn emit_wgsl_layer(
     fns: &[FnDef],
     has_color_matrix: bool,
     compute_kind: Option<&str>,
+    has_textures: bool,
 ) {
     s.push_str(&format!("    // ── Layer {idx}: {} ──\n", layer.name));
     if multi {
@@ -927,10 +935,16 @@ fn emit_wgsl_layer(
         if has_color_matrix {
             s.push_str(&format!("{indent}color_result = vec4<f32>(apply_color_matrix(color_result.rgb), color_result.a);\n"));
         }
-        // Quality output pipeline: tonemap + dither
-        s.push_str(&format!(
-            "{indent}color_result = vec4<f32>(aces_tonemap(color_result.rgb), color_result.a);\n"
-        ));
+        // Quality output pipeline: tonemap (skip for photo textures) + dither
+        if !has_textures {
+            s.push_str(&format!(
+                "{indent}color_result = vec4<f32>(aces_tonemap(color_result.rgb), color_result.a);\n"
+            ));
+        } else {
+            s.push_str(&format!(
+                "{indent}color_result = vec4<f32>(clamp(color_result.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color_result.a);\n"
+            ));
+        }
         s.push_str(&format!("{indent}color_result = color_result + (dither_noise(input.uv * u.resolution) - 0.5) / 255.0;\n"));
         s.push_str(&format!("{indent}return color_result;\n"));
     }

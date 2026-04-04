@@ -1,23 +1,21 @@
-// Living Photo — turn any image into an animated wallpaper.
-// The photo flows and breathes. Click to intensify.
-// Change the "from" URL to any image. Adjust config values to taste.
+// Living Photo — any image becomes an animated wallpaper.
+// NO memory — animation comes purely from time-driven UV distortion.
+// Click to intensify the flow. Move mouse for interaction.
 
 cinematic "living-photo" {
   texture "photo" from "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1920&q=80"
 
   layer config {
-    flow_speed: 0.12
-    flow_strength: 0.025
-    breath_strength: 0.015
+    flow_speed: 0.2
+    flow_strength: 0.04
+    breath: 0.03
   }
 
-  // The photo — gently warped to create flowing animation.
-  // Memory at 0.85 (not 0.96!) — enough for smooth flow, not so much it drowns the image.
-  layer photo memory: 0.85 {
-    distort(scale: 2.0, speed: flow_speed, strength: flow_strength + mouse_down * 0.015)
-    | warp(scale: 1.5, octaves: 3, persistence: 0.5, strength: breath_strength)
+  // The photo — distort + warp animate the UV over time.
+  // No memory needed — the sin/cos in distort already creates continuous motion.
+  layer photo {
+    distort(scale: 1.5, speed: flow_speed, strength: flow_strength + mouse_down * 0.03)
+    | warp(scale: 1.2, octaves: 3, persistence: 0.5, strength: breath + mouse_down * 0.02)
     | sample("photo")
   }
-
-  pass frame { vignette(0.15) }
 }

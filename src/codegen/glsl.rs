@@ -299,6 +299,7 @@ fn generate_fragment_inner(
             multi_layer,
             fns,
             cinematic.matrix_color.is_some(),
+            !cinematic.textures.is_empty(),
         );
     }
 
@@ -308,8 +309,12 @@ fn generate_fragment_inner(
                 "    final_color = vec4(apply_color_matrix(final_color.rgb), final_color.a);\n",
             );
         }
-        // Quality output pipeline: tonemap + dither
-        s.push_str("    final_color = vec4(aces_tonemap(final_color.rgb), final_color.a);\n");
+        // Quality output pipeline: tonemap (skip for photo textures) + dither
+        if cinematic.textures.is_empty() {
+            s.push_str("    final_color = vec4(aces_tonemap(final_color.rgb), final_color.a);\n");
+        } else {
+            s.push_str("    final_color = vec4(clamp(final_color.rgb, 0.0, 1.0), final_color.a);\n");
+        }
         s.push_str("    final_color += (dither_noise(v_uv * u_resolution) - 0.5) / 255.0;\n");
         s.push_str("    fragColor = final_color;\n");
     }
@@ -726,6 +731,7 @@ fn emit_glsl_layer(
     multi: bool,
     fns: &[FnDef],
     has_color_matrix: bool,
+    has_textures: bool,
 ) {
     s.push_str(&format!("    // ── Layer {idx}: {} ──\n", layer.name));
     if multi {
@@ -828,10 +834,16 @@ fn emit_glsl_layer(
         if has_color_matrix {
             s.push_str(&format!("{indent}color_result = vec4(apply_color_matrix(color_result.rgb), color_result.a);\n"));
         }
-        // Quality output pipeline: tonemap + dither
-        s.push_str(&format!(
-            "{indent}color_result = vec4(aces_tonemap(color_result.rgb), color_result.a);\n"
-        ));
+        // Quality output pipeline: tonemap (skip for photo textures) + dither
+        if !has_textures {
+            s.push_str(&format!(
+                "{indent}color_result = vec4(aces_tonemap(color_result.rgb), color_result.a);\n"
+            ));
+        } else {
+            s.push_str(&format!(
+                "{indent}color_result = vec4(clamp(color_result.rgb, 0.0, 1.0), color_result.a);\n"
+            ));
+        }
         s.push_str(&format!(
             "{indent}color_result += (dither_noise(v_uv * u_resolution) - 0.5) / 255.0;\n"
         ));
