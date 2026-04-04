@@ -1,0 +1,35 @@
+// Living Photo — turn any image into an animated wallpaper.
+// The photo flows, breathes, and responds to your mouse.
+// Change the "from" URL to any image. Adjust config values to taste.
+//
+// Compile: game build living-photo.game -o dist --format wallpaper
+// Or:      game build living-photo.game -o dist --format html
+
+cinematic "living-photo" {
+  texture "photo" from "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1920&q=80"
+
+  layer config {
+    flow_speed: 0.12        // how fast the image flows (0.05-0.3)
+    flow_strength: 0.025    // how much the image warps (0.01-0.06)
+    breath_strength: 0.015  // gentle breathing pulse (0.005-0.03)
+  }
+
+  // The photo — warped by noise to create flowing animation
+  layer photo memory: 0.96 {
+    distort(scale: 2.0, speed: flow_speed, strength: flow_strength + mouse_down * 0.015)
+    | warp(scale: 1.5, octaves: 3, persistence: 0.5, strength: breath_strength)
+    | sample("photo")
+  }
+
+  // Subtle floating particles on top
+  layer particles memory: 0.70 {
+    distort(scale: 4.0, speed: flow_speed * 0.8, strength: 0.15)
+    | warp(scale: 2.0, octaves: 3, strength: 0.2)
+    | repeat(0.14, 0.14)
+    | circle(0.006)
+    | glow(1.5)
+    | tint(1.0, 0.95, 0.85)
+  }
+
+  pass frame { vignette(0.2) }
+}
