@@ -50,20 +50,56 @@ pub fn generate_html(shader: &ShaderOutput) -> String {
         ));
     }
 
+    let tex_count = shader.textures.len();
+    let tex_names: Vec<String> = shader.textures.iter().map(|t| t.name.clone()).collect();
+
     s.push_str(&super::helpers::webgpu_renderer(
         needs_prev_frame,
         pass_count,
         None,
-        0,
+        tex_count,
     ));
     s.push_str("\n\n");
-    s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame, &[]));
+    s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame, &tex_names));
     s.push_str("\n\n");
 
     // Inject feature JS modules (listen, voice, score, temporal, gravity, breed)
     for module_js in &shader.js_modules {
         s.push_str(module_js);
         s.push_str("\n\n");
+    }
+
+    // Texture loading helper for standalone HTML
+    if tex_count > 0 {
+        s.push_str("async function loadImageTexture(renderer, index, url, name) {\n");
+        s.push_str("  try {\n");
+        s.push_str("    const img = new Image();\n");
+        s.push_str("    img.crossOrigin = 'anonymous';\n");
+        s.push_str("    img.src = url;\n");
+        s.push_str("    await img.decode();\n");
+        s.push_str("    const bitmap = await createImageBitmap(img);\n");
+        s.push_str("    if (renderer.setUserTexture && renderer.device) {\n");
+        s.push_str("      const tex = renderer.device.createTexture({\n");
+        s.push_str("        size: [bitmap.width, bitmap.height],\n");
+        s.push_str("        format: 'rgba8unorm',\n");
+        s.push_str("        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,\n");
+        s.push_str("      });\n");
+        s.push_str("      renderer.device.queue.copyExternalImageToTexture({ source: bitmap }, { texture: tex }, [bitmap.width, bitmap.height]);\n");
+        s.push_str("      renderer.setUserTexture(index, tex);\n");
+        s.push_str("    } else if (renderer.setUserTextureGL && renderer.gl) {\n");
+        s.push_str("      const gl = renderer.gl;\n");
+        s.push_str("      const glTex = gl.createTexture();\n");
+        s.push_str("      gl.bindTexture(gl.TEXTURE_2D, glTex);\n");
+        s.push_str("      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);\n");
+        s.push_str("      gl.bindTexture(gl.TEXTURE_2D, null);\n");
+        s.push_str("      renderer.setUserTextureGL(name, glTex);\n");
+        s.push_str("    }\n");
+        s.push_str("  } catch(e) { console.warn('Texture load failed:', name, e); }\n");
+        s.push_str("}\n\n");
     }
 
     s.push_str("(async function() {\n");
@@ -74,15 +110,39 @@ pub fn generate_html(shader: &ShaderOutput) -> String {
     s.push_str("  }\n");
     s.push_str("  window.addEventListener('resize', resize);\n");
     s.push_str("  resize();\n\n");
+
+    s.push_str("  let renderer = null;\n");
     s.push_str("  const gpu = new GameRenderer(canvas, WGSL_V, WGSL_F, UNIFORMS");
     if pass_count > 0 {
         s.push_str(", PASS_SHADERS");
     }
+    if tex_count > 0 {
+        s.push_str(&format!(", {tex_count}"));
+    }
     s.push_str(");\n");
-    s.push_str("  if (await gpu.init()) { gpu.start(); return; }\n");
-    s.push_str("  const gl = new GameRendererGL(canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
-    s.push_str("  if (gl.init()) { gl.start(); return; }\n");
-    s.push_str("  document.body.textContent = 'No WebGPU or WebGL2 support.';\n");
+    s.push_str("  if (await gpu.init()) { renderer = gpu; }\n");
+    s.push_str("  else {\n");
+    s.push_str("    const gl = new GameRendererGL(canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
+    s.push_str("    if (gl.init()) { renderer = gl; }\n");
+    s.push_str("  }\n");
+    s.push_str("  if (!renderer) { document.body.textContent = 'No WebGPU or WebGL2 support.'; return; }\n\n");
+
+    // Load textures before starting
+    if tex_count > 0 {
+        s.push_str("  // Load declared textures\n");
+        for (i, tex) in shader.textures.iter().enumerate() {
+            if let Some(ref url) = tex.source {
+                s.push_str(&format!(
+                    "  await loadImageTexture(renderer, {i}, '{}', '{}');\n",
+                    escape_html_js(url),
+                    escape_html_js(&tex.name)
+                ));
+            }
+        }
+        s.push_str("\n");
+    }
+
+    s.push_str("  renderer.start();\n");
     s.push_str("})();\n");
 
     s.push_str("</script>\n</body>\n</html>\n");
@@ -270,20 +330,49 @@ pub fn generate_wallpaper_html(shader: &ShaderOutput) -> String {
         ));
     }
 
+    let wp_tex_count = shader.textures.len();
+    let wp_tex_names: Vec<String> = shader.textures.iter().map(|t| t.name.clone()).collect();
+
     s.push_str(&super::helpers::webgpu_renderer(
         needs_prev_frame,
         pass_count,
         None,
-        0,
+        wp_tex_count,
     ));
     s.push_str("\n\n");
-    s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame, &[]));
+    s.push_str(&super::helpers::webgl2_renderer(needs_prev_frame, &wp_tex_names));
     s.push_str("\n\n");
 
     // Inject feature JS modules
     for module_js in &shader.js_modules {
         s.push_str(module_js);
         s.push_str("\n\n");
+    }
+
+    // Texture loading helper
+    if wp_tex_count > 0 {
+        s.push_str("async function loadImageTexture(renderer, index, url, name) {\n");
+        s.push_str("  try {\n");
+        s.push_str("    const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url;\n");
+        s.push_str("    await img.decode();\n");
+        s.push_str("    const bitmap = await createImageBitmap(img);\n");
+        s.push_str("    if (renderer.setUserTexture && renderer.device) {\n");
+        s.push_str("      const tex = renderer.device.createTexture({ size: [bitmap.width, bitmap.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });\n");
+        s.push_str("      renderer.device.queue.copyExternalImageToTexture({ source: bitmap }, { texture: tex }, [bitmap.width, bitmap.height]);\n");
+        s.push_str("      renderer.setUserTexture(index, tex);\n");
+        s.push_str("    } else if (renderer.setUserTextureGL && renderer.gl) {\n");
+        s.push_str("      const gl = renderer.gl;\n");
+        s.push_str("      const glTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, glTex);\n");
+        s.push_str("      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);\n");
+        s.push_str("      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);\n");
+        s.push_str("      gl.bindTexture(gl.TEXTURE_2D, null);\n");
+        s.push_str("      renderer.setUserTextureGL(name, glTex);\n");
+        s.push_str("    }\n");
+        s.push_str("  } catch(e) { console.warn('Texture load failed:', name, e); }\n");
+        s.push_str("}\n\n");
     }
 
     // Wallpaper Engine compatibility bridge
@@ -307,7 +396,6 @@ pub fn generate_wallpaper_html(shader: &ShaderOutput) -> String {
     s.push_str("(async function() {\n");
     s.push_str("  const canvas = document.getElementById('c');\n");
     s.push_str("  let resScale = 1.0;\n");
-    s.push_str("  // Auto-scale resolution for heavy shaders at high DPI\n");
     s.push_str("  if (COMPLEXITY.tier === 'extreme' && devicePixelRatio > 1.5) resScale = 0.5;\n");
     s.push_str("  else if (COMPLEXITY.tier === 'heavy' && devicePixelRatio > 2) resScale = 0.75;\n");
     s.push_str("  function resize() {\n");
@@ -323,14 +411,31 @@ pub fn generate_wallpaper_html(shader: &ShaderOutput) -> String {
     if pass_count > 0 {
         s.push_str(", PASS_SHADERS");
     }
+    if wp_tex_count > 0 {
+        s.push_str(&format!(", {wp_tex_count}"));
+    }
     s.push_str(");\n");
-    s.push_str("  if (await gpu.init()) {\n");
-    s.push_str("    _renderer = gpu;\n");
-    s.push_str("  } else {\n");
+    s.push_str("  if (await gpu.init()) { _renderer = gpu; }\n");
+    s.push_str("  else {\n");
     s.push_str("    const gl = new GameRendererGL(canvas, GLSL_V, GLSL_F, UNIFORMS);\n");
     s.push_str("    if (gl.init()) { _renderer = gl; }\n");
     s.push_str("  }\n");
-    s.push_str("  if (!_renderer) { document.body.textContent = 'No GPU support.'; return; }\n");
+    s.push_str("  if (!_renderer) { document.body.textContent = 'No GPU support.'; return; }\n\n");
+
+    // Load textures before starting
+    if wp_tex_count > 0 {
+        for (i, tex) in shader.textures.iter().enumerate() {
+            if let Some(ref url) = tex.source {
+                s.push_str(&format!(
+                    "  await loadImageTexture(_renderer, {i}, '{}', '{}');\n",
+                    escape_html_js(url),
+                    escape_html_js(&tex.name)
+                ));
+            }
+        }
+        s.push_str("\n");
+    }
+
     s.push_str("  _renderer.setFPS(_wpFps);\n");
     s.push_str("  _renderer.start();\n");
     s.push_str("})();\n");
